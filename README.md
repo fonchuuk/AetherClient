@@ -70,6 +70,35 @@ cd aurora && ./gradlew :client:remapJar # мод (нужен JDK 21)
 Текущая сборка: **8 548 864 байта**,
 sha256 `11990cb4f95deb643a807a0f0c9d32bbec28e2c2d0f34d1c42df7dec496075ff`.
 
+## Как закинуть на GitHub
+
+Репозиторий уже инициализирован и первый коммит сделан, поэтому после
+распаковки достаточно привязать свой репозиторий и отправить:
+
+```bash
+git remote add origin https://github.com/<твой-логин>/<репозиторий>.git
+git branch -M main
+git push -u origin main
+```
+
+Автора коммита стоит поменять на себя — сейчас там служебный:
+
+```bash
+git config user.name  "Твоё Имя"
+git config user.email "твоя@почта"
+git commit --amend --reset-author --no-edit
+git push -f origin main
+```
+
+Если распаковщик выкинул `.git`, инициализируй заново: `git init && git add -A && git commit -m "AetherGlass"`.
+
+Что уже учтено:
+
+- `.gitignore` — тулчейны сборки, `build/`, `.gradle/`, `*.class`, `*.syso`;
+- `.gitattributes` — у `*.sh` и `gradlew` жёстко LF, у `*.bat` — CRLF, двоичные
+  файлы помечены `binary`. Без этого `gradlew` и `build.sh` на Windows ломаются;
+- готовый `AetherGlass-Launcher.exe` **не** исключён: он и есть главный файл.
+
 ## Что лежит в `aurora/` и что оттуда можно выкинуть
 
 | Каталог | Нужен? |
