@@ -71,6 +71,22 @@ func (l *Launcher) Plan(installation *Installation, paths Paths, config *Config,
 
 	customResolution := config.WindowWidth > 0 && config.WindowHeight > 0
 	features := Features(customResolution)
+
+	// Офлайн-профиль приходит без токена и без идентификатора Xbox, поэтому
+	// вместо них подставляются значения, которые игра понимает как «входа не
+	// было». Пустоту подставлять нельзя: пустой элемент в командной строке
+	// угодил бы в разбор как лишний аргумент.
+	userType := "msa"
+	accessToken := session.AccessToken
+	clientID := session.ClientID
+	xuid := session.XUID
+	if session.Offline {
+		userType = offlineUserType
+		accessToken = offlineAccessToken
+		clientID = session.UUID
+		xuid = offlineAccessToken
+	}
+
 	tokens := map[string]string{
 		"launcher_name":       LauncherName,
 		"launcher_version":    LauncherVersion,
@@ -84,10 +100,10 @@ func (l *Launcher) Plan(installation *Installation, paths Paths, config *Config,
 		"assets_index_name":   installation.AssetIndexID,
 		"auth_player_name":    session.PlayerName,
 		"auth_uuid":           session.UUID,
-		"auth_access_token":   session.AccessToken,
-		"user_type":           "msa",
-		"auth_xuid":           session.XUID,
-		"clientid":            session.ClientID,
+		"auth_access_token":   accessToken,
+		"user_type":           userType,
+		"auth_xuid":           xuid,
+		"clientid":            clientID,
 		"version_type":        LauncherName,
 		"resolution_width":    itoa(int64(config.WindowWidth)),
 		"resolution_height":   itoa(int64(config.WindowHeight)),

@@ -18,6 +18,10 @@ type Config struct {
 	SelectedVersion string `json:"selectedVersion"`
 	InstallMods     bool   `json:"installMods"`
 	ClientID        string `json:"clientId"`
+	// OfflineName — последнее имя офлайн-профиля. Хранится отдельно от
+	// сессии, чтобы не заставлять игрока набирать его заново после входа
+	// через Microsoft и обратно.
+	OfflineName string `json:"offlineName"`
 
 	path string
 }
@@ -66,6 +70,7 @@ func LoadConfig(file string) *Config {
 	config.JavaExecutable = stringValue(raw, "javaExecutable", config.JavaExecutable)
 	config.SelectedVersion = stringValue(raw, "selectedVersion", config.SelectedVersion)
 	config.ClientID = stringValue(raw, "clientId", config.ClientID)
+	config.OfflineName = stringValue(raw, "offlineName", config.OfflineName)
 	config.MinMemoryMb = clampMemory(intValue(raw, "minMemoryMb", defaultMinMemoryMb))
 	config.MaxMemoryMb = clampMemory(intValue(raw, "maxMemoryMb", defaultMaxMemoryMb))
 	config.WindowWidth = intValue(raw, "windowWidth", 0)

@@ -214,6 +214,13 @@ input:focus{outline:none; border-color:rgba(180,170,255,.55);
 
 .info{padding:14px 16px; border-radius:16px; background:rgba(255,255,255,.05);
   border:1px solid rgba(255,255,255,.10); font-size:13px; line-height:1.7; margin-bottom:16px}
+.cut{margin:22px 0 10px; font-size:13px; font-weight:700; letter-spacing:.6px;
+  text-transform:uppercase; color:var(--muted)}
+.warn{padding:14px 16px; border-radius:16px; margin-top:16px; font-size:12.5px; line-height:1.7;
+  color:#ffe3b0; background:rgba(255,199,102,.09);
+  border:1px solid rgba(255,199,102,.28);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.14)}
+.warn b{color:#fff3dc}
 .info b{color:#fff}
 .foot{margin-top:auto; padding-top:16px; display:flex; flex-direction:column; gap:8px}
 .mono{font-family:"Cascadia Mono","Consolas",monospace; font-size:12px; color:var(--muted)}
@@ -266,14 +273,31 @@ input:focus{outline:none; border-color:rgba(180,170,255,.55);
       <!-- Аккаунт -->
       <section class="page on" data-page="0">
         <h2>Аккаунт</h2>
-        <p class="hint">Вход через Microsoft. Пароль вводится на сайте Microsoft — лаунчер его не видит и не хранит.</p>
-        <div class="info big" id="playerText">Вы не вошли. Без входа можно установить игру, но не запустить.</div>
+        <p class="hint">Два способа играть: вход через Microsoft или офлайн-профиль.</p>
+        <div class="info big" id="playerText">Вы не вошли.</div>
         <div class="row">
           <button class="btn primary" id="loginBtn">Войти через Microsoft</button>
           <button class="btn" id="logoutBtn">Выйти</button>
         </div>
+
+        <div class="cut">Офлайн-профиль</div>
+        <div class="grid" style="max-width:520px">
+          <label>Имя игрока</label>
+          <input type="text" id="offlineName" maxlength="16" spellcheck="false"
+                 placeholder="латиница, цифры и _ — от 3 до 16">
+        </div>
+        <div class="row" style="margin-top:14px">
+          <button class="btn" id="offlineBtn">Играть офлайн</button>
+        </div>
+        <div class="warn">
+          <b>Без входа в Microsoft.</b> Одиночная игра и игра по локальной сети работают полностью.
+          Публичные серверы с проверкой лицензии — и Realms — такого игрока не пустят:
+          подтвердить сессию нечем, и игра честно покажет отказ. Скинов и плащей не будет.
+          Игра при этом скачивается с официальных серверов Mojang обычным порядком:
+          лаунчер ничего не подделывает и не обходит защиту.
+        </div>
         <div class="foot">
-          <div class="mono" id="accountHint">Сессия хранится в каталоге игры, рядом с настройками.</div>
+          <div class="mono" id="accountHint">Профиль хранится в каталоге игры, рядом с настройками.</div>
         </div>
       </section>
 
@@ -374,7 +398,7 @@ function selectTab(index){
   indicator.style.transform = 'translateY(' + (index * 50) + 'px)';
 }
 tabs.forEach((tab, index) => tab.addEventListener('click', () => selectTab(index)));
-selectTab(1);
+selectTab(0);
 
 /* ── вызовы в Go. Ошибки не проглатываем, а показываем в логе. ── */
 function call(name, ...args){
@@ -413,6 +437,15 @@ $('modsSwitch').addEventListener('click', () => {
 
 /* ── кнопки ── */
 $('loginBtn').onclick        = () => call('login');
+function enterOffline(){
+  const name = $('offlineName').value.trim();
+  if (!name){ AetherGlass.log('Введите имя игрока для офлайн-профиля'); return; }
+  call('loginOffline', name);
+}
+$('offlineBtn').onclick      = enterOffline;
+$('offlineName').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') enterOffline();
+});
 $('logoutBtn').onclick       = () => call('logout');
 $('playBtn').onclick         = () => call('play');
 $('installBtn').onclick      = () => call('install');
@@ -434,10 +467,17 @@ const AetherGlass = {
       (s.loader||'') + ' · свой клиент';
 
     $('playerText').textContent = s.loggedIn
-      ? 'Вы вошли как ' + s.player + '. Можно запускать игру.'
+      ? (s.offline
+          ? 'Офлайн-профиль: ' + s.player + '. Одиночная игра и локальная сеть — полностью, ' +
+            'серверы с проверкой лицензии не пустят.'
+          : 'Вы вошли как ' + s.player + '. Можно запускать игру.')
       : 'Вы не вошли. Без входа можно установить игру, но не запустить.';
     $('loginBtn').disabled  = !!s.busy || s.loggedIn;
     $('logoutBtn').disabled = !!s.busy || !s.loggedIn;
+    $('offlineBtn').disabled = !!s.busy;
+    if (document.activeElement !== $('offlineName')){
+      $('offlineName').value = s.offlineName || '';
+    }
 
     $('gameInfo').textContent = s.installed
       ? 'Игра установлена: ' + s.installed + (s.mods ? ' с модами' : '') + '.'

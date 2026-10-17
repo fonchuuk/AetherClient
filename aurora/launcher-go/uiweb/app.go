@@ -39,24 +39,26 @@ func AuthFile() string {
 // state — всё, что знает интерфейс. Передаётся в страницу одним объектом,
 // чтобы не городить десятки отдельных вызовов.
 type state struct {
-	Player    string           `json:"player"`
-	LoggedIn  bool             `json:"loggedIn"`
-	GameDir   string           `json:"gameDir"`
-	Version   string           `json:"version"`
-	Loader    string           `json:"loader"`
-	Java      string           `json:"java"`
-	JavaPath  string           `json:"javaPath"`
-	MinMemory int              `json:"minMemory"`
-	MaxMemory int              `json:"maxMemory"`
-	Width     int              `json:"width"`
-	Height    int              `json:"height"`
-	Mods      bool             `json:"mods"`
-	ModRows   []core.ModStatus `json:"modRows"`
-	Busy      bool             `json:"busy"`
-	Status    string           `json:"status"`
-	Kind      string           `json:"kind"`
-	Progress  float64          `json:"progress"`
-	Installed string           `json:"installed"`
+	Player      string           `json:"player"`
+	LoggedIn    bool             `json:"loggedIn"`
+	Offline     bool             `json:"offline"`
+	OfflineName string           `json:"offlineName"`
+	GameDir     string           `json:"gameDir"`
+	Version     string           `json:"version"`
+	Loader      string           `json:"loader"`
+	Java        string           `json:"java"`
+	JavaPath    string           `json:"javaPath"`
+	MinMemory   int              `json:"minMemory"`
+	MaxMemory   int              `json:"maxMemory"`
+	Width       int              `json:"width"`
+	Height      int              `json:"height"`
+	Mods        bool             `json:"mods"`
+	ModRows     []core.ModStatus `json:"modRows"`
+	Busy        bool             `json:"busy"`
+	Status      string           `json:"status"`
+	Kind        string           `json:"kind"`
+	Progress    float64          `json:"progress"`
+	Installed   string           `json:"installed"`
 }
 
 type app struct {
@@ -117,6 +119,18 @@ func (a *app) bind(name string, work func() error) {
 func (a *app) bindAll() {
 	a.bind("login", a.login)
 	a.bind("logout", a.logout)
+	// Офлайн-профиль приходит именем, поэтому у него своя привязка.
+	if err := a.view.Bind("loginOffline", func(name string) error {
+		go func() {
+			defer func() { _ = recover() }()
+			if err := a.loginOffline(name); err != nil {
+				a.report(err)
+			}
+		}()
+		return nil
+	}); err != nil {
+		a.log("Не удалось привязать loginOffline: " + err.Error())
+	}
 	a.bind("install", func() error { return a.install(false) })
 	a.bind("play", a.play)
 	a.bind("cancelTask", a.cancelTask)
@@ -188,6 +202,32 @@ func (a *app) logout() error {
 	a.session = nil
 	a.mutex.Unlock()
 	a.setStatus("Выход выполнен", "muted")
+	a.push()
+	return nil
+}
+
+// loginOffline — офлайн-профиль: игра без входа в Microsoft.
+//
+// Никакого обхода защиты здесь нет: токена у такого профиля нет вообще,
+// поэтому одиночная игра и локальная сеть работают, а серверы с проверкой
+// лицензии игрока не пустят — подтвердить сессию будет нечем.
+func (a *app) loginOffline(name string) error {
+	session, err := core.NewOfflineSession(name)
+	if err != nil {
+		return err
+	}
+	if err := session.Save(AuthFile()); err != nil {
+		a.log("Профиль сохранить не удалось: " + err.Error())
+	}
+	a.mutex.Lock()
+	a.session = session
+	a.config.OfflineName = session.PlayerName
+	a.mutex.Unlock()
+	if err := a.config.Save(ConfigFile()); err != nil {
+		a.log("Настройки сохранить не удалось: " + err.Error())
+	}
+	a.setStatus("Офлайн-профиль: "+session.PlayerName+
+		" — серверы с проверкой лицензии не пустят", "warn")
 	a.push()
 	return nil
 }
@@ -315,7 +355,8 @@ func (a *app) startGame() error {
 		}
 	}
 	if session == nil || !session.Valid() {
-		return &core.Errorf{Message: "сначала войдите в аккаунт Microsoft (вкладка «Аккаунт»)"}
+		return &core.Errorf{Message: "сначала войдите: через Microsoft или " +
+			"создайте офлайн-профиль (вкладка «Аккаунт»)"}
 	}
 	plan, err := a.launcher.Plan(installation, a.config.Paths(), a.config, session)
 	if err != nil {
@@ -606,9 +647,11 @@ func (a *app) snapshot() state {
 	defer a.mutex.Unlock()
 	player := ""
 	loggedIn := false
+	offline := false
 	if a.session != nil && a.session.Valid() {
 		player = a.session.PlayerName
 		loggedIn = true
+		offline = a.session.Offline
 	}
 	installed := ""
 	if a.installation != nil {
@@ -626,25 +669,31 @@ func (a *app) snapshot() state {
 	if rows == nil {
 		rows = []core.ModStatus{}
 	}
+	name := a.config.OfflineName
+	if name == "" && offline {
+		name = player
+	}
 	return state{
-		Player:    player,
-		LoggedIn:  loggedIn,
-		GameDir:   a.config.GameDirectory,
-		Version:   core.DefaultMinecraftVer,
-		Loader:    core.DefaultLoaderVersion,
-		Java:      java,
-		JavaPath:  a.config.JavaExecutable,
-		MinMemory: a.config.MinMemoryMb,
-		MaxMemory: a.config.MaxMemoryMb,
-		Width:     a.config.WindowWidth,
-		Height:    a.config.WindowHeight,
-		Mods:      a.config.InstallMods,
-		ModRows:   rows,
-		Busy:      a.busy,
-		Status:    a.statusText,
-		Kind:      a.statusKind,
-		Progress:  a.progress,
-		Installed: installed,
+		Player:      player,
+		LoggedIn:    loggedIn,
+		Offline:     offline,
+		OfflineName: name,
+		GameDir:     a.config.GameDirectory,
+		Version:     core.DefaultMinecraftVer,
+		Loader:      core.DefaultLoaderVersion,
+		Java:        java,
+		JavaPath:    a.config.JavaExecutable,
+		MinMemory:   a.config.MinMemoryMb,
+		MaxMemory:   a.config.MaxMemoryMb,
+		Width:       a.config.WindowWidth,
+		Height:      a.config.WindowHeight,
+		Mods:        a.config.InstallMods,
+		ModRows:     rows,
+		Busy:        a.busy,
+		Status:      a.statusText,
+		Kind:        a.statusKind,
+		Progress:    a.progress,
+		Installed:   installed,
 	}
 }
 

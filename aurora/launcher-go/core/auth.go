@@ -42,6 +42,9 @@ const (
 const DefaultClientID = "00000000402b5328"
 
 // Session — сохранённая сессия игрока.
+//
+// Offline отличает офлайн-профиль от входа через Microsoft: у офлайн-сессии
+// нет ни токена, ни срока действия, а есть только имя и вычисленный UUID.
 type Session struct {
 	PlayerName   string `json:"playerName"`
 	UUID         string `json:"uuid"`
@@ -50,13 +53,24 @@ type Session struct {
 	ClientID     string `json:"clientId"`
 	ExpiresAtMs  int64  `json:"expiresAtMillis"`
 	RefreshToken string `json:"refreshToken"`
+	Offline      bool   `json:"offline"`
 
 	path string
 }
 
-// Valid — токен есть и его срок ещё не вышел (с запасом в минуту).
+// Valid — можно ли запускать игру с этой сессией.
+//
+// Для офлайн-профиля токена нет по определению, поэтому проверяется имя:
+// серверы с проверкой лицензии такого игрока всё равно не пустят, но в
+// одиночную игру и по локальной сети он играть может.
 func (s *Session) Valid() bool {
-	return s != nil && s.AccessToken != "" &&
+	if s == nil {
+		return false
+	}
+	if s.Offline {
+		return s.PlayerName != "" && s.UUID != ""
+	}
+	return s.AccessToken != "" &&
 		s.ExpiresAtMs > time.Now().Add(time.Minute).UnixMilli()
 }
 
@@ -179,7 +193,13 @@ func LoginWith(clientID string, onURL func(string), cancel *Cancel, timeout time
 
 // Refresh обновляет сессию по токену обновления, не трогая браузер.
 func Refresh(session *Session) (*Session, error) {
-	if session == nil || strings.TrimSpace(session.RefreshToken) == "" {
+	if session == nil {
+		return nil, &Errorf{Message: "нет сохранённой сессии — войдите через Microsoft или создайте офлайн-профиль"}
+	}
+	if session.Offline {
+		return nil, &Errorf{Message: "офлайн-профиль нечего обновлять: токена у него нет"}
+	}
+	if strings.TrimSpace(session.RefreshToken) == "" {
 		return nil, &Errorf{Message: "нет токена обновления — требуется повторный вход через Microsoft"}
 	}
 	clientID := session.ClientID
