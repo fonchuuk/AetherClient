@@ -41,6 +41,8 @@ public final class HandEffectRenderer {
     private static Item lastItem;
     private static float appear = 1.0F;
     private static float swing;
+    /** Мы положили слой в стек матриц и обязаны его снять. */
+    private static boolean posePushed;
 
     private HandEffectRenderer() {
     }
@@ -61,6 +63,7 @@ public final class HandEffectRenderer {
         appear = 1.0F;
         swing = 0.0F;
         lastItem = null;
+        posePushed = false;
     }
 
     /** Обновляет состояние анимации; вызывается один раз за кадр. */
@@ -87,6 +90,20 @@ public final class HandEffectRenderer {
      */
     public static void applyPose(PoseStack pose, LocalPlayer player, float partialTick) {
         pose.pushPose();
+        posePushed = true;
+        try {
+            applyPoseInner(pose, player, partialTick);
+        } catch (Throwable throwable) {
+            // Стек матриц обязаны вернуть в исходное состояние даже при сбое:
+            // оставленный в нём лишний слой сломает отрисовку следующего кадра,
+            // и игра упадёт уже не у нас, а выглядеть будет как наш вылет.
+            posePushed = false;
+            pose.popPose();
+            throw throwable;
+        }
+    }
+
+    private static void applyPoseInner(PoseStack pose, LocalPlayer player, float partialTick) {
         float hidden = 1.0F - Easing.easeOutCubic(appear);
         if (hidden > 0.001F) {
             // Рука «выезжает» снизу и чуть сбоку, а не появляется рывком.
@@ -116,8 +133,16 @@ public final class HandEffectRenderer {
         }
     }
 
-    /** Возвращает стек матриц в исходное состояние. */
+    /**
+     * Возвращает стек матриц в исходное состояние — и только если мы его
+     * действительно меняли. Снимать то, что не надевали, нельзя: это уронит
+     * весь кадр.
+     */
     public static void restorePose(PoseStack pose) {
+        if (!posePushed) {
+            return;
+        }
+        posePushed = false;
         pose.popPose();
     }
 

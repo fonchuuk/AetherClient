@@ -250,9 +250,50 @@ func TestInstalledModFiles(t *testing.T) {
 	}
 }
 
+// Каталог должен листаться: вторая страница не повторяет первую.
+func TestLiveModrinthPaging(t *testing.T) {
+	first, err := SearchModrinth("", DefaultMinecraftVer, "fabric", 5, 0, nil)
+	if err != nil {
+		t.Skipf("Modrinth недоступен: %v", err)
+	}
+	if len(first.Hits) == 0 {
+		t.Fatal("популярные моды не пришли")
+	}
+	// Пустой запрос — это «сначала популярные», поэтому первым должен идти
+	// самый скачиваемый мод под эту версию игры.
+	for index := 1; index < len(first.Hits); index++ {
+		if first.Hits[index].Downloads > first.Hits[index-1].Downloads {
+			t.Errorf("порядок сбит: %s (%d) идёт после %s (%d)",
+				first.Hits[index].Title, first.Hits[index].Downloads,
+				first.Hits[index-1].Title, first.Hits[index-1].Downloads)
+		}
+	}
+	second, err := SearchModrinth("", DefaultMinecraftVer, "fabric", 5, 5, nil)
+	if err != nil {
+		t.Skipf("вторая страница недоступна: %v", err)
+	}
+	if len(second.Hits) == 0 {
+		t.Fatal("вторая страница пуста")
+	}
+	seen := map[string]bool{}
+	for _, hit := range first.Hits {
+		seen[hit.ProjectID] = true
+	}
+	for _, hit := range second.Hits {
+		if seen[hit.ProjectID] {
+			t.Errorf("мод %s повторился на второй странице", hit.Title)
+		}
+	}
+	if second.TotalHits != first.TotalHits {
+		t.Errorf("общее число модов плавает: %d и %d", first.TotalHits, second.TotalHits)
+	}
+	t.Logf("каталог: всего %d, первая страница начинается с %s, вторая — с %s",
+		first.TotalHits, first.Hits[0].Title, second.Hits[0].Title)
+}
+
 // Проверка по живому API. Без интернета пропускается, а не «проходит».
 func TestLiveModrinthSearch(t *testing.T) {
-	results, err := SearchModrinth("sodium", DefaultMinecraftVer, "fabric", 3, nil)
+	results, err := SearchModrinth("sodium", DefaultMinecraftVer, "fabric", 3, 0, nil)
 	if err != nil {
 		t.Skipf("Modrinth недоступен: %v", err)
 	}

@@ -121,11 +121,9 @@ const (
 // только Fabric и только та версия игры, под которую собран лаунчер. Поэтому
 // в результатах не бывает того, что заведомо не запустится.
 func SearchModrinth(query string, gameVersion string, loader string,
-	limit int, cancel *Cancel) (*ModrinthSearch, error) {
-	query = strings.TrimSpace(query)
-	if query == "" {
-		return nil, &Errorf{Message: "введите название мода"}
-	}
+	limit int, offset int, cancel *Cancel) (*ModrinthSearch, error) {
+	// Пустой запрос разрешён: Modrinth в этом случае отдаёт моды по
+	// популярности, и это ровно то, что нужно для первого экрана.
 	if gameVersion == "" {
 		gameVersion = DefaultMinecraftVer
 	}
@@ -138,6 +136,9 @@ func SearchModrinth(query string, gameVersion string, loader string,
 	if limit > maxSearchLimit {
 		limit = maxSearchLimit
 	}
+	if offset < 0 {
+		offset = 0
+	}
 	facets := [][]string{
 		{"project_type:mod"},
 		{"categories:" + loader},
@@ -149,6 +150,7 @@ func SearchModrinth(query string, gameVersion string, loader string,
 	}
 	target := modrinthAPI + "/search?query=" + url.QueryEscape(query) +
 		"&limit=" + strconv.Itoa(limit) +
+		"&offset=" + strconv.Itoa(offset) +
 		"&index=downloads" +
 		"&facets=" + url.QueryEscape(string(encoded))
 	var payload modrinthSearchPayload

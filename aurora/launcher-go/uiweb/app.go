@@ -61,6 +61,9 @@ type state struct {
 	Installed   string             `json:"installed"`
 	ModResults  []core.ModrinthHit `json:"modResults"`
 	ModFiles    []string           `json:"modFiles"`
+	ModOffset   int                `json:"modOffset"`
+	ModTotal    int64              `json:"modTotal"`
+	ModQuery    string             `json:"modQuery"`
 }
 
 type app struct {
@@ -78,6 +81,9 @@ type app struct {
 	modRows      []core.ModStatus
 	modResults   []core.ModrinthHit
 	modFiles     []string
+	modQuery     string
+	modOffset    int
+	modTotal     int64
 	statusText   string
 	statusKind   string
 }
@@ -161,8 +167,15 @@ func (a *app) bindAll() {
 	a.bind("autoJava", a.autoJava)
 	a.bind("pickFolder", a.pickFolder)
 	a.bind("openFolder", a.openFolder)
-	// Поиск и установка модов с Modrinth — по одной кнопке.
-	a.bindString("searchMods", a.searchMods)
+	// Modrinth: популярное, поиск, догрузка и установка одной кнопкой.
+	a.bind("browseMods", func() error { return a.loadMods("", 0, false) })
+	a.bind("moreMods", func() error {
+		a.mutex.Lock()
+		query, offset := a.modQuery, a.modOffset
+		a.mutex.Unlock()
+		return a.loadMods(query, offset, true)
+	})
+	a.bindString("searchMods", func(query string) error { return a.loadMods(query, 0, false) })
 	a.bindString("installMod", a.installMod)
 
 	// ready — страница загрузилась и готова принимать состояние.
@@ -191,6 +204,9 @@ func (a *app) ready() error {
 	a.push()
 	go a.refreshMods()
 	go a.refreshModFiles()
+	// Каталог открывается сразу на популярном: ничего вводить не нужно,
+	// чтобы увидеть, что вообще есть.
+	go func() { _ = a.loadMods("", 0, false) }()
 	return nil
 }
 
@@ -414,20 +430,39 @@ func (a *app) refreshMods() error {
 
 // ─────────────────────────────── Modrinth ───────────────────────────────
 
-// searchMods — поиск модов в открытом каталоге Modrinth. В результаты
-// попадают только моды под нашу версию игры и загрузчик: это делает сам
-// Modrinth по нашим фильтрам, а не мы после скачивания.
-func (a *app) searchMods(query string) error {
-	results, err := core.SearchModrinth(query, core.DefaultMinecraftVer, "fabric", 0, nil)
+// loadMods — загрузить страницу каталога.
+//
+// Пустой запрос означает «самые популярные»: Modrinth сам отсортирует по
+// числу загрузок. keep=true дописывает следующую страницу к уже показанной —
+// так список листается почти бесконечно: под нашу версию игры в каталоге
+// почти восемнадцать тысяч модов.
+func (a *app) loadMods(query string, offset int, keep bool) error {
+	results, err := core.SearchModrinth(query, core.DefaultMinecraftVer,
+		"fabric", 0, offset, nil)
 	if err != nil {
 		return err
 	}
-	a.log("Modrinth: всего " + fmt.Sprint(results.TotalHits) +
-		", показываем " + fmt.Sprint(len(results.Hits)))
 	a.mutex.Lock()
-	a.modResults = results.Hits
+	if keep {
+		a.modResults = append(a.modResults, results.Hits...)
+	} else {
+		a.modResults = results.Hits
+	}
+	a.modQuery = query
+	a.modOffset = offset + len(results.Hits)
+	a.modTotal = results.TotalHits
+	shown := len(a.modResults)
 	a.mutex.Unlock()
-	a.setStatus("Найдено модов: "+fmt.Sprint(len(results.Hits)), "good")
+
+	if query == "" {
+		a.log("Modrinth: показано " + fmt.Sprint(shown) + " из " +
+			fmt.Sprint(results.TotalHits) + " популярных модов")
+	} else {
+		a.log("Modrinth по запросу «" + query + "»: всего " +
+			fmt.Sprint(results.TotalHits) + ", показано " + fmt.Sprint(shown))
+	}
+	a.setStatus("Показано модов: "+fmt.Sprint(shown)+" из "+fmt.Sprint(results.TotalHits), "good")
+	a.push()
 	return nil
 }
 
@@ -808,6 +843,9 @@ func (a *app) snapshot() state {
 		Installed:   installed,
 		ModResults:  a.modResults,
 		ModFiles:    a.modFiles,
+		ModOffset:   a.modOffset,
+		ModTotal:    a.modTotal,
+		ModQuery:    a.modQuery,
 	}
 }
 

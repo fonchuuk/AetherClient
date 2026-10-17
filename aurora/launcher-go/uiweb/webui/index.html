@@ -383,6 +383,7 @@ input:focus{outline:none; border-color:rgba(180,170,255,.55);
           <input type="text" id="modQuery" spellcheck="false"
                  placeholder="например: sodium, xaero, jei, litematica">
           <button class="btn primary" id="modSearchBtn" style="flex:0 0 auto">Найти</button>
+          <button class="btn ghost" id="modPopularBtn" style="flex:0 0 auto">Популярные</button>
         </div>
         <div class="results" id="modResults"></div>
 
@@ -483,7 +484,12 @@ $('javaPickBtn').onclick     = () => call('pickJava');
 $('javaAutoBtn').onclick     = () => call('autoJava');
 $('dirPickBtn').onclick      = () => call('pickFolder');
 $('modsRefreshBtn').onclick  = () => call('refreshMods');
+$('modPopularBtn').onclick    = browsePopular;
 
+function browsePopular(){
+  $('modQuery').value = '';
+  call('browseMods');
+}
 function runSearch(){
   const query = $('modQuery').value.trim();
   if (!query){ AetherGlass.log('Введите название мода'); return; }
@@ -537,7 +543,7 @@ const AetherGlass = {
     pill.className = 'pill glass k-' + (s.kind || 'muted');
     $('statusText').textContent = s.status || 'Готов к работе';
 
-    renderResults(s.modResults);
+    renderResults(s.modResults, s.modOffset, s.modTotal, s.modQuery);
 
     $('modFilesInfo').textContent = (s.modFiles && s.modFiles.length)
       ? 'В папке модов: ' + s.modFiles.length + ' файл(ов)'
@@ -578,13 +584,19 @@ window.AetherGlass = AetherGlass;
 
 /* Результаты поиска Modrinth: иконка, название, описание и одна кнопка.
    Имена полей — как их отдал Go: с маленькой буквы. */
-function renderResults(rows){
+function renderResults(rows, offset, total, query){
   const box = $('modResults');
   box.innerHTML = '';
   if (!rows || !rows.length){
-    box.innerHTML = '<div class="mono">Ничего не найдено — введите название выше.</div>';
+    box.innerHTML = '<div class="mono">Ничего не найдено.</div>';
     return;
   }
+  const caption = document.createElement('div');
+  caption.className = 'mono';
+  caption.style.padding = '2px 12px 6px';
+  caption.textContent = (query ? 'По запросу «' + query + '»: ' : 'Самые популярные: ')
+    + 'показано ' + rows.length + ' из ' + formatCount(total);
+  box.appendChild(caption);
   rows.forEach((hit) => {
     const item = document.createElement('div');
     item.className = 'result';
@@ -600,6 +612,18 @@ function renderResults(rows){
     item.querySelector('button').onclick = () => call('installMod', hit.project_id);
     box.appendChild(item);
   });
+
+  // Догрузка: пока каталог не кончился, кнопка жива.
+  if (offset < total){
+    const more = document.createElement('div');
+    more.style.padding = '6px 12px 2px';
+    const button = document.createElement('button');
+    button.className = 'btn ghost';
+    button.textContent = 'Показать ещё';
+    button.onclick = () => call('moreMods');
+    more.appendChild(button);
+    box.appendChild(more);
+  }
 }
 
 function formatCount(value){

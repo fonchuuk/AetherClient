@@ -115,6 +115,10 @@ public final class WorldRenderDispatcher {
             pose.translate(-origin.x, -origin.y, -origin.z);
             BlockEffectRenderer.render(pose, camera, module);
         } catch (Throwable throwable) {
+            // Рисование не дошло до endBatch, значит буфер мог остаться
+            // незакрытым. Выбрасываем его: следующий кадр создаст чистый,
+            // иначе игра упадёт уже на чужом, испорченном состоянии.
+            RenderResources.release();
             fail("подсветка блока", throwable);
         } finally {
             pose.popPose();

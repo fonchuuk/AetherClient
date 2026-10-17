@@ -77,9 +77,11 @@ public final class AetherGlassClient implements ClientModInitializer {
     private static void registerKeyBinding() {
         KeyMapping.Category category = KeyMapping.Category.register(
                 Identifier.fromNamespaceAndPath(MOD_ID, "main"));
+        // Правый шифт: он не занят ни ванильной игрой, ни опциями, и его
+        // удобно нажать одной рукой, не отрываясь от мыши.
         menuKey = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.aurora.menu",
                 com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM,
-                org.lwjgl.glfw.GLFW.GLFW_KEY_R, category));
+                org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT, category));
     }
 
     private static void onTick() {
