@@ -5,6 +5,7 @@ import com.aetherglass.client.render.util.Easing;
 import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
@@ -171,16 +172,24 @@ public final class ParticleSystem {
         float upZ = up.z();
 
         // Проход по формам: так буферы переключаются не чаще шести раз за кадр.
+        //
+        // Каждую форму нужно закрыть своей порцией. Общий буфер рассчитан
+        // ровно на один незакрытый тип отрисовки: если попросить второй, не
+        // закрыв первый, игра выбросит исключение — и упадёт весь кадр.
+        // Раньше порции не закрывались вовсе, поэтому в меню (где частиц нет)
+        // всё работало, а в мире — падало.
         ParticleShape[] shapes = ParticleShape.values();
         for (ParticleShape shape : shapes) {
             VertexConsumer consumer = null;
+            RenderType type = null;
             for (int index = 0; index < this.alive; index++) {
                 Particle particle = this.pool[index];
                 if (particle.shape != shape) {
                     continue;
                 }
                 if (consumer == null) {
-                    consumer = buffers.getBuffer(RenderTypes.entityTranslucent(shape.texture()));
+                    type = RenderTypes.entityTranslucent(shape.texture());
+                    consumer = buffers.getBuffer(type);
                 }
                 float progress = particle.age / particle.life;
                 float appear = fadeInSeconds > 0.0F
@@ -220,6 +229,9 @@ public final class ParticleSystem {
                         .setUv(1.0F, 1.0F).setColor(color).setLight(LightTexture.FULL_BRIGHT);
                 consumer.addVertex(matrix, px - rx + ux, py - ry + uy, pz - rz + uz)
                         .setUv(0.0F, 1.0F).setColor(color).setLight(LightTexture.FULL_BRIGHT);
+            }
+            if (type != null) {
+                buffers.endBatch(type);
             }
         }
     }

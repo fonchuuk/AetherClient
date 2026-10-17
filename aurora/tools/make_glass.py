@@ -23,12 +23,16 @@ from PIL import Image
 
 W, H = 1376, 768
 
-# ── геометрия пластины ──────────────────────────────────────────────
-CX, CY = 0.285 * W, 0.500 * H          # центр: слева, там будет заголовок
-AX, AY = 0.205 * W, 0.330 * H          # полуоси
-SUPER = 4.0                            # 2 = эллипс, 4 = мягкий «сквиркл»,
-                                       # больше 6 — уже прямоугольник.
-                                       # Берём 4: формы органичные, без углов.
+# ── геометрия: две стеклянные формы ─────────────────────────────────
+# Слева — овал под логотип (SUPER=2 ровно эллипс, «более овальная форма»),
+# по центру — крупный скруглённый прямоугольник под все надписи.
+# Обе заметно больше прежних: так и просили.
+SHAPES = [
+    dict(name="logo",  cx=0.190 * W, cy=0.400 * H, ax=0.155 * W, ay=0.270 * H,
+         super_n=2.0, bevel=46.0, strength=52.0, base=0.26, edge=0.58),
+    dict(name="panel", cx=0.620 * W, cy=0.500 * H, ax=0.260 * W, ay=0.330 * H,
+         super_n=7.0, bevel=54.0, strength=58.0, base=0.28, edge=0.62),
+]
 
 BEVEL = 40.0        # толщина кромки, где стекло загибается
 STRENGTH = 46.0     # сила преломления в пикселях у самой кромки
@@ -41,7 +45,7 @@ GLOW = 13.0         # мягкое свечение сразу за ободко
 SHADOW = 26.0       # размах внешней тени
 
 
-def squircle_sdf(x, y, cx, cy, ax, ay, n=SUPER):
+def squircle_sdf(x, y, cx, cy, ax, ay, n=4.0):
     """Поле расстояний: <0 внутри, 0 на кромке, >0 снаружи."""
     u = np.abs((x - cx) / ax)
     v = np.abs((y - cy) / ay)
@@ -66,68 +70,66 @@ def sample(bg, xs, ys):
     return bg[yi, xi, :]
 
 
-def glass_over(bg, offsets_scale=1.0):
-    """Положить стеклянную пластину на фон bg (float 0..1). Возвращает
-    итоговую картинку и отдельный слой стекла с прозрачностью."""
-    yy, xx = np.mgrid[0:H, 0:W].astype(np.float64)
-    d = squircle_sdf(xx, yy, CX, CY, AX, AY)
+def glass_shape(bg, shape):
+    """Одна стеклянная форма поверх фона. Возвращает её цвет и прозрачность."""
+    cx, cy = shape["cx"], shape["cy"]
+    ax, ay = shape["ax"], shape["ay"]
+    bevel, strength = shape["bevel"], shape["strength"]
+    base_alpha, edge_alpha = shape["base"], shape["edge"]
 
-    # Нормаль к поверхности: градиент поля расстояний.
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float64)
+    d = squircle_sdf(xx, yy, cx, cy, ax, ay, shape["super_n"])
+
     gy, gx = np.gradient(d)
     nx, ny = normalize(gx, gy)
+    edge = np.clip((bevel + d) / bevel, 0.0, 1.0) ** 1.7
 
-    # Вес кромки: 1 на самом краю, 0 в глубине плоской середины.
-    edge = np.clip((BEVEL + d) / BEVEL, 0.0, 1.0) ** 1.7
+    off_x = nx * edge * strength
+    off_y = ny * edge * strength
 
-    off_x = nx * edge * STRENGTH * offsets_scale
-    off_y = ny * edge * STRENGTH * offsets_scale
-
-    # Преломление: каждый канал со своим сдвигом — отсюда цветная кайма.
     out = np.zeros_like(bg)
     for channel, spread in enumerate((1.0 + CHROMA, 1.0, 1.0 - CHROMA)):
         out[:, :, channel] = sample(bg, xx + off_x * spread,
                                     yy + off_y * spread)[:, :, channel]
 
-    # Прозрачность: у кромки стекло плотнее, в середине — чище.
-    inside = np.clip(-d / 1.6 + 0.5, 0.0, 1.0)          # сглаженная маска
-    alpha = (BASE_ALPHA + (EDGE_ALPHA - BASE_ALPHA) * edge) * inside
+    inside = np.clip(-d / 1.6 + 0.5, 0.0, 1.0)
+    alpha = (base_alpha + (edge_alpha - base_alpha) * edge) * inside
 
-    # Мягкий подсвет и лёгкая подмесь цвета — стекло не бывает нейтральным.
     out[:, :, 0] = out[:, :, 0] * 1.02 + 0.020
     out[:, :, 1] = out[:, :, 1] * 1.02 + 0.026
     out[:, :, 2] = out[:, :, 2] * 1.05 + 0.062
 
-    # Тонкий светлый ободок там, где кромка смотрит на свет (сверху-слева).
     light_x, light_y = -0.62, -0.78
     facing = np.clip(nx * light_x + ny * light_y, 0.0, 1.0) ** 1.6
     rim = np.exp(-(d ** 2) / (2.0 * RIM_SIGMA ** 2)) * facing
     out += rim[:, :, None] * np.array([0.85, 0.90, 1.00]) * RIM_GAIN
-    # Сразу за ободком, внутрь, — мягкое свечение: так у стекла читается
-    # толщина, а не просто нарисованная линия.
     glow = np.exp(d / GLOW) * (d < 0) * facing * 0.22
     out += glow[:, :, None]
 
-    # Внутренняя тень снизу: толща стекла там толще.
     lower = np.clip(ny, 0.0, 1.0) ** 1.3 * edge
     out -= (lower * 0.16)[:, :, None]
 
-    # Диагональный блик — одна мягкая полоса, не «пластиковая» плёнка.
     sheen = np.clip((xx / W + yy / H) * 1.35 - 0.55, 0.0, 1.0)
     sheen = (sheen ** 3) * (1.0 - edge) * 0.16
     out += sheen[:, :, None]
-
     out = np.clip(out, 0.0, 1.0)
 
-    # Внешняя тень: стекло висит над фоном.
     shadow = np.exp(-np.clip(d, 0.0, None) / SHADOW) * (1.0 - inside) * 0.42
     alpha_out = np.clip(alpha + shadow, 0.0, 1.0)
-    shadow_rgb = np.array([0.02, 0.03, 0.07])
+    rgb = np.where(alpha[:, :, None] > 1e-4, out,
+                   np.array([0.02, 0.03, 0.07]))
+    return rgb, alpha_out
 
-    glass_rgb = np.where(alpha[:, :, None] > 1e-4,
-                         out, shadow_rgb)
 
-    composed = bg * (1.0 - alpha_out[:, :, None]) + glass_rgb * alpha_out[:, :, None]
-    return np.clip(composed, 0.0, 1.0), glass_rgb, alpha_out, d, edge
+def glass_over(bg):
+    """Все формы поверх фона. Возвращает итог и слои по отдельности."""
+    composed = bg.copy()
+    layers = []
+    for shape in SHAPES:
+        rgb, alpha = glass_shape(bg, shape)
+        composed = composed * (1.0 - alpha[:, :, None]) + rgb * alpha[:, :, None]
+        layers.append((shape["name"], rgb, alpha))
+    return np.clip(composed, 0.0, 1.0), layers
 
 
 def save(array, path, alpha=None):
@@ -143,43 +145,35 @@ def main():
     base = Image.open("/tmp/menu_base.png").convert("RGB").resize((W, H),
                                                                   Image.LANCZOS)
     bg = np.asarray(base, dtype=np.float64) / 255.0
-
-    composed, glass_rgb, glass_alpha, d, edge = glass_over(bg)
-
-    # 1) Как просил пользователь: серый фон, а поверх — стекло, у которого
-    #    видно бока и прозрачность. Именно так прозрачность и проверяют.
-    grey = np.full((H, W, 3), 0.0)
-    yy, xx = np.mgrid[0:H, 0:W].astype(np.float64)
-    # мягкая серая «студийная» подложка с лёгкой шахматкой: по ней сразу
-    # видно, что стекло и правда прозрачное, а не серое.
-    checker = (((xx // 26).astype(int) + (yy // 26).astype(int)) % 2) * 0.06
-    grey[:, :, 0] = 0.30 + checker
-    grey[:, :, 1] = 0.31 + checker
-    grey[:, :, 2] = 0.34 + checker
-    grey_composed = grey * (1.0 - glass_alpha[:, :, None]) + \
-        glass_rgb * glass_alpha[:, :, None]
+    composed, layers = glass_over(bg)
 
     gui = "/home/user/aurora/client/src/main/resources/assets/aetherglass/textures/gui"
-    save(composed, gui + "/menu_backdrop.png")
-    save(glass_rgb, gui + "/menu_glass.png", alpha=glass_alpha)
-    save(grey_composed, "/home/user/aurora/docs/menu-glass-preview.png")
+    save(bg, gui + "/menu_backdrop.png")
+    for name, rgb, alpha in layers:
+        save(rgb, gui + "/menu_glass_" + name + ".png", alpha=alpha)
 
-    # ── проверка числами ────────────────────────────────────────────
-    inside_mask = d < -6
-    print("=== проверка стекла ===")
-    print(f"пикселей внутри пластины      : {int(inside_mask.sum())}")
-    print(f"преломление в середине (макс) : {float(edge[inside_mask].max()):.4f}  "
-          f"(должно быть около нуля)")
-    rim_band = (np.abs(d) < 4)
-    print(f"преломление у кромки (средн)  : {float(edge[rim_band].mean()):.4f}  "
-          f"(должно быть заметно больше)")
-    print(f"прозрачность: середина        : {float(glass_alpha[inside_mask].mean()):.3f}")
-    print(f"прозрачность: кромка          : {float(glass_alpha[rim_band].mean()):.3f}")
-    print(f"прозрачность: снаружи         : {float(glass_alpha[d > SHADOW * 2].mean()):.3f}")
-    centre = composed[int(CY) - 40:int(CY) + 40, int(CX) - 40:int(CX) + 40]
-    edge_px = composed[int(CY), int(CX - AX) + 2:int(CX - AX) + 12]
-    print(f"яркость середина / кромка     : "
-          f"{centre.mean():.3f} / {edge_px.mean():.3f}  (кромка ярче)")
+    # Проверка «на просвет», как её описал пользователь: серый фон, а поверх
+    # стекло — сразу видно и бока, и прозрачность.
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float64)
+    checker = (((xx // 26).astype(int) + (yy // 26).astype(int)) % 2) * 0.06
+    grey = np.dstack([np.full((H, W), 0.30) + checker,
+                      np.full((H, W), 0.31) + checker,
+                      np.full((H, W), 0.34) + checker])
+    preview = grey.copy()
+    for _, rgb, alpha in layers:
+        preview = preview * (1.0 - alpha[:, :, None]) + rgb * alpha[:, :, None]
+    save(preview, "/home/user/aurora/docs/menu-glass-preview.png")
+
+    print("=== стекло: проверка числами ===")
+    for shape in SHAPES:
+        yy, xx = np.mgrid[0:H, 0:W].astype(np.float64)
+        d = squircle_sdf(xx, yy, shape["cx"], shape["cy"], shape["ax"],
+                         shape["ay"], shape["super_n"])
+        _, alpha = glass_shape(bg, shape)
+        deep, rim = d < -90, np.abs(d) < 3
+        print(f"  {shape['name']:6s} размер {int(2*shape['ax'])}x{int(2*shape['ay'])} | "
+              f"прозрачность середина {alpha[deep].mean():.2f} кромка {alpha[rim].mean():.2f} | "
+              f"внутри {int((d<0).sum())} пикселей")
 
 
 if __name__ == "__main__":
