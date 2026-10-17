@@ -186,8 +186,23 @@ input:focus{outline:none; border-color:rgba(180,170,255,.55);
 .bar > u{position:absolute; inset:0; border-radius:999px; pointer-events:none;
   background:linear-gradient(180deg,rgba(255,255,255,.45),transparent 55%)}
 
+/* ── поиск по Modrinth ── */
+.results{flex:0 1 auto; overflow:auto; max-height:34%; margin:0 -8px 6px; padding:0 8px;
+  display:flex; flex-direction:column; gap:5px}
+.result{display:grid; grid-template-columns:34px 1fr auto; gap:12px; align-items:center;
+  padding:8px 12px; border-radius:12px;
+  transition:background .2s, transform .25s var(--spring)}
+.result:hover{background:rgba(255,255,255,.07); transform:translateX(3px)}
+.result img{width:34px;height:34px;border-radius:9px; background:rgba(255,255,255,.07);
+  box-shadow:0 2px 8px rgba(0,0,0,.4)}
+.result .stub{width:34px;height:34px;border-radius:9px; background:rgba(255,255,255,.08)}
+.result b{font-weight:600; font-size:13px; display:block}
+.result small{color:var(--muted); font-size:11.5px; display:block;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.result .btn{padding:7px 15px; font-size:12.5px}
+
 /* ── список модов ── */
-.mods{flex:1; overflow:auto; margin:4px -8px 0; padding:0 8px}
+.mods{flex:1; min-height:90px; overflow:auto; margin:4px -8px 0; padding:0 8px}
 .mods::-webkit-scrollbar{width:8px}
 .mods::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16); border-radius:8px}
 .mod{display:grid; grid-template-columns:10px 1fr 92px 66px; gap:12px; align-items:center;
@@ -360,11 +375,23 @@ input:focus{outline:none; border-color:rgba(180,170,255,.55);
       <!-- Моды -->
       <section class="page" data-page="4">
         <h2>Моды</h2>
-        <p class="hint">Десять модов оптимизации и клиент AetherGlass. Проверка по SHA-512.</p>
+        <p class="hint">Оптимизация ставится сама. А любой другой мод можно найти на Modrinth
+          и поставить в один клик.</p>
+
+        <div class="cut">Найти на Modrinth</div>
+        <div class="row" style="flex-wrap:nowrap; margin-bottom:12px">
+          <input type="text" id="modQuery" spellcheck="false"
+                 placeholder="например: sodium, xaero, jei, litematica">
+          <button class="btn primary" id="modSearchBtn" style="flex:0 0 auto">Найти</button>
+        </div>
+        <div class="results" id="modResults"></div>
+
+        <div class="cut">Оптимизация клиента</div>
         <div class="mods" id="modsList"></div>
         <div class="foot">
           <div class="row">
             <button class="btn" id="modsRefreshBtn">Обновить список</button>
+            <span class="mono" id="modFilesInfo"></span>
           </div>
         </div>
       </section>
@@ -456,6 +483,16 @@ $('javaPickBtn').onclick     = () => call('pickJava');
 $('javaAutoBtn').onclick     = () => call('autoJava');
 $('dirPickBtn').onclick      = () => call('pickFolder');
 $('modsRefreshBtn').onclick  = () => call('refreshMods');
+
+function runSearch(){
+  const query = $('modQuery').value.trim();
+  if (!query){ AetherGlass.log('Введите название мода'); return; }
+  call('searchMods', query);
+}
+$('modSearchBtn').onclick = runSearch;
+$('modQuery').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') runSearch();
+});
 $('logClearBtn').onclick     = () => call('clearLog');
 $('openBtn').onclick         = () => call('openFolder');
 
@@ -500,6 +537,12 @@ const AetherGlass = {
     pill.className = 'pill glass k-' + (s.kind || 'muted');
     $('statusText').textContent = s.status || 'Готов к работе';
 
+    renderResults(s.modResults);
+
+    $('modFilesInfo').textContent = (s.modFiles && s.modFiles.length)
+      ? 'В папке модов: ' + s.modFiles.length + ' файл(ов)'
+      : 'Папка модов пуста';
+
     const list = $('modsList');
     list.innerHTML = '';
     (s.modRows || []).forEach((row) => {
@@ -532,6 +575,37 @@ const AetherGlass = {
   clearLog(){ $('logView').innerHTML = ''; }
 };
 window.AetherGlass = AetherGlass;
+
+/* Результаты поиска Modrinth: иконка, название, описание и одна кнопка.
+   Имена полей — как их отдал Go: с маленькой буквы. */
+function renderResults(rows){
+  const box = $('modResults');
+  box.innerHTML = '';
+  if (!rows || !rows.length){
+    box.innerHTML = '<div class="mono">Ничего не найдено — введите название выше.</div>';
+    return;
+  }
+  rows.forEach((hit) => {
+    const item = document.createElement('div');
+    item.className = 'result';
+    const icon = hit.icon_url
+      ? '<img src="' + escapeHtml(hit.icon_url) + '" alt="">'
+      : '<span class="stub"></span>';
+    const meta = [hit.description, hit.author, formatCount(hit.downloads) + ' загрузок']
+      .filter(Boolean).join(' · ');
+    item.innerHTML = icon +
+      '<span><b>' + escapeHtml(hit.title || hit.slug) + '</b>' +
+      '<small>' + escapeHtml(meta) + '</small></span>' +
+      '<button class="btn">Скачать</button>';
+    item.querySelector('button').onclick = () => call('installMod', hit.project_id);
+    box.appendChild(item);
+  });
+}
+
+function formatCount(value){
+  const digits = String(value == null ? 0 : value);
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
 
 function escapeHtml(text){
   return String(text == null ? '' : text)

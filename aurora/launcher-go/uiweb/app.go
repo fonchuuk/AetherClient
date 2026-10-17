@@ -39,26 +39,28 @@ func AuthFile() string {
 // state — всё, что знает интерфейс. Передаётся в страницу одним объектом,
 // чтобы не городить десятки отдельных вызовов.
 type state struct {
-	Player      string           `json:"player"`
-	LoggedIn    bool             `json:"loggedIn"`
-	Offline     bool             `json:"offline"`
-	OfflineName string           `json:"offlineName"`
-	GameDir     string           `json:"gameDir"`
-	Version     string           `json:"version"`
-	Loader      string           `json:"loader"`
-	Java        string           `json:"java"`
-	JavaPath    string           `json:"javaPath"`
-	MinMemory   int              `json:"minMemory"`
-	MaxMemory   int              `json:"maxMemory"`
-	Width       int              `json:"width"`
-	Height      int              `json:"height"`
-	Mods        bool             `json:"mods"`
-	ModRows     []core.ModStatus `json:"modRows"`
-	Busy        bool             `json:"busy"`
-	Status      string           `json:"status"`
-	Kind        string           `json:"kind"`
-	Progress    float64          `json:"progress"`
-	Installed   string           `json:"installed"`
+	Player      string             `json:"player"`
+	LoggedIn    bool               `json:"loggedIn"`
+	Offline     bool               `json:"offline"`
+	OfflineName string             `json:"offlineName"`
+	GameDir     string             `json:"gameDir"`
+	Version     string             `json:"version"`
+	Loader      string             `json:"loader"`
+	Java        string             `json:"java"`
+	JavaPath    string             `json:"javaPath"`
+	MinMemory   int                `json:"minMemory"`
+	MaxMemory   int                `json:"maxMemory"`
+	Width       int                `json:"width"`
+	Height      int                `json:"height"`
+	Mods        bool               `json:"mods"`
+	ModRows     []core.ModStatus   `json:"modRows"`
+	Busy        bool               `json:"busy"`
+	Status      string             `json:"status"`
+	Kind        string             `json:"kind"`
+	Progress    float64            `json:"progress"`
+	Installed   string             `json:"installed"`
+	ModResults  []core.ModrinthHit `json:"modResults"`
+	ModFiles    []string           `json:"modFiles"`
 }
 
 type app struct {
@@ -74,6 +76,8 @@ type app struct {
 	busy         bool
 	progress     float64
 	modRows      []core.ModStatus
+	modResults   []core.ModrinthHit
+	modFiles     []string
 	statusText   string
 	statusKind   string
 }
@@ -116,6 +120,21 @@ func (a *app) bind(name string, work func() error) {
 	}
 }
 
+// bindString — привязать функцию, которая принимает одну строку.
+func (a *app) bindString(name string, work func(string) error) {
+	if err := a.view.Bind(name, func(value string) error {
+		go func() {
+			defer func() { _ = recover() }()
+			if err := work(value); err != nil {
+				a.report(err)
+			}
+		}()
+		return nil
+	}); err != nil {
+		a.log("Не удалось привязать " + name + ": " + err.Error())
+	}
+}
+
 func (a *app) bindAll() {
 	a.bind("login", a.login)
 	a.bind("logout", a.logout)
@@ -142,6 +161,10 @@ func (a *app) bindAll() {
 	a.bind("autoJava", a.autoJava)
 	a.bind("pickFolder", a.pickFolder)
 	a.bind("openFolder", a.openFolder)
+	// Поиск и установка модов с Modrinth — по одной кнопке.
+	a.bindString("searchMods", a.searchMods)
+	a.bindString("installMod", a.installMod)
+
 	// ready — страница загрузилась и готова принимать состояние.
 	a.bind("ready", a.ready)
 	a.bind("clearLog", func() error {
@@ -167,6 +190,7 @@ func (a *app) bindAll() {
 func (a *app) ready() error {
 	a.push()
 	go a.refreshMods()
+	go a.refreshModFiles()
 	return nil
 }
 
@@ -383,6 +407,94 @@ func (a *app) refreshMods() error {
 	rows := (&core.ModInstaller{Paths: paths, Manifest: manifest}).Status()
 	a.mutex.Lock()
 	a.modRows = rows
+	a.mutex.Unlock()
+	a.push()
+	return nil
+}
+
+// ─────────────────────────────── Modrinth ───────────────────────────────
+
+// searchMods — поиск модов в открытом каталоге Modrinth. В результаты
+// попадают только моды под нашу версию игры и загрузчик: это делает сам
+// Modrinth по нашим фильтрам, а не мы после скачивания.
+func (a *app) searchMods(query string) error {
+	results, err := core.SearchModrinth(query, core.DefaultMinecraftVer, "fabric", 0, nil)
+	if err != nil {
+		return err
+	}
+	a.log("Modrinth: всего " + fmt.Sprint(results.TotalHits) +
+		", показываем " + fmt.Sprint(len(results.Hits)))
+	a.mutex.Lock()
+	a.modResults = results.Hits
+	a.mutex.Unlock()
+	a.setStatus("Найдено модов: "+fmt.Sprint(len(results.Hits)), "good")
+	return nil
+}
+
+// installMod — одна кнопка: свежая подходящая версия → файл в папку модов.
+func (a *app) installMod(projectID string) error {
+	a.mutex.Lock()
+	title := projectID
+	for _, hit := range a.modResults {
+		if hit.ProjectID == projectID {
+			title = hit.Title
+			break
+		}
+	}
+	a.mutex.Unlock()
+	a.runTask(func(cancel *core.Cancel) error {
+		version, err := core.LatestModrinthVersion(projectID,
+			core.DefaultMinecraftVer, "fabric", cancel)
+		if err != nil {
+			return err
+		}
+		file, ok := version.PrimaryFile()
+		if !ok {
+			return &core.Errorf{Message: "у этой версии мода нет файла"}
+		}
+		installer := &core.ModrinthInstaller{Paths: a.config.Paths(),
+			Cancel: cancel, Progress: &webProgress{app: a}}
+		if err := installer.Paths.CreateDirectories(); err != nil {
+			return err
+		}
+		a.log("Ставим " + title + " " + version.VersionNumber + " (" + file.Name + ")")
+		target, err := installer.Install(version)
+		if err != nil {
+			return err
+		}
+		a.log("Готово: " + target)
+		// Зависимости Modrinth не тянет сам: честно говорим, чего не хватает.
+		for _, dependency := range version.RequiredDependencies() {
+			a.log("Этому моду нужна зависимость " + dependency.ProjectID +
+				" — если игра не запустится, поставьте и её")
+		}
+		return nil
+	}, func(err error) {
+		go a.refreshModFiles()
+		if err != nil {
+			if err == core.ErrCancelled {
+				a.setStatus("Отменено", "warn")
+				return
+			}
+			a.report(err)
+			return
+		}
+		a.setStatus("Мод установлен: "+title, "good")
+	})
+	return nil
+}
+
+// refreshModFiles — перечитать, что уже лежит в папке модов.
+func (a *app) refreshModFiles() error {
+	a.mutex.Lock()
+	paths := a.config.Paths()
+	a.mutex.Unlock()
+	files, err := core.InstalledModFiles(paths)
+	if err != nil {
+		return err
+	}
+	a.mutex.Lock()
+	a.modFiles = files
 	a.mutex.Unlock()
 	a.push()
 	return nil
@@ -694,6 +806,8 @@ func (a *app) snapshot() state {
 		Kind:        a.statusKind,
 		Progress:    a.progress,
 		Installed:   installed,
+		ModResults:  a.modResults,
+		ModFiles:    a.modFiles,
 	}
 }
 
