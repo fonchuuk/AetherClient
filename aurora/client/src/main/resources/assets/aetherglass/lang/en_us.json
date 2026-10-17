@@ -1,0 +1,21 @@
+{
+  "key.aurora.menu": "AetherGlass Client menu",
+  "key.category.aetherglass.main": "AetherGlass Client",
+  "aurora.common.on": "on",
+  "aurora.common.off": "off",
+  "aurora.hud.watermark": "Client logo",
+  "aurora.hud.fps": "Frames per second",
+  "aurora.hud.performance": "CPU, memory and server latency",
+  "aurora.hud.coordinates": "Player position in the world",
+  "aurora.hud.direction": "Facing direction and yaw",
+  "aurora.hud.clock": "In-game time",
+  "aurora.hud.biome": "Biome name under the player",
+  "aurora.hud.session": "Current session length",
+  "aurora.hud.potions": "Active effects with duration",
+  "aurora.hud.target": "Entity under the crosshair and its health",
+  "aurora.hud.held_item": "Held item and its durability",
+  "aurora.hud.equipment": "Offhand item and armour",
+  "aurora.hud.arrows": "Arrows in the inventory",
+  "aurora.hud.keystrokes": "Which movement keys are pressed",
+  "aurora.hud.cps": "Clicks per second"
+}

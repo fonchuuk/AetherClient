@@ -1,0 +1,68 @@
+// Лаунчер: только JDK, без внешних зависимостей (Swing + java.net.http + собственный JSON-парсер).
+plugins { id 'application' }
+
+base { archivesName = 'AetherGlassLauncher' }
+version = project.mod_version
+group = project.maven_group
+
+application {
+    applicationName = 'AetherGlassLauncher'
+    mainClass = 'com.aetherglass.launcher.LauncherMain'
+    applicationDefaultJvmArgs = ['-Xmx512m']
+}
+
+// Архивы с готовыми скриптами запуска называются так же, как сам лаунчер.
+distributions {
+    main {
+        distributionBaseName = 'AetherGlassLauncher'
+    }
+}
+
+// launch4j запускает JVM командой «javaw -jar <файл>». Плагин application
+// прописывает Main-Class только в стартовые скрипты, а в манифест jar — нет,
+// поэтому без этой правки запуск отвечает «no main manifest attribute».
+// Имя фиксированное: exe и установщик не должны зависеть от номера версии.
+tasks.named('jar') {
+    archiveFileName = 'AetherGlassLauncher.jar'
+    manifest {
+        attributes(
+                'Main-Class': 'com.aetherglass.launcher.LauncherMain',
+                'Implementation-Title': 'AetherGlass Launcher',
+                'Implementation-Version': project.mod_version
+        )
+    }
+}
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    // Gradle 9 требует явно указать загрузчик JUnit Platform.
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
+}
+
+// ── Настоящий Windows-исполняемый файл ────────────────────────────────────────
+// Общий сценарий обёртки лежит в gradle/launch4j.gradle и используется и
+// лаунчером, и установщиком: дублировать настройки незачем.
+
+ext.launch4jExeName = 'AetherGlassLauncher.exe'
+ext.launch4jProductName = 'AetherGlass Launcher'
+ext.launch4jDescription = 'Установка и запуск AetherGlass Client'
+ext.launch4jIcon = rootProject.file('assets/icons/launcher.ico')
+// jar лежит рядом с exe, а не внутри него: так JVM читает обычный zip-файл.
+ext.launch4jExternalJar = 'true'
+ext.launch4jManifest = rootProject.file('assets/windows/launcher.exe.manifest')
+// Рядом с установленным exe лежит каталог runtime: если он есть, лаунчер
+// работает на нём и системная Java не нужна вовсе.
+ext.launch4jBundledJre = 'runtime'
+ext.launch4jHeapMax = '512'
+apply from: rootProject.file('gradle/launch4j.gradle')
+
+// Обратное имя задачи: сборки и скрипты вызывали её launcherExe.
+tasks.register('launcherExe') {
+    group = 'distribution'
+    description = 'Псевдоним для задачи exe: собирает AetherGlassLauncher.exe.'
+    dependsOn tasks.named('exe')
+}

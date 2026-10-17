@@ -1,0 +1,16 @@
+# Переносы строк: сборка идёт из Linux, а запускают на Windows.
+# Если этого не зафиксировать, gradlew и build.sh приедут с CRLF и сломаются.
+* text=auto
+
+*.sh        text eol=lf
+gradlew     text eol=lf
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+
+# Двоичное — не портить ни при каких обстоятельствах
+*.png  binary
+*.jpg  binary
+*.ico  binary
+*.jar  binary
+*.exe  binary
+*.zip  binary
