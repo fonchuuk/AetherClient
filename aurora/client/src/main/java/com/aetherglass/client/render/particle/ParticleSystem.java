@@ -151,7 +151,7 @@ public final class ParticleSystem {
      * @param fadeInSeconds  длительность появления
      * @param fadeOutSeconds длительность затухания
      */
-    public void render(PoseStack pose, MultiBufferSource buffers, Camera camera, float fadeInSeconds,
+    public void render(PoseStack pose, MultiBufferSource.BufferSource buffers, Camera camera, float fadeInSeconds,
                        float fadeOutSeconds) {
         if (this.alive == 0) {
             return;

@@ -36,6 +36,13 @@ public final class WinterNight {
 
     private final Random random = new Random(20261215L);
 
+    /**
+     * Галерея фонов: картинки, которые медленно размываются и сменяют друг
+     * друга. Рисуется сразу после базового градиента — сияние над горизонтом,
+     * ореол луны, пластины и снег остаются поверх неё.
+     */
+    private final BackdropGallery gallery = new BackdropGallery();
+
     // ── снежинки ────────────────────────────────────────────────────────
     final float[] flakeX = new float[MAX_FLAKES];
     final float[] flakeY = new float[MAX_FLAKES];
@@ -92,6 +99,9 @@ public final class WinterNight {
 
     /** Продвигает снегопад и пластины на {@code delta} секунд. */
     public void update(float delta) {
+        // Галерея идёт первой и без оглядки на ширину окна: смена картинок
+        // не должна останавливаться из-за того, что окно ещё не измерено.
+        this.gallery.update(delta);
         if (this.width <= 0 || delta <= 0.0F) {
             return;
         }
@@ -135,6 +145,11 @@ public final class WinterNight {
 
         // 1. Небо: сверху холодный индиго, снизу почти чёрный.
         graphics.fillGradient(0, 0, width, height, 0xFF0A0F1F, 0xFF04060D);
+
+        // 1.1 Галерея: картинка, которая медленно уходит в размытие и
+        // растворяется в следующей. Лежит поверх градиента, но под всем
+        // остальным — сияние, луна, пластины и снег рисуются сверху.
+        this.gallery.draw(graphics, width, height);
 
         // 2. Сияние над горизонтом: фиолетово-синяя подсветка снизу.
         int horizon = Math.round(height * 0.62F);

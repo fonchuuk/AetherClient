@@ -1,0 +1,53 @@
+// Корневой проект: общие настройки для :client (Fabric mod) и :launcher (JavaFX-free Swing launcher).
+subprojects {
+    apply plugin: 'java'
+
+    java {
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        options.release = 21
+        options.compilerArgs << '-Xlint:all,-serial,-processing'
+    }
+
+    repositories { mavenCentral() }
+}
+
+// ── Готовые файлы для пользователя ────────────────────────────────────────────
+// Всё, что нужно для установки, складывается в один каталог dist/ вместе с
+// контрольными суммами: пользователь может проверить, что файл дошёл целым.
+
+tasks.register('dist', Sync) {
+    group = 'distribution'
+    description = 'Складывает готовые файлы (мод, лаунчер, установщик) в каталог dist/.'
+    dependsOn ':client:remapJar', ':launcher:exe', ':installer:exe'
+
+    from(rootProject.file('client/build/libs/AetherGlass.jar'))
+    from(rootProject.file('launcher/build/exe/AetherGlassLauncher.exe'))
+    from(rootProject.file('installer/build/exe/AetherGlass-Setup.exe'))
+    from(rootProject.file('launcher/build/libs/AetherGlassLauncher.jar'))
+    into rootProject.layout.projectDirectory.dir('dist')
+
+    doLast {
+        var folder = rootProject.layout.projectDirectory.dir('dist').asFile
+        var files = folder.listFiles()
+                .findAll { it.isFile() && !it.name.equals('CHECKSUMS.txt') }
+                .sort { it.name }
+        var lines = new ArrayList<String>()
+        lines.add('# AetherGlass Client ' + project.mod_version + ' — контрольные суммы SHA-256')
+        lines.add('# Проверка: sha256sum -c CHECKSUMS.txt')
+        files.each { file ->
+            lines.add(String.format('# %s — %d байт', file.name, file.length()))
+        }
+        files.each { file ->
+            var digest = java.security.MessageDigest.getInstance('SHA-256')
+                    .digest(file.bytes).encodeHex().toString()
+            lines.add(String.format('%s  %s', digest, file.name))
+        }
+        new File(folder, 'CHECKSUMS.txt').text = lines.join('\n') + '\n'
+        println 'Готово: dist/ — ' + files.size() + ' файла'
+    }
+}

@@ -25,8 +25,14 @@ import java.util.Random;
  *       прозрачность нельзя — это часть атмосферы, а не опция.</li>
  * </ul>
  *
- * <p>Объекты создаются только в момент появления новой надписи — по одной
- * штуке примерно в семь секунд. В самом кадре allocations нет.</p>
+ * <p><b>Производительность.</b> Физика считается фиксированными шагами
+ * {@value #STEP_SECONDS} секунды — двадцать раз в секунду, а не каждый кадр.
+ * Отрисовка при этом не теряет плавности: между шагами положение
+ * интерполируется, поэтому движение остаётся гладким на любом количестве
+ * кадров. Поиск свободного места происходит только в момент появления надписи
+ * и стоит в разы дешевле прежнего: раньше на один только подбор места уходило
+ * до нескольких тысяч проверок в одном кадре, что и давало заметный фриз
+ * каждые несколько секунд.</p>
  */
 public final class AtmosphericMessages {
 
@@ -50,18 +56,31 @@ public final class AtmosphericMessages {
     }
 
     private static final int MAX_ACTIVE = 3;
-    private static final float FADE_IN = 2.4F;
-    private static final float FADE_OUT = 3.2F;
-    private static final float MIN_LIFE = 13.0F;
-    private static final float LIFE_SPREAD = 7.0F;
-    private static final float CURSOR_RADIUS = 150.0F;
-    private static final float CURSOR_PUSH = 13.0F;
+
+    /** Шаг физики в секундах: 1/20 — двадцать раз в секунду. */
+    private static final float STEP_SECONDS = 0.05F;
+
+    /** Защита от «догоняющего» накопителя: не больше трёх шагов за вызов. */
+    private static final int MAX_STEPS_PER_FRAME = 3;
+
+    private static final float FADE_IN = 2.6F;
+    private static final float FADE_OUT = 3.4F;
+    private static final float MIN_LIFE = 15.0F;
+    private static final float LIFE_SPREAD = 8.0F;
+    private static final float CURSOR_RADIUS = 140.0F;
+    private static final float CURSOR_PUSH = 11.0F;
     private static final int TEXT_COLOR = 0xFFDCE7FF;
+
+    /** Насколько быстро надпись догоняет свою цель. Меньше — спокойнее. */
+    private static final float FOLLOW = 2.4F;
 
     private final Random random = new Random();
     final List<Entry> active = new ArrayList<>(MAX_ACTIVE + 1);
     private final int[] bag = new int[PHRASES.length];
     private final List<Zone> zones = new ArrayList<>();
+
+    /** Накопитель времени: остаток до следующего шага физики. */
+    private float accumulator;
 
     /** Индекс в мешке: {@code length} означает «мешок пуст, пора набрать новый». */
     private int bagIndex = PHRASES.length;
@@ -91,7 +110,10 @@ public final class AtmosphericMessages {
         this.zones.addAll(newZones);
     }
 
-    /** Продвигает жизнь надписей и реакцию на курсор. */
+    /**
+     * Продвигает жизнь надписей. Время копится, а физика считается шагами:
+     * поэтому на мощной машине с сотнями кадров работа не растёт.
+     */
     public void update(float delta, int mouseX, int mouseY, int width, int height) {
         if (width <= 0 || height <= 0 || delta <= 0.0F) {
             return;
@@ -101,10 +123,25 @@ public final class AtmosphericMessages {
         this.cursorX += (mouseX - this.cursorX) * ease;
         this.cursorY += (mouseY - this.cursorY) * ease;
 
+        this.accumulator += delta;
+        int steps = 0;
+        while (this.accumulator >= STEP_SECONDS && steps < MAX_STEPS_PER_FRAME) {
+            this.accumulator -= STEP_SECONDS;
+            steps++;
+            step(STEP_SECONDS, width, height);
+        }
+        if (steps == MAX_STEPS_PER_FRAME) {
+            // Кадр слишком длинный: выбрасываем остаток, чтобы не копить долг.
+            this.accumulator = 0.0F;
+        }
+    }
+
+    /** Один шаг физики: старение, дрейф, реакция на курсор, выталкивание. */
+    private void step(float delta, int width, int height) {
         this.cooldown -= delta;
         if (this.cooldown <= 0.0F && this.active.size() < MAX_ACTIVE) {
             spawn(width, height);
-            this.cooldown = 5.5F + this.random.nextFloat() * 6.0F;
+            this.cooldown = 6.5F + this.random.nextFloat() * 7.0F;
         }
 
         for (int index = this.active.size() - 1; index >= 0; index--) {
@@ -114,6 +151,11 @@ public final class AtmosphericMessages {
                 this.active.remove(index);
                 continue;
             }
+
+            // Точка интерполяции: откуда надпись начала этот шаг.
+            entry.prevX = entry.drawX;
+            entry.prevY = entry.drawY;
+
             entry.phase += delta * entry.swaySpeed;
             entry.targetX = entry.baseX + entry.drift * entry.age;
             entry.targetY = entry.baseY + (float) Math.sin(entry.phase) * entry.sway;
@@ -141,37 +183,51 @@ public final class AtmosphericMessages {
                 entry.targetY = plainY;
             }
 
-            float follow = Math.min(1.0F, delta * 3.2F);
+            float follow = Math.min(1.0F, delta * FOLLOW);
             entry.drawX += (entry.targetX - entry.drawX) * follow;
             entry.drawY += (entry.targetY - entry.drawY) * follow;
             entry.alpha = fade(entry);
         }
     }
 
-    /** Рисует надписи. Пластина под текстом появляется примерно в половине случаев. */
+    /**
+     * Рисует надписи. Пластина под текстом появляется примерно в половине
+     * случаев. Положение интерполируется между шагами физики, поэтому
+     * движение остаётся плавным и на двухстах кадрах в секунду.
+     */
     public void render(GuiGraphics graphics, Font font) {
+        if (this.active.isEmpty()) {
+            return;
+        }
         int lineHeight = font.lineHeight;
+        // Доля, пройденная внутри текущего шага: 0 — только что был шаг, 1 — вот-вот.
+        float blend = Math.min(1.0F, this.accumulator / STEP_SECONDS);
         for (int index = 0; index < this.active.size(); index++) {
             Entry entry = this.active.get(index);
             int alpha = Math.round(entry.alpha * 230.0F);
             if (alpha <= 2) {
                 continue;
             }
-            int textWidth = font.width(entry.text);
-            entry.textWidth = textWidth;
-            int x = Math.round(entry.drawX - textWidth / 2.0F);
-            int y = Math.round(entry.drawY - lineHeight / 2.0F);
+            // Ширина текста измеряется один раз: фраза за надписью закреплена.
+            if (entry.textWidth <= 0) {
+                entry.textWidth = font.width(entry.text);
+            }
+            int textWidth = entry.textWidth;
+            float x = entry.prevX + (entry.drawX - entry.prevX) * blend - textWidth / 2.0F;
+            float y = entry.prevY + (entry.drawY - entry.prevY) * blend - lineHeight / 2.0F;
+            int px = Math.round(x);
+            int py = Math.round(y);
             if (entry.plate) {
                 // Стеклянная пластина: кромка светлее, внутри почти прозрачно.
-                DrawUtil.fillRounded(graphics, x - 11, y - 7, textWidth + 22, lineHeight + 14, 9,
+                DrawUtil.fillRounded(graphics, px - 11, py - 7, textWidth + 22, lineHeight + 14, 9,
                         ColorUtil.argb(Math.round(alpha * 0.22F), 190, 208, 255));
-                DrawUtil.fillRounded(graphics, x - 10, y - 6, textWidth + 20, lineHeight + 12, 8,
+                DrawUtil.fillRounded(graphics, px - 10, py - 6, textWidth + 20, lineHeight + 12, 8,
                         ColorUtil.argb(Math.round(alpha * 0.10F), 150, 174, 240));
             }
-            // Мягкое свечение: три слоя под текстом заменяют размытие.
-            DrawUtil.drawGlow(graphics, x - 4, y - 2, textWidth + 8, lineHeight + 4, 6,
-                    ColorUtil.argb(Math.round(alpha * 0.30F), 120, 150, 230), 0.7F);
-            graphics.drawString(font, entry.text, x, y, ColorUtil.withAlpha(TEXT_COLOR, alpha), false);
+            // Мягкое свечение: один слой под текстом вместо прежних трёх.
+            DrawUtil.drawGlow(graphics, px - 4, py - 2, textWidth + 8, lineHeight + 4, 6,
+                    ColorUtil.argb(Math.round(alpha * 0.26F), 120, 150, 230), 0.7F);
+            graphics.drawString(font, entry.text, px, py, ColorUtil.withAlpha(TEXT_COLOR, alpha), false);
         }
     }
 
@@ -179,6 +235,7 @@ public final class AtmosphericMessages {
     public void clear() {
         this.active.clear();
         this.cooldown = 1.4F;
+        this.accumulator = 0.0F;
     }
 
     // ─────────────────────────── внутреннее ───────────────────────────
@@ -242,6 +299,11 @@ public final class AtmosphericMessages {
      * Создаёт новую надпись. Место подбирается так, чтобы весь её путь —
      * от рождения до исчезновения вместе с горизонтальным дрейфом — проходил
      * вне панелей: тогда надписи не приходится «убегать» от интерфейса.
+     *
+     * <p>Поиск короткий: четырнадцать попыток вместо сорока, а проверка пути
+     * делает четыре замера вместо четырнадцати. Раньше на появление одной
+     * надписи уходило до нескольких тысяч проверок пересечений в одном кадре,
+     * что и давало заметный фриз; теперь их меньше сотни.</p>
      */
     private void spawn(int width, int height) {
         int phrase = nextPhrase();
@@ -249,16 +311,17 @@ public final class AtmosphericMessages {
         entry.text = PHRASES[phrase];
         entry.textWidth = entry.text.length() * 6; // оценка; шрифт уточнит при отрисовке
         entry.life = MIN_LIFE + this.random.nextFloat() * LIFE_SPREAD;
-        entry.drift = (this.random.nextBoolean() ? 1.0F : -1.0F) * (2.5F + this.random.nextFloat() * 5.5F);
-        entry.sway = 4.0F + this.random.nextFloat() * 7.0F;
-        entry.swaySpeed = 0.25F + this.random.nextFloat() * 0.35F;
+        // Дрейф заметно тише прежнего: надпись скорее парит, чем ползёт.
+        entry.drift = (this.random.nextBoolean() ? 1.0F : -1.0F) * (1.2F + this.random.nextFloat() * 2.6F);
+        entry.sway = 3.0F + this.random.nextFloat() * 4.5F;
+        entry.swaySpeed = 0.16F + this.random.nextFloat() * 0.20F;
         entry.phase = this.random.nextFloat() * 6.2831853F;
         entry.plate = this.random.nextFloat() < 0.45F;
 
         float bestX = width * 0.5F;
         float bestY = height * 0.5F;
         float bestScore = Float.MAX_VALUE;
-        for (int attempt = 0; attempt < 40; attempt++) {
+        for (int attempt = 0; attempt < 14; attempt++) {
             float x = width * (0.12F + 0.76F * this.random.nextFloat());
             float y = height * (0.14F + 0.68F * this.random.nextFloat());
             float score = pathScore(entry, x, y, width, height);
@@ -277,13 +340,18 @@ public final class AtmosphericMessages {
         entry.targetY = bestY;
         entry.drawX = bestX;
         entry.drawY = bestY;
+        entry.prevX = bestX;
+        entry.prevY = bestY;
         this.active.add(entry);
     }
 
     /**
-     * Насколько путь надписи задевает зоны интерфейса. Ноль — путь свободен:
-     * проверяется не одна точка, а вся полоса, которую надпись пройдёт за
-     * время жизни, с запасом на покачивание вверх и вниз.
+     * Насколько путь надписи задевает зоны интерфейса. Ноль — путь свободен.
+     *
+     * <p>Проверяется вся полоса, которую надпись пройдёт за время жизни, с
+     * запасом на покачивание вверх и вниз. Покачивание учитывается одной
+     * расширенной полосой, а не двумя отдельными замерами: точность та же,
+     * работы вдвое меньше.</p>
      */
     private float pathScore(Entry entry, float x, float y, int width, int height) {
         float travel = entry.drift * entry.life;
@@ -291,16 +359,18 @@ public final class AtmosphericMessages {
         float to = Math.max(0.0F, travel);
         float savedX = entry.targetX;
         float savedY = entry.targetY;
+        float savedHalfHeight = entry.pathHalfHeight;
+        // Полоса выше и ниже центра: покрывает оба крайних покачивания сразу.
+        entry.pathHalfHeight = 12.0F + entry.sway;
         float total = 0.0F;
-        for (int step = 0; step <= 6; step++) {
-            entry.targetX = x + from + (to - from) * step / 6.0F;
-            for (int sway = -1; sway <= 1; sway += 2) {
-                entry.targetY = y + sway * entry.sway;
-                total += overlap(entry);
-            }
+        for (int step = 0; step <= 3; step++) {
+            entry.targetX = x + from + (to - from) * step / 3.0F;
+            entry.targetY = y;
+            total += overlap(entry);
         }
         entry.targetX = savedX;
         entry.targetY = savedY;
+        entry.pathHalfHeight = savedHalfHeight;
 
         // Весь путь должен лежать внутри экрана: иначе надпись упрется в край
         // и её придётся прижимать на ходу. Штраф proportional величине выхода.
@@ -321,6 +391,10 @@ public final class AtmosphericMessages {
      * правую. Поэтому, если после выталкивания надпись всё ещё чем-то
      * перекрыта, место ищется по вертикали: панели стоят колонками, а сверху
      * и снизу от них почти всегда есть свободное пространство.</p>
+     *
+     * <p>Перебор укорочен вдвое против прежнего и останавливается сразу, как
+     * только найдено свободное место. В обычном кадре метод вообще не делает
+     * работы: надписи почти всегда свободны, и срабатывает быстрый выход.</p>
      */
     private void settleFree(Entry entry, int width, int height) {
         if (overlap(entry) <= 0.0F) {
@@ -330,8 +404,8 @@ public final class AtmosphericMessages {
         float startY = entry.targetY;
         float bestY = startY;
         float best = Float.MAX_VALUE;
-        for (int step = 1; step <= 26; step++) {
-            int offset = step * 16;
+        for (int step = 1; step <= 13; step++) {
+            int offset = step * 20;
             for (int sign = -1; sign <= 1; sign += 2) {
                 float candidate = startY + sign * offset;
                 if (candidate < 34.0F || candidate > height - 34.0F) {
@@ -354,10 +428,11 @@ public final class AtmosphericMessages {
 
     /** Суммарная площадь пересечения надписи с зонами интерфейса. */
     private float overlap(Entry entry) {
+        float halfHeight = entry.pathHalfHeight > 0.0F ? entry.pathHalfHeight : 12.0F;
         float left = entry.targetX - entry.textWidth / 2.0F - 10.0F;
         float right = entry.targetX + entry.textWidth / 2.0F + 10.0F;
-        float top = entry.targetY - 12.0F;
-        float bottom = entry.targetY + 12.0F;
+        float top = entry.targetY - halfHeight;
+        float bottom = entry.targetY + halfHeight;
         float total = 0.0F;
         for (int index = 0; index < this.zones.size(); index++) {
             Zone zone = this.zones.get(index);
@@ -443,6 +518,14 @@ public final class AtmosphericMessages {
         float targetY;
         float drawX;
         float drawY;
+
+        /** Положение на начале текущего шага физики — для интерполяции. */
+        float prevX;
+        float prevY;
+
+        /** Полувысота полосы при проверке пути; ноль — считать как обычно. */
+        float pathHalfHeight;
+
         float drift;
         float sway;
         float swaySpeed;

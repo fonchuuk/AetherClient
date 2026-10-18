@@ -1,0 +1,21 @@
+{
+  "key.aurora.menu": "Меню AetherGlass Client",
+  "key.category.aetherglass.main": "AetherGlass Client",
+  "aurora.common.on": "вкл.",
+  "aurora.common.off": "выкл.",
+  "aurora.hud.watermark": "Логотип клиента",
+  "aurora.hud.fps": "Частота кадров",
+  "aurora.hud.performance": "Процессор, память и задержка до сервера",
+  "aurora.hud.coordinates": "Позиция игрока в мире",
+  "aurora.hud.direction": "Сторона света и угол поворота",
+  "aurora.hud.clock": "Внутриигровое время",
+  "aurora.hud.biome": "Название биома под игроком",
+  "aurora.hud.session": "Сколько длится текущий сеанс",
+  "aurora.hud.potions": "Активные эффекты с длительностью",
+  "aurora.hud.target": "Существо под прицелом и его здоровье",
+  "aurora.hud.held_item": "Предмет в руке и его прочность",
+  "aurora.hud.equipment": "Вторая рука и броня",
+  "aurora.hud.arrows": "Сколько стрел в инвентаре",
+  "aurora.hud.keystrokes": "Какие клавиши движения нажаты",
+  "aurora.hud.cps": "Сколько кликов в секунду"
+}
