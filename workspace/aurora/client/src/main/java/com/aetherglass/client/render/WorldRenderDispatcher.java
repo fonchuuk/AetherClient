@@ -11,7 +11,6 @@ import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.world.phys.Vec3;
 
 /**
  * Мост между событиями отрисовки мира Fabric API и нашими эффектами.
@@ -81,8 +80,8 @@ public final class WorldRenderDispatcher {
             pose.pushPose();
             pushed = true;
             Camera camera = context.gameRenderer().getMainCamera();
-            Vec3 origin = camera.position();
-            pose.translate(-origin.x, -origin.y, -origin.z);
+            // Рендеры уже передают координаты относительно камеры.
+            // Повторное вычитание её позиции сдвигало эффекты ещё раз.
             module.system().render(pose, buffers, camera, module.fadeSeconds(), module.fadeSeconds());
             buffers.endBatch();
             completed = true;
@@ -115,8 +114,8 @@ public final class WorldRenderDispatcher {
             pose.pushPose();
             pushed = true;
             Camera camera = context.gameRenderer().getMainCamera();
-            Vec3 origin = camera.position();
-            pose.translate(-origin.x, -origin.y, -origin.z);
+            // Рендеры уже передают координаты относительно камеры.
+            // Повторное вычитание её позиции сдвигало эффекты ещё раз.
             BlockEffectRenderer.render(pose, camera, module);
             blockFailures.success();
         } catch (Throwable throwable) {

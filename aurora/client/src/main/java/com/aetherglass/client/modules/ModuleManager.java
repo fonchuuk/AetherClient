@@ -26,7 +26,7 @@ public final class ModuleManager {
     private final List<Module> order = new ArrayList<>();
     private boolean configReady;
 
-    private ModuleManager() {
+    ModuleManager() {
     }
 
     public static ModuleManager get() {
@@ -140,10 +140,19 @@ public final class ModuleManager {
 
     /** Освобождает ресурсы всех модулей: при завершении работы клиента. */
     public void shutdown() {
-        for (Module module : this.order) {
-            module.forceDisable();
+        shutdown(this::saveNow);
+    }
+
+    /** Сохранение отделено для проверки порядка без запуска Minecraft. */
+    void shutdown(Runnable save) {
+        try {
+            // Сохраняем выбор пользователя, а не состояние после освобождения ресурсов.
+            save.run();
+        } finally {
+            for (Module module : this.order) {
+                module.forceDisable();
+            }
         }
-        saveNow();
     }
 
     /** Строка для экрана «О клиенте»: сколько модулей включено. */

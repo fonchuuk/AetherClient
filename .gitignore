@@ -24,3 +24,14 @@ Thumbs.db
 
 # ── Личные файлы: скриншоты и загрузки пользователя
 /uploads/
+
+# Private workspace data (also applies to nested workspace copies).
+**/.config/
+**/.cache/
+**/uploads/
+**/backup/
+**/aurora-auth.json
+**/aurora-launcher.json
+**/.env
+**/.env.*
+!**/.env.example
