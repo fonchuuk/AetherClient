@@ -1,0 +1,44 @@
+name: Windows launcher
+on:
+  push:
+    branches: [arena/081f1c5d-aetherclient]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.6'
+          cache-dependency-path: workspace/aurora/launcher-go/go.sum
+      - name: Compile, test and remap client
+        working-directory: workspace/aurora
+        run: sh ./gradlew --configure-on-demand :client:test :client:remapJar --console=plain --no-daemon
+      - name: Embed freshly built client
+        run: cp workspace/aurora/client/build/libs/AetherGlass.jar workspace/aurora/launcher-go/core/assets/AetherGlass.jar
+      - name: Test and build native Windows launcher
+        working-directory: workspace/aurora/launcher-go
+        run: bash ./build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AetherGlass-Windows
+          path: workspace/AetherGlass-Launcher.exe
+          if-no-files-found: error
+      - name: Upload client test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-test-results
+          path: workspace/aurora/client/build/reports/tests/test/
+          if-no-files-found: ignore

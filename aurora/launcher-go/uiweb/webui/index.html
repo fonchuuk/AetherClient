@@ -357,6 +357,15 @@ input:focus{outline:none; border-color:rgba(180,170,255,.55);
             <span class="mono" id="tJavaV">не установлена</span></div>
         </div>
 
+        <div class="info" style="margin-bottom:14px">
+          <div>Папка игры: <span class="mono" id="gameFolderPath" style="overflow-wrap:anywhere;user-select:text">определяется…</span></div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn" id="gameRootBtn">Коренная папка</button>
+            <button class="btn" id="gameModsBtn">Папка Mods</button>
+            <button class="btn ghost" id="gameLogsBtn">Логи</button>
+          </div>
+          <div class="hint">Логи игры — logs/latest.log; отчёты о вылетах — crash-reports в коренной папке.</div>
+        </div>
         <div class="info big" id="gameInfo">Игра ещё не установлена.</div>
         <div class="row" style="margin-bottom:18px">
           <button class="btn primary" id="playBtn">Играть</button>
@@ -592,6 +601,9 @@ $('modQuery').addEventListener('keydown', (event) => {
 });
 $('logClearBtn').onclick     = () => call('clearLog');
 $('openBtn').onclick         = () => call('openFolder');
+$('gameRootBtn').onclick     = () => call('openFolder');
+$('gameModsBtn').onclick     = () => call('openModsFolder');
+$('gameLogsBtn').onclick     = () => call('openLogsFolder');
 
 
 /* Плитка состояния: загорается зелёным, когда компонент действительно на месте. */
@@ -650,6 +662,7 @@ const AetherGlass = {
 
     $('javaInfo').textContent = 'Java для игры: ' + (s.java || 'подберётся при установке');
     if (document.activeElement !== $('javaPath')) $('javaPath').value = s.javaPath || '';
+    $('gameFolderPath').textContent = s.gameDir || 'Путь не определён';
     if (document.activeElement !== $('gameDir'))  $('gameDir').value  = s.gameDir || '';
     if (document.activeElement !== $('minMem'))   $('minMem').value   = s.minMemory || 1024;
     if (document.activeElement !== $('maxMem'))   $('maxMem').value   = s.maxMemory || 4096;
