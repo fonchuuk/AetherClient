@@ -4,7 +4,7 @@ on:
     branches: [arena/081f1c5d-aetherclient]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   build:
     runs-on: windows-latest
@@ -27,6 +27,8 @@ jobs:
         run: sh ./gradlew --configure-on-demand :client:test :client:remapJar --console=plain --no-daemon
       - name: Embed freshly built client
         run: cp workspace/aurora/client/build/libs/AetherGlass.jar workspace/aurora/launcher-go/core/assets/AetherGlass.jar
+      - name: Identify build
+        run: echo "BUILD_ID=$(date -u +%Y%m%d-%H%M)-${GITHUB_SHA:0:7}" >> "$GITHUB_ENV"
       - name: Test and build native Windows launcher
         working-directory: workspace/aurora/launcher-go
         run: bash ./build.sh
@@ -42,3 +44,20 @@ jobs:
           name: client-test-results
           path: workspace/aurora/client/build/reports/tests/test/
           if-no-files-found: ignore
+      - name: Publish new test release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n 's/^const Version = "\(.*\)"/\1/p' workspace/aurora/launcher-go/core/build.go)
+          test "$version" = "0.1.5"
+          cat > release-notes.md <<EOF
+          Тестовая сборка AetherGlass $version. BuildID: $BUILD_ID.
+
+          На вкладке «Игра»: Коренная папка, Папка Mods, Логи и полный путь установки.
+          Исправлен общий накопительный счётчик ошибок рендера; ошибки проходов изолированы и записываются со стеком.
+
+          Проверено на Windows CI: тесты клиента, remapJar, тесты Go, go vet, сборка exe.
+          Запуск окна лаунчера, Minecraft и внешний вид НЕ проверялись. Причина исходного вылета без лога не установлена.
+          При проблеме: кнопка «Логи» → latest.log; отчёты о вылетах — crash-reports в коренной папке.
+          EOF
+          gh release create "v$version" workspace/AetherGlass-Launcher.exe --target "$GITHUB_SHA" --prerelease --title "AetherGlass v$version — папки и диагностика" --notes-file release-notes.md
