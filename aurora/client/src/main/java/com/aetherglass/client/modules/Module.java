@@ -76,7 +76,16 @@ public abstract class Module {
 
     /** Передаётся из настроек в {@link #settingChanged(Setting)}: модуль уведомляет менеджера. */
     protected final <T> void settingChanged(Setting<T> setting) {
-        onSettingChanged(setting);
+        // Реакция модуля на смену настройки не должна ронять игру: именно
+        // этот путь срабатывает, когда в интерфейсе щёлкают переключатель,
+        // и исключение отсюда уходит прямиком в обработчик мыши, а из него —
+        // в отрисовку кадра. Раньше try был только на обработчике ниже.
+        try {
+            onSettingChanged(setting);
+        } catch (Throwable throwable) {
+            AuroraLog.error("реакция модуля " + this.id + " на настройку " + setting.id(), throwable);
+            forceDisable();
+        }
         Runnable handler = this.changeHandler;
         if (handler != null) {
             try {

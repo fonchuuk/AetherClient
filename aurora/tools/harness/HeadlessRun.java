@@ -38,8 +38,8 @@ public final class HeadlessRun {
     private static final String MC_VERSION = "1.21.11";
     private static final String LOADER_VERSION = "0.19.5";
     private static final String READY_MARKER = "главное меню заменено";
-    private static final int HOLD_SECONDS = 300;
-    private static final int WAIT_SECONDS = 1500;
+    private static final int HOLD_SECONDS = 25;
+    private static final int WAIT_SECONDS = 420;
 
     private HeadlessRun() {
     }
@@ -151,9 +151,11 @@ public final class HeadlessRun {
             return null;
         }
         try (var stream = Files.list(directory)) {
-            return stream.filter(path -> path.getFileName().toString().startsWith("aetherglass-"))
-                    .filter(path -> path.getFileName().toString().endsWith(".jar"))
-                    .filter(path -> !path.getFileName().toString().endsWith("-sources.jar"))
+            return stream.filter(path -> {
+                        String n = path.getFileName().toString().toLowerCase();
+                        return n.startsWith("aetherglass") && n.endsWith(".jar")
+                                && !n.endsWith("-sources.jar") && !n.endsWith("-dev.jar");
+                    })
                     .findFirst()
                     .orElse(null);
         }

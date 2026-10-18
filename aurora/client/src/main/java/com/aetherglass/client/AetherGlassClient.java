@@ -45,25 +45,67 @@ public final class AetherGlassClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         AuroraLog.info("AetherGlass Client " + VERSION + ": запуск");
-        readVersions();
-        ModuleRegistry.createAll();
-        ModuleManager.get().loadFromConfig();
 
-        HudModule hud = ModuleManager.get().typed("hud", HudModule.class);
-        if (hud != null) {
-            hud.loadLayout();
-            hud.install();
-        }
-        CrosshairModule crosshair = ModuleManager.get().typed("crosshair", CrosshairModule.class);
-        if (crosshair != null) {
-            crosshair.install();
-        }
-        WorldRenderDispatcher.register();
-        registerKeyBinding();
+        // Каждый шаг — сам по себе. Раньше весь метод шёл монолитом: стоило
+        // одной строке бросить исключение, как мод умирал наполовину, Fabric
+        // это проглатывал, игра продолжалась с обычным ванильным меню — и
+        // при этом не появлялось НИ ОДНОГО файла краша, потому что игра-то не
+        // падала. Из-за этого вылет был неотличим от «мод просто не работает»,
+        // и искать его приходилось вслепую. Теперь сломавшийся шаг отключает
+        // только себя, а остальные поднимаются.
+        step("чтение версий", AetherGlassClient::readVersions);
+        step("создание модулей", ModuleRegistry::createAll);
+        step("загрузка настроек", () -> ModuleManager.get().loadFromConfig());
 
-        ClientTickEvents.END_CLIENT_TICK.register(client -> onTick());
-        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> onStop());
+        step("экранные элементы", () -> {
+            HudModule hud = ModuleManager.get().typed("hud", HudModule.class);
+            if (hud != null) {
+                hud.loadLayout();
+                hud.install();
+            }
+        });
+        step("прицел", () -> {
+            CrosshairModule crosshair = ModuleManager.get().typed("crosshair", CrosshairModule.class);
+            if (crosshair != null) {
+                crosshair.install();
+            }
+        });
+        step("обработчики отрисовки мира", WorldRenderDispatcher::register);
+        step("клавиша вызова меню", AetherGlassClient::registerKeyBinding);
+        step("тикающие события", this::registerTickEvents);
+
         AuroraLog.info("AetherGlass Client готов: Minecraft " + minecraftVersion + ", загрузчик " + loaderVersion);
+    }
+
+    /** Выполняет шаг инициализации, не давая его ошибке обрушить весь мод. */
+    private static void step(String name, Runnable action) {
+        try {
+            action.run();
+        } catch (Throwable throwable) {
+            // Не «запишем и забудем»: именно это сообщение теперь говорит,
+            // какой кусок не поднялся. Без него причина выглядела как
+            // «мод не работает» без всяких подробностей.
+            AuroraLog.error("шаг инициализации не выполнен: " + name
+                    + ". Часть возможностей будет недоступна", throwable);
+        }
+    }
+
+    /** Тикающие события: отдельно, чтобы их сбой не похоронил остальное. */
+    private void registerTickEvents() {
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            try {
+                onTick();
+            } catch (Throwable throwable) {
+                AuroraLog.error("тик клиента", throwable);
+            }
+        });
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+            try {
+                onStop();
+            } catch (Throwable throwable) {
+                AuroraLog.error("остановка клиента", throwable);
+            }
+        });
     }
 
     /** Версии берутся из настоящих метаданных, а не из констант «на всякий случай». */

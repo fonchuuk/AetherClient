@@ -239,6 +239,54 @@ input:focus{outline:none; border-color:rgba(180,170,255,.55);
 .info b{color:#fff}
 .foot{margin-top:auto; padding-top:16px; display:flex; flex-direction:column; gap:8px}
 .mono{font-family:"Cascadia Mono","Consolas",monospace; font-size:12px; color:var(--muted)}
+
+
+/* ── блок аккаунтов внизу страницы ── */
+.accs{
+  margin-top:auto; padding-top:16px; margin-top:auto;
+  display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
+  border-top:1px solid rgba(255,255,255,.09);
+}
+.accs .lbl{font-size:13px; color:var(--muted); line-height:1.55}
+.accs .lbl b{color:#fff; font-weight:600}
+
+/* ── состояние компонентов: четыре стеклянные плитки вместо пустоты ── */
+.tiles{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:18px}
+.tile{
+  position:relative; padding:14px 16px; border-radius:16px;
+  border:1px solid rgba(255,255,255,.10);
+  background:linear-gradient(160deg,rgba(255,255,255,.075),rgba(255,255,255,.028));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.20), 0 8px 24px rgba(0,0,0,.28);
+  display:flex; flex-direction:column; gap:5px; min-height:74px; justify-content:center;
+}
+.tile b{font-size:13.5px; font-weight:600; color:#eef1ff; letter-spacing:.2px}
+.tile .mono{font-size:11.5px; color:var(--muted); word-break:break-all}
+.tile i{
+  position:absolute; top:13px; right:13px; width:9px; height:9px; border-radius:50%;
+  background:#6b7080; box-shadow:0 0 0 3px rgba(107,112,128,.18);
+  transition:background .25s, box-shadow .25s;
+}
+.tile.on i {background:#4ade9b; box-shadow:0 0 0 3px rgba(74,222,155,.16), 0 0 12px rgba(74,222,155,.55)}
+.tile.off i{background:#f0a35e; box-shadow:0 0 0 3px rgba(240,163,94,.16), 0 0 12px rgba(240,163,94,.45)}
+@media (max-width:640px){ .tiles{grid-template-columns:1fr} }
+
+/* ── панель аккаунта раскрывается прямо на странице игры ── */
+.accpanel{margin-top:16px; padding-top:4px; animation:slide .22s ease both}
+.accpanel[hidden]{display:none}
+
+/* ── плашка обновления ── */
+.update{
+  display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
+  margin-bottom:16px; padding:12px 16px; border-radius:16px;
+  border:1px solid rgba(120,230,180,.34);
+  background:linear-gradient(120deg,rgba(74,222,155,.16),rgba(74,222,155,.05));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.24), 0 8px 22px rgba(0,0,0,.28);
+  animation:slide .25s ease both;
+}
+.update[hidden]{display:none}
+.update-text{display:flex; flex-direction:column; gap:3px}
+.update-text b{font-size:13.5px; color:#eafff4}
+.update-text .mono{font-size:11.5px; color:#a9d8c2}
 </style>
 </head>
 <body>
@@ -276,8 +324,7 @@ input:focus{outline:none; border-color:rgba(180,170,255,.55);
   <div class="body">
     <nav class="rail glass lens">
       <div class="indicator" id="indicator"></div>
-      <button class="tab on" data-page="0">Аккаунт</button>
-      <button class="tab" data-page="1">Игра</button>
+      <button class="tab on" data-page="1">Игра</button>
       <button class="tab" data-page="2">Java</button>
       <button class="tab" data-page="3">Настройки</button>
       <button class="tab" data-page="4">Моды</button>
@@ -286,8 +333,47 @@ input:focus{outline:none; border-color:rgba(180,170,255,.55);
 
     <main class="card glass lens">
       <!-- Аккаунт -->
-      <section class="page on" data-page="0">
-        <h2>Аккаунт</h2>
+      <!-- Игра -->
+      <!-- Плашка обновления: появляется только когда GitHub отдал новую версию -->
+      <div class="update" id="updateBar" hidden>
+        <div class="update-text">
+          <b>Доступно обновление</b>
+          <span class="mono" id="updateInfo"></span>
+        </div>
+        <button class="btn primary" id="updateBtn">Обновить</button>
+      </div>
+
+      <section class="page on" data-page="1">
+        <h2>Игра</h2>
+        <p class="hint">Установка ставит Minecraft, Fabric и клиент AetherGlass. Java скачивается сама.</p>
+        <div class="tiles">
+          <div class="tile" id="tGame"><i></i><b>Minecraft</b>
+            <span class="mono" id="tGameV">не установлен</span></div>
+          <div class="tile" id="tFabric"><i></i><b>Fabric Loader</b>
+            <span class="mono" id="tFabricV">не установлен</span></div>
+          <div class="tile" id="tMod"><i></i><b>Клиент AetherGlass</b>
+            <span class="mono" id="tModV">не установлен</span></div>
+          <div class="tile" id="tJava"><i></i><b>Java</b>
+            <span class="mono" id="tJavaV">не установлена</span></div>
+        </div>
+
+        <div class="info big" id="gameInfo">Игра ещё не установлена.</div>
+        <div class="row" style="margin-bottom:18px">
+          <button class="btn primary" id="playBtn">Играть</button>
+          <button class="btn" id="installBtn">Установить / обновить</button>
+          <button class="btn ghost" id="cancelBtn">Отмена</button>
+        </div>
+        <div class="bar"><i id="barFill"></i><u></u></div>
+
+        <div class="accs">
+          <div class="lbl">
+            Аккаунты <b>Microsoft</b> + <b>Оффлайн аккаунты</b><br>
+            <span class="mono" id="accNow">Вы не вошли.</span>
+          </div>
+          <button class="btn" id="switchAccBtn">Сменить аккаунт</button>
+        </div>
+
+        <div class="accpanel" id="accPanel" hidden>
         <p class="hint">Два способа играть: вход через Microsoft или офлайн-профиль.</p>
         <div class="info big" id="playerText">Вы не вошли.</div>
         <div class="row">
@@ -314,19 +400,7 @@ input:focus{outline:none; border-color:rgba(180,170,255,.55);
         <div class="foot">
           <div class="mono" id="accountHint">Профиль хранится в каталоге игры, рядом с настройками.</div>
         </div>
-      </section>
-
-      <!-- Игра -->
-      <section class="page" data-page="1">
-        <h2>Игра</h2>
-        <p class="hint">Установка ставит Minecraft, Fabric и клиент AetherGlass. Java скачивается сама.</p>
-        <div class="info big" id="gameInfo">Игра ещё не установлена.</div>
-        <div class="row" style="margin-bottom:18px">
-          <button class="btn primary" id="playBtn">Играть</button>
-          <button class="btn" id="installBtn">Установить / обновить</button>
-          <button class="btn ghost" id="cancelBtn">Отмена</button>
         </div>
-        <div class="bar"><i id="barFill"></i><u></u></div>
       </section>
 
       <!-- Java -->
@@ -426,6 +500,23 @@ function selectTab(index){
   indicator.style.transform = 'translateY(' + (index * 50) + 'px)';
 }
 tabs.forEach((tab, index) => tab.addEventListener('click', () => selectTab(index)));
+
+/* Со страницы игры — сразу на вкладку аккаунта: это и есть «сменить аккаунт». */
+const accPanel = $('accPanel');
+$('updateBtn').onclick = () => {
+  $('updateBtn').disabled = true;
+  $('updateBtn').textContent = 'Скачиваю…';
+  call('applyUpdate').catch(() => {
+    $('updateBtn').disabled = false;
+    $('updateBtn').textContent = 'Обновить';
+  });
+};
+
+$('switchAccBtn').addEventListener('click', () => {
+  accPanel.hidden = !accPanel.hidden;
+  $('switchAccBtn').textContent = accPanel.hidden ? 'Сменить аккаунт' : 'Скрыть';
+  if (!accPanel.hidden) { $('offlineName').focus(); }
+});
 selectTab(0);
 
 /* ── вызовы в Go. Ошибки не проглатываем, а показываем в логе. ── */
@@ -502,12 +593,22 @@ $('modQuery').addEventListener('keydown', (event) => {
 $('logClearBtn').onclick     = () => call('clearLog');
 $('openBtn').onclick         = () => call('openFolder');
 
+
+/* Плитка состояния: загорается зелёным, когда компонент действительно на месте. */
+function setTile(id, ok, text, valueId){
+  const t = $(id); if (!t) return;
+  t.classList.toggle('on', !!ok);
+  t.classList.toggle('off', !ok);
+  const v = $(valueId); if (v) v.textContent = text;
+}
+
 /* ── состояние приходит из Go одним объектом ── */
 const AetherGlass = {
   state(s){
     if (!s) return;
     $('versions').textContent = 'Minecraft ' + (s.version||'') + ' · Fabric ' +
-      (s.loader||'') + ' · свой клиент';
+      (s.loader||'') + ' · свой клиент' +
+      (s.build && s.build !== 'dev' ? '  \u00b7  \u0441\u0431\u043e\u0440\u043a\u0430 ' + s.build : '');
 
     $('playerText').textContent = s.loggedIn
       ? (s.offline
@@ -515,6 +616,23 @@ const AetherGlass = {
             'серверы с проверкой лицензии не пустят.'
           : 'Вы вошли как ' + s.player + '. Можно запускать игру.')
       : 'Вы не вошли. Без входа можно установить игру, но не запустить.';
+    const bar = $('updateBar');
+    if (s.update && s.update.version) {
+      const size = s.update.assetSize ? Math.round(s.update.assetSize / 1048576) + ' МБ' : '';
+      $('updateInfo').textContent = 'версия ' + s.update.version + (size ? '  ·  ' + size : '');
+      bar.hidden = false;
+    } else {
+      bar.hidden = true;
+    }
+
+    setTile('tGame',   s.installed && s.installed !== '', s.version ? 'Minecraft ' + s.version : '\u043d\u0435 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d', 'tGameV');
+    setTile('tFabric', !!(s.installed && s.installed !== ''), s.loader ? 'Fabric ' + s.loader : '\u043d\u0435 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d', 'tFabricV');
+    setTile('tMod',    !!s.modReady, s.modReady ? '\u0432\u0441\u0442\u0440\u043e\u0435\u043d \u0432 \u043b\u0430\u0443\u043d\u0447\u0435\u0440' : '\u043f\u043e\u044f\u0432\u0438\u0442\u0441\u044f \u043f\u0440\u0438 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0435', 'tModV');
+    setTile('tJava',   !!s.javaPath, s.javaPath ? (s.java || '\u0433\u043e\u0442\u043e\u0432\u0430') : '\u0441\u043a\u0430\u0447\u0430\u0435\u0442\u0441\u044f \u0441\u0430\u043c\u0430', 'tJavaV');
+
+    $('accNow').textContent = s.loggedIn
+      ? (s.offline ? '\u041e\u0444\u0444\u043b\u0430\u0439\u043d: ' + s.player : 'Microsoft: ' + s.player)
+      : '\u0412\u044b \u043d\u0435 \u0432\u043e\u0448\u043b\u0438.';
     $('loginBtn').disabled  = !!s.busy || s.loggedIn;
     $('logoutBtn').disabled = !!s.busy || !s.loggedIn;
     $('offlineBtn').disabled = !!s.busy;

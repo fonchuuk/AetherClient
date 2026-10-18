@@ -34,10 +34,20 @@ fi
 rsrc -manifest assets/launcher.exe.manifest -ico assets/launcher.ico -o launcher.syso
 
 echo "→ exe"
+# Номер сборки вшивается в файл (-X), чтобы в интерфейсе всегда было видно,
+# какой именно exe запущен. Без него несколько одинаково названных копий
+# не отличить, и легко весь вечер тестировать старую.
+BUILD_ID="$(date -u +%Y%m%d-%H%M)"
+
 # -trimpath убирает из файла пути сборочной машины, -s -w — таблицу символов.
-go build -trimpath -ldflags="-H windowsgui -s -w" -o ../../AetherGlass-Launcher.exe .
+go build -trimpath -ldflags="-H windowsgui -s -w -X 'aetherglass/launcher/core.BuildID=${BUILD_ID}'" \
+  -o ../../AetherGlass-Launcher.exe .
 
 echo "готово:"
+# Файл всегда один и называется одинаково: иначе в «Загрузках» копятся
+# копии и непонятно, какая свежая. Отличить сборку помогает номер,
+# вшитый внутрь и показанный в шапке интерфейса.
 ls -la ../../AetherGlass-Launcher.exe
 file ../../AetherGlass-Launcher.exe
 sha256sum ../../AetherGlass-Launcher.exe
+echo "номер сборки: ${BUILD_ID}"

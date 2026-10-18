@@ -6,6 +6,7 @@ import com.aetherglass.client.gui.widget.AuroraList;
 import com.aetherglass.client.gui.widget.AuroraWidget;
 import com.aetherglass.client.render.util.ColorUtil;
 import com.aetherglass.client.render.util.FrameClock;
+import com.aetherglass.client.utils.AuroraLog;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -93,27 +94,87 @@ public abstract class AuroraScreen extends Screen {
 
     // ─────────────────────────── отрисовка ───────────────────────────
 
+    /**
+     * Имена этапов отрисовки, которые уже однажды упали.
+     *
+     * <p>Экран рисуется десятками кадров в секунду: если какой-то этап
+     * сломан, он будет падать в каждом кадре. Повторять одно и то же
+     * исключение шестьдесят раз в секунду бессмысленно, поэтому этап
+     * отключается после первой же ошибки — один раз пишется в лог, дальше
+     * просто пропускается. Игра при этом продолжает работать.</p>
+     */
+    private boolean backdropBroken;
+    private boolean headingBroken;
+    private boolean customBroken;
+    private boolean listBroken;
+    private boolean widgetsBroken;
+    private boolean footerBroken;
+
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         FrameClock.tick();
         float delta = FrameClock.deltaSeconds();
         this.appear = Math.min(1.0F, this.appear + delta * 3.0F);
 
-        drawBackdrop(graphics);
-        drawHeading(graphics);
-        drawCustom(graphics, mouseX, mouseY, partialTick);
+        // Каждый этап изолирован: сломанный фон не гасит содержимое,
+        // а сломанное содержимое не роняет игру.
+        if (!this.backdropBroken) {
+            try {
+                drawBackdrop(graphics);
+            } catch (Throwable throwable) {
+                this.backdropBroken = true;
+                AuroraLog.error("этап отрисовки отключён: фон", throwable);
+            }
+        }
+        if (!this.headingBroken) {
+            try {
+                drawHeading(graphics);
+            } catch (Throwable throwable) {
+                this.headingBroken = true;
+                AuroraLog.error("этап отрисовки отключён: заголовок", throwable);
+            }
+        }
+        if (!this.customBroken) {
+            try {
+                drawCustom(graphics, mouseX, mouseY, partialTick);
+            } catch (Throwable throwable) {
+                this.customBroken = true;
+                AuroraLog.error("этап отрисовки отключён: содержимое", throwable);
+            }
+        }
 
         for (AuroraWidget widget : this.widgets) {
             widget.tickAnimation(delta, widget.isHovered());
         }
-        this.list.update(delta);
-        this.list.render(graphics, mouseX, mouseY, partialTick);
-        for (AuroraWidget widget : this.widgets) {
-            if (widget.visible) {
-                widget.render(graphics, mouseX, mouseY, partialTick);
+        if (!this.listBroken) {
+            try {
+                this.list.update(delta);
+                this.list.render(graphics, mouseX, mouseY, partialTick);
+            } catch (Throwable throwable) {
+                this.listBroken = true;
+                AuroraLog.error("этап отрисовки отключён: список", throwable);
             }
         }
-        drawFooter(graphics);
+        if (!this.widgetsBroken) {
+            try {
+                for (AuroraWidget widget : this.widgets) {
+                    if (widget.visible) {
+                        widget.render(graphics, mouseX, mouseY, partialTick);
+                    }
+                }
+            } catch (Throwable throwable) {
+                this.widgetsBroken = true;
+                AuroraLog.error("этап отрисовки отключён: элементы", throwable);
+            }
+        }
+        if (!this.footerBroken) {
+            try {
+                drawFooter(graphics);
+            } catch (Throwable throwable) {
+                this.footerBroken = true;
+                AuroraLog.error("этап отрисовки отключён: подвал", throwable);
+            }
+        }
     }
 
     /** Пусто: наследники могут нарисовать здесь собственное содержимое. */

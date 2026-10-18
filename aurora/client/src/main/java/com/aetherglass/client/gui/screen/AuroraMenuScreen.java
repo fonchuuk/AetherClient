@@ -15,11 +15,14 @@ import com.aetherglass.client.modules.impl.HudModule;
 import com.aetherglass.client.modules.impl.InterfaceModule;
 import com.aetherglass.client.render.util.ColorUtil;
 import com.aetherglass.client.render.util.FrameClock;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.realmsclient.RealmsMainScreen;
 import it.unimi.dsi.fastutil.booleans.BooleanConsumer;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.ConfirmScreen;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.resources.Identifier;
 import net.minecraft.client.gui.screens.multiplayer.JoinMultiplayerScreen;
 import net.minecraft.client.gui.screens.options.AccessibilityOptionsScreen;
 import net.minecraft.client.gui.screens.options.LanguageSelectScreen;
@@ -48,6 +51,16 @@ import java.util.List;
  * масштабе интерфейса элементы не наезжают друг на друга.</p>
  */
 public final class AuroraMenuScreen extends AuroraScreen {
+    // Настоящее стекло: спрайты посчитаны заранее (преломление, блик, толщина
+    // кромки) инструментом tools/make_glass.py и лежат внутри мода. Процедурная
+    // отрисовка рисуется поверх — она даёт реакцию на наведение и анимацию.
+    private static final Identifier TEX_LOGO =
+            Identifier.fromNamespaceAndPath("aetherglass", "textures/gui/menu_glass_logo.png");
+    private static final Identifier TEX_PANEL =
+            Identifier.fromNamespaceAndPath("aetherglass", "textures/gui/menu_glass_panel.png");
+    private static final int TEX_LOGO_SIZE = 426;   // спрайт квадратный, форма внутри — овал
+    private static final int TEX_PANEL_W = 715;
+    private static final int TEX_PANEL_H = 506;
 
     /** Страница меню. */
     private enum Tab {
@@ -127,30 +140,39 @@ public final class AuroraMenuScreen extends AuroraScreen {
      */
     private void buildHome() {
         int available = this.width - MARGIN * 2;
-        int heroWidth = clamp(Math.round(available * 0.30F), 250, 360);
-        int dockWidth = clamp(Math.round(available * 0.24F), 230, 330);
-        int gap = 26;
-        int left = Math.max(MARGIN, (this.width - (heroWidth + gap + dockWidth)) / 2);
+
+        // Формы крупнее: логотип слева и панель по центру должны читаться
+        // издалека, а не выглядеть двумя узкими полосками по краям.
+        int heroWidth = clamp(Math.round(available * 0.34F), 300, 480);
+        int gap = 40;
+        int heroX = MARGIN + 10;
+
+        // Панель стоит по центру оставшегося места, а не приклеена справа:
+        // ровно по середине между логотипом и правым краем окна.
+        int restLeft = heroX + heroWidth + gap;
+        int restWidth = Math.max(240, this.width - MARGIN - restLeft);
+        int panelWidth = Math.min(clamp(Math.round(available * 0.36F), 330, 560), restWidth);
+        int panelX = restLeft + Math.max(0, (restWidth - panelWidth) / 2);
 
         int actions = 11;
-        int maxPanel = Math.min(300, this.height - MARGIN * 2 - TITLE_HEIGHT - 26);
-        int panelHeight = Math.max(150, maxPanel);
+        int maxPanel = Math.min(380, this.height - MARGIN * 2 - TITLE_HEIGHT - 26);
+        int panelHeight = Math.max(190, maxPanel);
         int buttonHeight = clamp((panelHeight - DOCK_PADDING * 2 - BUTTON_GAP * (actions - 1)) / actions,
                 MIN_BUTTON_HEIGHT, MAX_BUTTON_HEIGHT);
         int dockContent = DOCK_PADDING * 2 + buttonHeight * actions + BUTTON_GAP * (actions - 1);
-        int panelTop = Math.max(contentTop() - 6, (this.height - panelHeight) / 2);
+        int panelTop = Math.max(contentTop() - 6, (this.height - dockContent) / 2);
 
-        this.heroX = left;
+        this.heroX = heroX;
         this.heroY = panelTop;
         this.heroWidth = heroWidth;
-        this.heroHeight = panelHeight;
-        this.dockX = left + heroWidth + gap;
+        this.heroHeight = dockContent;
+        this.dockX = panelX;
         this.dockY = panelTop;
-        this.dockWidth = dockWidth;
+        this.dockWidth = panelWidth;
         this.dockHeight = dockContent;
 
         int buttonX = this.dockX + DOCK_PADDING;
-        int buttonWidth = Math.max(120, this.dockWidth - DOCK_PADDING * 2);
+        int buttonWidth = Math.max(140, this.dockWidth - DOCK_PADDING * 2);
         int y = this.dockY + DOCK_PADDING;
 
         // Обязательные действия ванильного меню — все рабочие.
@@ -315,7 +337,9 @@ public final class AuroraMenuScreen extends AuroraScreen {
     /** Левая панель: название, описание и «чипы» с реальными сведениями. */
     private void drawHero(GuiGraphics graphics) {
         int radius = Math.round(AuroraTheme.radius());
-        DrawUtil.fillGlass(graphics, this.heroX, this.heroY, this.heroWidth, this.heroHeight, radius);
+        // Сначала спрайт настоящего стекла, потом толстая кромка поверх.
+        drawGlassPlate(graphics, TEX_LOGO, TEX_LOGO_SIZE, TEX_LOGO_SIZE,
+                this.heroX, this.heroY, this.heroWidth, this.heroHeight, radius);
 
         Font font = this.font;
         int textX = this.heroX + 22;
@@ -346,9 +370,113 @@ public final class AuroraMenuScreen extends AuroraScreen {
     /** Правый док: стеклянная подложка под кнопками и подпись сверху. */
     private void drawDock(GuiGraphics graphics) {
         int radius = Math.round(AuroraTheme.radius());
-        DrawUtil.fillGlass(graphics, this.dockX, this.dockY, this.dockWidth, this.dockHeight, radius);
-        graphics.drawString(this.font, "навигация", this.dockX + DOCK_PADDING,
+        drawGlassPlate(graphics, TEX_PANEL, TEX_PANEL_W, TEX_PANEL_H,
+                this.dockX, this.dockY, this.dockWidth, this.dockHeight, radius);
+
+        // Подпись — по центру панели: панель стоит по середине окна, и левый
+        // край для заголовка читался бы как сдвиг в сторону.
+        String title = "навигация";
+        int titleWidth = this.font.width(title);
+        graphics.drawString(this.font, title,
+                this.dockX + (this.dockWidth - titleWidth) / 2,
                 this.dockY + DOCK_PADDING - 12, AuroraTheme.textMuted(), false);
+    }
+
+    /**
+     * Стеклянная пластина: заранее посчитанный спрайт плюс многослойная кромка.
+     *
+     * <p>Спрайт даёт преломление и размытие фона, которых процедурной отрисовкой
+     * не получить: она работает пиксельными прямоугольниками и не умеет
+     * размывать то, что уже нарисовано под ней.</p>
+     */
+    private void drawGlassPlate(GuiGraphics graphics, Identifier texture, int texWidth, int texHeight,
+                                int x, int y, int width, int height, int radius) {
+        int corner = Math.min(Math.min(texWidth, texHeight) / 3, radius * 2);
+        if (width <= 0 || height <= 0) {
+            return;
+        }
+        drawNineSlice(graphics, texture, x, y, width, height, texWidth, texHeight, corner);
+        drawThickRim(graphics, x, y, width, height, radius);
+    }
+
+    /**
+     * Растяжение спрайта по частям: углы, стороны и центр тянутся по-разному.
+     *
+     * <p>Обычное растяжение тянет картинку целиком, из-за чего скруглённые
+     * углы вытягиваются в эллипсы и стекло выглядит резиновым. Здесь четыре
+     * угла рисуются в своём исходном размере, четыре стороны тянутся только
+     * вдоль себя, а центр — в обе стороны. Пластина любого размера сохраняет
+     * форму углов и толщину кромки.</p>
+     */
+    private void drawNineSlice(GuiGraphics graphics, Identifier texture, int x, int y, int width, int height,
+                               int texWidth, int texHeight, int corner) {
+        // Окно может быть каким угодно узким: если пластина меньше двух
+        // углов, рисовать её частями нечего — выходим, не передавая в blit
+        // отрицательные размеры.
+        if (width < 4 || height < 4 || texWidth < 4 || texHeight < 4) {
+            return;
+        }
+        RenderPipeline pipeline = RenderPipelines.GUI_TEXTURED;
+        int cw = clamp(corner, 1, Math.max(1, texWidth / 2));
+        int ch = clamp(corner, 1, Math.max(1, texHeight / 2));
+        // Углы не должны съесть всю пластину, когда окно узкое.
+        while (cw * 2 > width && cw > 1) {
+            cw--;
+        }
+        while (ch * 2 > height && ch > 1) {
+            ch--;
+        }
+        int srcMidW = texWidth - cw * 2;
+        int srcMidH = texHeight - ch * 2;
+        int dstMidW = width - cw * 2;
+        int dstMidH = height - ch * 2;
+        int rightX = x + width - cw;
+        int bottomY = y + height - ch;
+
+        // Углы — один в один, форма скругления не искажается.
+        graphics.blit(pipeline, texture, x, y, 0, 0, cw, ch, cw, ch, texWidth, texHeight);
+        graphics.blit(pipeline, texture, rightX, y, texWidth - cw, 0, cw, ch, cw, ch, texWidth, texHeight);
+        graphics.blit(pipeline, texture, x, bottomY, 0, texHeight - ch, cw, ch, cw, ch, texWidth, texHeight);
+        graphics.blit(pipeline, texture, rightX, bottomY, texWidth - cw, texHeight - ch,
+                cw, ch, cw, ch, texWidth, texHeight);
+
+        // Стороны — тянутся только вдоль себя.
+        graphics.blit(pipeline, texture, x + cw, y, cw, 0, dstMidW, ch, srcMidW, ch, texWidth, texHeight);
+        graphics.blit(pipeline, texture, x + cw, bottomY, cw, texHeight - ch,
+                dstMidW, ch, srcMidW, ch, texWidth, texHeight);
+        graphics.blit(pipeline, texture, x, y + ch, 0, ch, cw, dstMidH, cw, srcMidH, texWidth, texHeight);
+        graphics.blit(pipeline, texture, rightX, y + ch, texWidth - cw, ch,
+                cw, dstMidH, cw, srcMidH, texWidth, texHeight);
+
+        // Центр — в обе стороны.
+        graphics.blit(pipeline, texture, x + cw, y + ch, cw, ch,
+                dstMidW, dstMidH, srcMidW, srcMidH, texWidth, texHeight);
+    }
+
+    /**
+     * Толстая кромка стекла: три слоя.
+     *
+     * <p>Одна тонкая линия читается как обычная рамка. Три — как торец
+     * настоящего стекла: внешняя полоса тусклая, средняя телесная, внутренняя
+     * яркая, и по самому верху идёт почти белый блик. Снизу наоборот — тень,
+     * иначе пластина выглядит плоской наклейкой.</p>
+     */
+    private void drawThickRim(GuiGraphics graphics, int x, int y, int width, int height, int radius) {
+        int r = Math.max(2, radius);
+        int outer = ColorUtil.fade(AuroraTheme.panelBorder(), 0.60F);
+        int mid = ColorUtil.fade(AuroraTheme.glassHighlight(), 0.45F);
+        int top = ColorUtil.fade(AuroraTheme.glassHighlight(), 0.92F);
+        int bottom = ColorUtil.fade(AuroraTheme.glassShadow(), 0.90F);
+
+        DrawUtil.fillRoundedBordered(graphics, x, y, width, height, r, 0, outer, 2);
+        DrawUtil.fillRoundedBordered(graphics, x + 1, y + 1, width - 2, height - 2,
+                Math.max(1, r - 1), 0, mid, 1);
+
+        int inset = Math.min(r, 3);
+        DrawUtil.fillRounded(graphics, x + inset + 1, y + 2,
+                Math.max(1, width - (inset + 1) * 2), 1, r, top);
+        DrawUtil.fillRounded(graphics, x + inset + 1, y + height - 3,
+                Math.max(1, width - (inset + 1) * 2), 1, r, bottom);
     }
 
     /** Название клиента: каждый символ — свой оттенок, получается градиент. */

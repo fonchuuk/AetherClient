@@ -60,6 +60,9 @@ type state struct {
 	Progress    float64            `json:"progress"`
 	Installed   string             `json:"installed"`
 	ModResults  []core.ModrinthHit `json:"modResults"`
+	Build       string             `json:"build"`
+	Update      *core.UpdateInfo   `json:"update"`
+	ModReady    bool               `json:"modReady"`
 	ModFiles    []string           `json:"modFiles"`
 	ModOffset   int                `json:"modOffset"`
 	ModTotal    int64              `json:"modTotal"`
@@ -86,6 +89,7 @@ type app struct {
 	modTotal     int64
 	statusText   string
 	statusKind   string
+	update       *core.UpdateInfo
 }
 
 // Run поднимает окно с интерфейсом и запускает цикл сообщений.
@@ -158,6 +162,7 @@ func (a *app) bindAll() {
 	}
 	a.bind("install", func() error { return a.install(false) })
 	a.bind("play", a.play)
+	a.bind("applyUpdate", a.applyUpdate)
 	a.bind("cancelTask", a.cancelTask)
 	a.bind("refreshMods", a.refreshMods)
 	a.bind("refreshJava", a.refreshJava)
@@ -207,6 +212,8 @@ func (a *app) ready() error {
 	// Каталог открывается сразу на популярном: ничего вводить не нужно,
 	// чтобы увидеть, что вообще есть.
 	go func() { _ = a.loadMods("", 0, false) }()
+	// Проверка обновлений не должна мешать работе: сеть недоступна — и ладно.
+	go a.checkUpdate()
 	return nil
 }
 
@@ -369,8 +376,69 @@ func (a *app) play() error {
 			return
 		}
 		a.setStatus("Игра запущена", "good")
+		// Игра пошла. Дальше лаунчер только ест память, пока игрок в мире,
+		// поэтому окно закрывается, а вместе с ним выгружается и процесс.
+		a.closeAfterLaunch()
 	}()
 	return nil
+}
+
+// checkUpdate спрашивает GitHub, не вышло ли обновление. Тихий исход —
+// обновления нет или сеть недоступна: лаунчер обязан работать и так.
+func (a *app) checkUpdate() {
+	info, err := core.CheckUpdate(core.Version)
+	if err != nil || info == nil {
+		return
+	}
+	a.mutex.Lock()
+	a.update = info
+	a.mutex.Unlock()
+	a.push()
+}
+
+// applyUpdate скачивает новый exe, подменяет им себя и перезапускается.
+func (a *app) applyUpdate() error {
+	a.mutex.Lock()
+	info := a.update
+	a.mutex.Unlock()
+	if info == nil {
+		return &core.Errorf{Message: "обновление не найдено — проверьте позже"}
+	}
+	a.setBusy(true)
+	go func() {
+		defer a.setBusy(false)
+		path, err := core.DownloadUpdate(info, func(done int64, total int64) {
+			if total > 0 {
+				a.setProgress(float64(done) / float64(total))
+			}
+		})
+		if err != nil {
+			a.report(err)
+			return
+		}
+		if err := core.ApplyUpdate(path); err != nil {
+			a.report(err)
+			return
+		}
+		a.setStatus("Обновление установлено, перезапуск", "good")
+		a.closeAfterLaunch()
+	}()
+	return nil
+}
+
+// closeAfterLaunch закрывает окно лаунчера.
+//
+// Terminate останавливает главный цикл WebView2: Run возвращает управление,
+// окно разрушается, и процесс завершается сам — без os.Exit, который оборвал
+// бы фоновые горутины посреди записи файла.
+func (a *app) closeAfterLaunch() {
+	a.mutex.Lock()
+	view := a.view
+	a.mutex.Unlock()
+	if view == nil {
+		return
+	}
+	view.Dispatch(func() { view.Terminate() })
 }
 
 func (a *app) startGame() error {
@@ -396,7 +464,7 @@ func (a *app) startGame() error {
 	}
 	if session == nil || !session.Valid() {
 		return &core.Errorf{Message: "сначала войдите: через Microsoft или " +
-			"создайте офлайн-профиль (вкладка «Аккаунт»)"}
+			"создайте офлайн-профиль (кнопка «Сменить аккаунт»)"}
 	}
 	plan, err := a.launcher.Plan(installation, a.config.Paths(), a.config, session)
 	if err != nil {
@@ -804,6 +872,12 @@ func (a *app) snapshot() state {
 	if a.installation != nil {
 		installed = a.installation.VersionID
 	}
+	// Клиент встроен в лаунчер и раскладывается при установке: плитка должна
+	// показывать правду — файл либо есть в папке модов, либо его нет.
+	modReady := false
+	if info, err := os.Stat(filepath.Join(a.config.Paths().Mods(), core.ClientModName)); err == nil {
+		modReady = !info.IsDir() && info.Size() > 0
+	}
 	java := a.java.Executable
 	manual := a.config.JavaExecutable
 	if manual != "" {
@@ -841,6 +915,9 @@ func (a *app) snapshot() state {
 		Kind:        a.statusKind,
 		Progress:    a.progress,
 		Installed:   installed,
+		ModReady:    modReady,
+		Build:       core.BuildVersion(),
+		Update:      a.update,
 		ModResults:  a.modResults,
 		ModFiles:    a.modFiles,
 		ModOffset:   a.modOffset,
