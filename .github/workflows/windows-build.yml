@@ -52,6 +52,11 @@ jobs:
         run: |
           version=$(sed -n 's/^const Version = "\(.*\)"/\1/p' workspace/aurora/launcher-go/core/build.go)
           test "$version" = "0.1.6"
+          # Re-checks must never replace an existing release asset.
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "Release v$version already exists; leaving it unchanged."
+            exit 0
+          fi
           cat > release-notes.md <<EOF
           Тестовая сборка AetherGlass $version. BuildID: $BUILD_ID.
 

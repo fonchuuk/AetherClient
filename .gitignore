@@ -35,3 +35,6 @@ Thumbs.db
 **/.env
 **/.env.*
 !**/.env.example
+
+# Handoff notes may include personal circumstances.
+**/HANDOFF-PROMPT.md

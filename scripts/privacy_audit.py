@@ -13,7 +13,7 @@ SECRET_PATTERNS = (
     re.compile(rb"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
 )
 PRIVATE_PARTS = {"uploads", "backup", ".config", ".cache"}
-PRIVATE_FILES = {"aurora-auth.json", "aurora-launcher.json"}
+PRIVATE_FILES = {"aurora-auth.json", "aurora-launcher.json", "HANDOFF-PROMPT.md"}
 
 
 def main():
