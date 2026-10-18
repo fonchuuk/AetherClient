@@ -37,7 +37,7 @@ echo "→ exe"
 # Номер сборки вшивается в файл (-X), чтобы в интерфейсе всегда было видно,
 # какой именно exe запущен. Без него несколько одинаково названных копий
 # не отличить, и легко весь вечер тестировать старую.
-BUILD_ID="$(date -u +%Y%m%d-%H%M)"
+BUILD_ID="${BUILD_ID:-$(date -u +%Y%m%d-%H%M)}"
 
 # -trimpath убирает из файла пути сборочной машины, -s -w — таблицу символов.
 go build -trimpath -ldflags="-H windowsgui -s -w -X 'aetherglass/launcher/core.BuildID=${BUILD_ID}'" \

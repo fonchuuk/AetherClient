@@ -1,0 +1,73 @@
+name: Windows launcher
+on:
+  push:
+    branches: [arena/081f1c5d-aetherclient]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tracked files for private data
+        run: python scripts/privacy_audit.py
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.6'
+          cache-dependency-path: workspace/aurora/launcher-go/go.sum
+      - name: Compile, test and remap client
+        working-directory: workspace/aurora
+        run: sh ./gradlew --configure-on-demand :client:test :client:remapJar --console=plain --no-daemon
+      - name: Embed freshly built client
+        run: cp workspace/aurora/client/build/libs/AetherGlass.jar workspace/aurora/launcher-go/core/assets/AetherGlass.jar
+      - name: Identify build
+        run: echo "BUILD_ID=$(date -u +%Y%m%d-%H%M)-${GITHUB_SHA:0:7}" >> "$GITHUB_ENV"
+      - name: Test and build native Windows launcher
+        working-directory: workspace/aurora/launcher-go
+        run: bash ./build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AetherGlass-Windows
+          path: workspace/AetherGlass-Launcher.exe
+          if-no-files-found: error
+      - name: Upload client test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-test-results
+          path: workspace/aurora/client/build/reports/tests/test/
+          if-no-files-found: ignore
+      - name: Publish new test release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n 's/^const Version = "\(.*\)"/\1/p' workspace/aurora/launcher-go/core/build.go)
+          test "$version" = "0.1.6"
+          # Re-checks must never replace an existing release asset.
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "Release v$version already exists; leaving it unchanged."
+            exit 0
+          fi
+          cat > release-notes.md <<EOF
+          Тестовая сборка AetherGlass $version. BuildID: $BUILD_ID.
+
+          Исправлены: двойное вычитание позиции камеры у частиц и подсветки блоков;
+          неполные вершины частиц (overlay/normal); сохранение выключенных модулей при выходе;
+          утечка native-буфера при неудаче создания источника вершин.
+          Из текущего дерева Git удалены личные загрузки, резервные архивы и локальная телеметрия.
+          История Git не переписывалась. Добавлена автоматическая проверка приватных файлов и секретов.
+
+          Проверено на Windows CI: тесты клиента, remapJar, тесты Go, go vet, сборка exe.
+          Запуск окна лаунчера, Minecraft и внешний вид НЕ проверялись. Причина исходного вылета без лога не установлена.
+          При проблеме: кнопка «Логи» → latest.log; отчёты о вылетах — crash-reports в коренной папке.
+          EOF
+          gh release create "v$version" workspace/AetherGlass-Launcher.exe --target "$GITHUB_SHA" --prerelease --title "AetherGlass v$version — исправления рендера и приватность" --notes-file release-notes.md

@@ -31,8 +31,8 @@ public final class RenderResources {
                 source = MultiBufferSource.immediate(builder);
             } catch (Throwable throwable) {
                 AuroraLog.error("не удалось выделить видеопамять под эффекты", throwable);
-                source = null;
-                builder = null;
+                // immediate() мог упасть уже после выделения native-буфера.
+                release();
                 return null;
             }
         }

@@ -172,6 +172,8 @@ func (a *app) bindAll() {
 	a.bind("autoJava", a.autoJava)
 	a.bind("pickFolder", a.pickFolder)
 	a.bind("openFolder", a.openFolder)
+	a.bind("openModsFolder", func() error { return a.openGameFolder("mods") })
+	a.bind("openLogsFolder", func() error { return a.openGameFolder("logs") })
 	// Modrinth: популярное, поиск, догрузка и установка одной кнопкой.
 	a.bind("browseMods", func() error { return a.loadMods("", 0, false) })
 	a.bind("moreMods", func() error {
@@ -753,11 +755,38 @@ func (a *app) pickFolder() error {
 }
 
 func (a *app) openFolder() error {
+	return a.openGameFolder("")
+}
+
+// Используем ту же раскладку каталогов, что установка и запуск игры.
+// Положение exe не влияет на выбор папки.
+func (a *app) openGameFolder(subdirectory string) error {
 	a.mutex.Lock()
-	directory := a.config.GameDirectory
+	paths := a.config.Paths()
 	a.mutex.Unlock()
-	command := exec.Command("explorer", directory)
-	_ = command.Start()
+	directory := paths.Base
+	switch subdirectory {
+	case "":
+	case "mods":
+		directory = paths.Mods()
+	case "logs":
+		directory = paths.Logs()
+	default:
+		return fmt.Errorf("неизвестная папка игры: %q", subdirectory)
+	}
+	// Можно открыть папку ещё до первой установки игры.
+	if err := os.MkdirAll(directory, 0755); err != nil {
+		return fmt.Errorf("не удалось создать папку %q: %w", directory, err)
+	}
+	command := exec.Command("explorer.exe", directory)
+	if err := command.Start(); err != nil {
+		return fmt.Errorf("не удалось открыть папку %q: %w", directory, err)
+	}
+	// Освобождаем дескриптор: ждать закрытия Проводника не нужно.
+	if err := command.Process.Release(); err != nil {
+		return fmt.Errorf("папка %q передана Проводнику, но не удалось освободить процесс: %w", directory, err)
+	}
+	a.log("Открытие папки: " + directory)
 	return nil
 }
 
@@ -899,7 +928,7 @@ func (a *app) snapshot() state {
 		LoggedIn:    loggedIn,
 		Offline:     offline,
 		OfflineName: name,
-		GameDir:     a.config.GameDirectory,
+		GameDir:     a.config.Paths().Base,
 		Version:     core.DefaultMinecraftVer,
 		Loader:      core.DefaultLoaderVersion,
 		Java:        java,

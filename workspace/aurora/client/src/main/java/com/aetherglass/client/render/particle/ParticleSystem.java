@@ -4,6 +4,7 @@ import com.aetherglass.client.render.util.ColorUtil;
 import com.aetherglass.client.render.util.Easing;
 import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
@@ -158,9 +159,6 @@ public final class ParticleSystem {
         }
         Matrix4f matrix = pose.last().pose();
         Vec3 origin = camera.position();
-        float cameraX = (float) origin.x;
-        float cameraY = (float) origin.y;
-        float cameraZ = (float) origin.z;
         // Базис плоскости: «вправо» и «вверх» относительно взгляда.
         Vector3fc left = camera.leftVector();
         Vector3fc up = camera.upVector();
@@ -217,22 +215,28 @@ public final class ParticleSystem {
                 float uy = (rightY * sin + upY * cos) * scale;
                 float uz = (rightZ * sin + upZ * cos) * scale;
 
-                float px = (float) particle.x - cameraX;
-                float py = (float) particle.y - cameraY;
-                float pz = (float) particle.z - cameraZ;
+                float px = (float) (particle.x - origin.x);
+                float py = (float) (particle.y - origin.y);
+                float pz = (float) (particle.z - origin.z);
 
-                consumer.addVertex(matrix, px - rx - ux, py - ry - uy, pz - rz - uz)
-                        .setUv(0.0F, 0.0F).setColor(color).setLight(LightTexture.FULL_BRIGHT);
-                consumer.addVertex(matrix, px + rx - ux, py + ry - uy, pz + rz - uz)
-                        .setUv(1.0F, 0.0F).setColor(color).setLight(LightTexture.FULL_BRIGHT);
-                consumer.addVertex(matrix, px + rx + ux, py + ry + uy, pz + rz + uz)
-                        .setUv(1.0F, 1.0F).setColor(color).setLight(LightTexture.FULL_BRIGHT);
-                consumer.addVertex(matrix, px - rx + ux, py - ry + uy, pz - rz + uz)
-                        .setUv(0.0F, 1.0F).setColor(color).setLight(LightTexture.FULL_BRIGHT);
+                float nx = rightY * upZ - rightZ * upY;
+                float ny = rightZ * upX - rightX * upZ;
+                float nz = rightX * upY - rightY * upX;
+                vertex(consumer, matrix, px - rx - ux, py - ry - uy, pz - rz - uz, 0, 0, color, nx, ny, nz);
+                vertex(consumer, matrix, px + rx - ux, py + ry - uy, pz + rz - uz, 1, 0, color, nx, ny, nz);
+                vertex(consumer, matrix, px + rx + ux, py + ry + uy, pz + rz + uz, 1, 1, color, nx, ny, nz);
+                vertex(consumer, matrix, px - rx + ux, py - ry + uy, pz - rz + uz, 0, 1, color, nx, ny, nz);
             }
             if (type != null) {
                 buffers.endBatch(type);
             }
         }
+    }
+    /** entityTranslucent требует все поля NEW_ENTITY, включая overlay и normal. */
+    static void vertex(VertexConsumer consumer, Matrix4f matrix, float x, float y, float z,
+                       float u, float v, int color, float nx, float ny, float nz) {
+        consumer.addVertex(matrix, x, y, z).setUv(u, v).setColor(color)
+                .setOverlay(OverlayTexture.NO_OVERLAY).setLight(LightTexture.FULL_BRIGHT)
+                .setNormal(nx, ny, nz);
     }
 }
