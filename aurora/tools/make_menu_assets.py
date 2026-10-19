@@ -28,9 +28,12 @@
 
 Экономия памяти
 ---------------
-Фоны — гладкие градиенты, поэтому они сохраняются в палитре (≤256 цветов):
-визуально разница незаметна, а файл в разы меньше. Все четыре ступени
-одного фона в сумме весят меньше, чем раньше весила одна картинка.
+Фоны — плавные градиенты, и они сохраняются в полноцвете: при 256 цветах
+палитра давала видимые контурные ступени на градиентах ореола луны и
+полосы от Floyd–Steinberg, а экономия была всего двукратной.
+Все ступени всех фонов вместе весят меньше мегабайта. В памяти GPU
+ресурсов это не меняет: размер кадра задан константами, а общий вес
+текстур клиент ограничен тестом `MenuAssetTest`.
 
 Запуск:  python3 tools/make_menu_assets.py
 """
@@ -40,7 +43,7 @@ from __future__ import annotations
 import os
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 # ── пути ────────────────────────────────────────────────────────────
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -87,8 +90,16 @@ def _squircle_sdf(x, y, cx, cy, ax, ay, n=4.0):
     return (f - 1.0) * min(ax, ay)
 
 
-def _save(rgb, path, alpha=None, palette=True):
-    """Сохраняет кадр. Плавные градиенты пишутся в палитре — так заметно меньше."""
+def _save(rgb, path, alpha=None, palette=False):
+    """Сохраняет кадр.
+
+    Палитра тут НЕ используется: при 256 цветах median-cut не находил
+    ярких оттенков — ядро луны (белое) сжималось до бледно-голубого, а
+    Floyd–Steinberg оставлял полосы на плавных градиентах. Полноцвет для
+    этих же картинок весит всего вдвое больше (85–144 КБ на кадр 1376×768),
+    а выглядит именно так, как задумано. Флаг `palette` оставлен для
+    будущих мелких спрайтов, где палитра уместна.
+    """
     image = Image.fromarray((np.clip(rgb, 0.0, 1.0) * 255).astype(np.uint8), "RGB")
     if alpha is not None:
         image.putalpha(
@@ -97,7 +108,7 @@ def _save(rgb, path, alpha=None, palette=True):
         return image
     if palette:
         image = image.quantize(colors=256, method=Image.Quantize.MEDIANCUT,
-                               dither=Image.Dither.FLOYDSTEINBERG)
+                               dither=Image.Dither.NONE)
     image.save(path, optimize=True)
     return image
 
@@ -162,18 +173,29 @@ def _aurora_bands(sky, height, width):
 
 
 def _glass_plates(sky, height, width, seed=77):
-    """Несколько полупрозрачных стеклянных пластин — декор в тон интерфейсу."""
+    """Несколько полупрозрачных стеклянных пластин — декор в тон интерфейсу.
+
+    Плашки не пересекаются с луной: наложение полупрозрачного стекла на
+    яркое ядро давало грязный клин на месте пересечения. И соотношение
+    сторон ограничено: сильно вытянутая плашка даёт разную толщину кромки
+    на торцах и на длинных гранях, а кромка должна быть ровной.
+    """
     rng = np.random.default_rng(seed)
     out = sky.copy()
+    yy, xx = _grid(height, width)
+    moon = np.array([0.78, 0.24])
     for _ in range(5):
-        cx = rng.uniform(0.10, 0.90)
-        cy = rng.uniform(0.18, 0.80)
-        ax = rng.uniform(0.05, 0.13)
-        ay = rng.uniform(0.05, 0.14)
-        yy, xx = _grid(height, width)
+        for _attempt in range(12):
+            cx = rng.uniform(0.10, 0.90)
+            cy = rng.uniform(0.18, 0.80)
+            ax = rng.uniform(0.05, 0.13)
+            ay = rng.uniform(0.05, 0.14)
+            # Плашка не должна залезать на луну и её ореол.
+            if abs(cx - moon[0]) > ax + 0.16 and abs(cy - moon[1]) > ay + 0.16:
+                break
         d = _squircle_sdf(xx / width, yy / height, cx, cy, ax, ay, 5.0)
         inside = np.clip(-d / 0.012 + 0.5, 0.0, 1.0)
-        rim = np.exp(-(d ** 2) / (2.0 * 0.006 ** 2))
+        rim = np.exp(-(d ** 2) / (2.0 * 0.008 ** 2))
         plate = (inside * 0.16 + rim * 0.30)
         out += plate[:, :, None] * np.array([0.62, 0.74, 0.98])
     return np.clip(out, 0.0, 1.0)
@@ -190,25 +212,44 @@ def _drift(sky, height, width, dx=0.03, dz=0.02, seed=5):
     return sky[yi, xi, :]
 
 
+# ── ступени размытия ────────────────────────────────────────────────
+# Радиусы размытия по ступеням (в пикселях уже уменьшенной картинки).
+# Ступени должны быть НАСТОЯЩИМ размытием: галерея в игре медленно сводит
+# соседние ступени, и на честных размытых картинках этот переход выглядит
+# как оптическое расфокусирование. Простое уменьшение даёт зерно от звёзд
+# и хуже сжимается.
+BLUR = (0.8, 2.6, 3.4, 4.2)
+
+
+def _frame_image(array):
+    """Кадр в float → картинка в полноцвете."""
+    return Image.fromarray(
+        (np.clip(array, 0.0, 1.0) * 255).astype(np.uint8), "RGB")
+
+
 def _make_backdrops():
     base = _night_sky(BASE_H, BASE_W)
     frames = {
-        "menu_backdrop": base,
-        "menu_backdrop_aurora": _aurora_bands(base, BASE_H, BASE_W),
-        "menu_backdrop_glass": _glass_plates(base, BASE_H, BASE_W),
-        "menu_backdrop_night": _drift(_aurora_bands(base, BASE_H, BASE_W),
-                                      BASE_H, BASE_W, -0.05, 0.015, seed=11),
+        "menu_backdrop": _frame_image(base),
+        "menu_backdrop_aurora": _frame_image(_aurora_bands(base, BASE_H, BASE_W)),
+        "menu_backdrop_glass": _frame_image(_glass_plates(base, BASE_H, BASE_W)),
+        "menu_backdrop_night": _frame_image(
+            _drift(_aurora_bands(base, BASE_H, BASE_W), BASE_H, BASE_W,
+                   -0.05, 0.015, seed=11)),
     }
     written = []
     for name in BACKDROP_NAMES:
-        full = frames[name]
+        image0 = frames[name]
         for level, (w, h) in enumerate(BACKDROP_SIZES):
-            image = Image.fromarray(
-                (np.clip(full, 0.0, 1.0) * 255).astype(np.uint8), "RGB")
-            if level:
-                # Ступени размытия — это уменьшенные копии: на сильном
-                # размытии потеря разрешения неразличима, а вес падает в разы.
-                image = image.resize((w, h), Image.LANCZOS)
+            if level == 0:
+                # Лёгкое смягчение: звёзды перестают «искрить» при
+                # масштабировании под окно.
+                image = image0.filter(ImageFilter.GaussianBlur(BLUR[0]))
+            else:
+                # Сначала уменьшаем, потом размываем: размытие должно
+                # размазывать то, что видно после растяжения.
+                image = (image0.resize((w, h), Image.BOX)
+                         .filter(ImageFilter.GaussianBlur(BLUR[level])))
             path = os.path.join(GUI, f"{name}_b{level}.png")
             _save(np.asarray(image, dtype=np.float64) / 255.0, path)
             written.append(path)
