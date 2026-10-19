@@ -435,9 +435,15 @@ input:focus{outline:none; border-color:rgba(180,170,255,.55);
         <p class="hint">Меняется сразу, сохраняется в каталоге игры.</p>
         <div class="grid">
           <label>Каталог игры</label>
-          <div class="row" style="flex-wrap:nowrap">
-            <input type="text" id="gameDir">
-            <button class="btn ghost" id="dirPickBtn" style="flex:0 0 auto">Обзор…</button>
+          <div>
+            <div class="row" style="flex-wrap:nowrap">
+              <input type="text" id="gameDir">
+              <button class="btn ghost" id="dirPickBtn" style="flex:0 0 auto">Обзор…</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <button class="btn" id="settingsRootBtn">Коренная папка</button>
+              <button class="btn" id="settingsModsBtn">Папка Mods</button>
+            </div>
           </div>
           <label>Память, МБ</label>
           <div class="row" style="flex-wrap:nowrap">
@@ -475,6 +481,8 @@ input:focus{outline:none; border-color:rgba(180,170,255,.55);
         <div class="foot">
           <div class="row">
             <button class="btn" id="modsRefreshBtn">Обновить список</button>
+            <button class="btn" id="modsRootBtn">Коренная папка</button>
+            <button class="btn" id="modsFolderBtn">Папка Mods</button>
             <span class="mono" id="modFilesInfo"></span>
           </div>
         </div>
@@ -604,6 +612,10 @@ $('openBtn').onclick         = () => call('openFolder');
 $('gameRootBtn').onclick     = () => call('openFolder');
 $('gameModsBtn').onclick     = () => call('openModsFolder');
 $('gameLogsBtn').onclick     = () => call('openLogsFolder');
+if ($('modsRootBtn'))   $('modsRootBtn').onclick   = () => call('openFolder');
+if ($('modsFolderBtn')) $('modsFolderBtn').onclick = () => call('openModsFolder');
+if ($('settingsRootBtn')) $('settingsRootBtn').onclick = () => call('openFolder');
+if ($('settingsModsBtn')) $('settingsModsBtn').onclick = () => call('openModsFolder');
 
 
 /* Плитка состояния: загорается зелёным, когда компонент действительно на месте. */

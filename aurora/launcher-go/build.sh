@@ -7,6 +7,16 @@ cd "$(dirname "$0")"
 export CGO_ENABLED=0
 export GOTOOLCHAIN=local
 
+mkdir -p core/assets
+if [ ! -f core/assets/mods.json ]; then
+  git checkout -- core/assets/mods.json 2>/dev/null || cp -f ../launcher/src/main/resources/mods.json core/assets/mods.json
+fi
+if [ -f ../dist/AetherGlass.jar ]; then
+  cp -f ../dist/AetherGlass.jar core/assets/AetherGlass.jar
+elif [ -f ../client/build/libs/AetherGlass.jar ]; then
+  cp -f ../client/build/libs/AetherGlass.jar core/assets/AetherGlass.jar
+fi
+
 # Запоминаем машину сборщика: инструменты вроде rsrc должны работать здесь.
 hostOS="$(go env GOHOSTOS)"
 hostArch="$(go env GOHOSTARCH)"

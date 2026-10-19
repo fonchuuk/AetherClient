@@ -160,6 +160,66 @@ public final class LauncherUi {
         return this.gameLauncher;
     }
 
+    /** Возвращает коренной каталог игры (создавая его при необходимости). */
+    public Path rootDirectory() throws IOException {
+        Path dir = this.paths.base();
+        Files.createDirectories(dir);
+        return dir;
+    }
+
+    /** Возвращает каталог модов {@code <gameDir>/mods} (создавая его при необходимости). */
+    public Path modsDirectory() throws IOException {
+        Path dir = this.paths.mods();
+        Files.createDirectories(dir);
+        return dir;
+    }
+
+    /** Открывает коренную папку игры в системном проводнике. */
+    public void openRootFolder() {
+        try {
+            openDirectoryInSystem(rootDirectory());
+        } catch (IOException exception) {
+            showError("Не удалось подготовить коренную папку игры: " + exception.getMessage());
+        }
+    }
+
+    /** Открывает папку Mods в системном проводнике. */
+    public void openModsFolder() {
+        try {
+            openDirectoryInSystem(modsDirectory());
+        } catch (IOException exception) {
+            showError("Не удалось подготовить папку Mods: " + exception.getMessage());
+        }
+    }
+
+    private void openDirectoryInSystem(Path directory) {
+        log("Открытие папки: " + directory.toAbsolutePath());
+        if (java.awt.GraphicsEnvironment.isHeadless()) {
+            return;
+        }
+        try {
+            if (java.awt.Desktop.isDesktopSupported()
+                    && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.OPEN)) {
+                java.awt.Desktop.getDesktop().open(directory.toFile());
+                return;
+            }
+        } catch (Throwable ignored) {
+            // Запасной путь через команду ОС ниже
+        }
+        try {
+            String os = System.getProperty("os.name", "").toLowerCase();
+            if (os.contains("win")) {
+                new ProcessBuilder("explorer.exe", directory.toAbsolutePath().toString()).start();
+            } else if (os.contains("mac")) {
+                new ProcessBuilder("open", directory.toAbsolutePath().toString()).start();
+            } else {
+                new ProcessBuilder("xdg-open", directory.toAbsolutePath().toString()).start();
+            }
+        } catch (IOException exception) {
+            showError("Не удалось открыть папку " + directory + ": " + exception.getMessage());
+        }
+    }
+
     private JPanel gameTab() {
         JPanel panel = new JPanel(new BorderLayout(0, 12));
         panel.setOpaque(false);
@@ -209,6 +269,19 @@ public final class LauncherUi {
             memory.add(hint);
         }
         settings.add(memory, constraints);
+        constraints.gridx = 0;
+        constraints.gridy++;
+        settings.add(UiKit.muted("Папки игры:"), constraints);
+        constraints.gridx = 1;
+        JPanel foldersRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        foldersRow.setOpaque(false);
+        JButton gameRootBtn = UiKit.button("Коренная папка");
+        JButton gameModsBtn = UiKit.button("Папка Mods");
+        gameRootBtn.addActionListener(event -> openRootFolder());
+        gameModsBtn.addActionListener(event -> openModsFolder());
+        foldersRow.add(gameRootBtn);
+        foldersRow.add(gameModsBtn);
+        settings.add(foldersRow, constraints);
 
         JPanel bottom = new JPanel(new BorderLayout(10, 8));
         bottom.setOpaque(false);
@@ -255,10 +328,16 @@ public final class LauncherUi {
         controls.setOpaque(false);
         JButton refresh = UiKit.button("Проверить");
         JButton install = UiKit.primaryButton("Установить / обновить");
+        JButton rootFolder = UiKit.button("Коренная папка");
+        JButton modsFolder = UiKit.button("Папка Mods");
         refresh.addActionListener(event -> refreshModsTable());
         install.addActionListener(event -> installModsInBackground());
+        rootFolder.addActionListener(event -> openRootFolder());
+        modsFolder.addActionListener(event -> openModsFolder());
         controls.add(refresh);
         controls.add(install);
+        controls.add(rootFolder);
+        controls.add(modsFolder);
 
         panel.add(UiKit.card("Оптимизационные моды", top), BorderLayout.CENTER);
         panel.add(controls, BorderLayout.SOUTH);
@@ -315,10 +394,16 @@ public final class LauncherUi {
         controls.setOpaque(false);
         JButton save = UiKit.primaryButton("Сохранить");
         JButton validate = UiKit.button("Проверить Java");
+        JButton rootFolder = UiKit.button("Коренная папка");
+        JButton modsFolder = UiKit.button("Папка Mods");
         save.addActionListener(event -> saveSettings());
         validate.addActionListener(event -> detectJava());
+        rootFolder.addActionListener(event -> openRootFolder());
+        modsFolder.addActionListener(event -> openModsFolder());
         controls.add(save);
         controls.add(validate);
+        controls.add(rootFolder);
+        controls.add(modsFolder);
         constraints.gridx = 1;
         constraints.gridy = 7;
         constraints.gridwidth = 2;

@@ -119,7 +119,11 @@ func Run() error {
 	javaPickButton := newGlassButton("Выбрать…", buttonGlass, 110, 30, nil)
 	javaAutoButton := newGlassButton("Автоматически", buttonGlass, 140, 30, nil)
 	dirPickButton := newGlassButton("Выбрать…", buttonGlass, 110, 30, nil)
+	gameRootButton := newGlassButton("Коренная папка", buttonGlass, 160, 34, nil)
+	gameModsButton := newGlassButton("Папка Mods", buttonGlass, 150, 34, nil)
 	modsRefreshButton := newGlassButton("Обновить список", buttonGlass, 170, 32, nil)
+	modsRootButton := newGlassButton("Коренная папка", buttonGlass, 160, 32, nil)
+	modsFolderButton := newGlassButton("Папка Mods", buttonGlass, 150, 32, nil)
 	logClearButton := newGlassButton("Очистить", buttonGlass, 120, 32, nil)
 	logOpenButton := newGlassButton("Открыть каталог игры", buttonGlass, 200, 32, nil)
 
@@ -453,13 +457,22 @@ func Run() error {
 		refreshMods()
 		refreshJava()
 	}
-	modsRefreshButton.onClick = func() { refreshMods() }
-	logClearButton.onClick = func() { logView.SetText("") }
-	logOpenButton.onClick = func() {
-		command := exec.Command("explorer", app.config.GameDirectory)
+	openDirectory := func(directory string) {
+		if directory == "" {
+			return
+		}
+		_ = os.MkdirAll(directory, 0o755)
+		command := exec.Command("explorer", directory)
 		command.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 		_ = command.Start()
 	}
+	gameRootButton.onClick = func() { openDirectory(app.config.Paths().Base) }
+	gameModsButton.onClick = func() { openDirectory(app.config.Paths().Mods()) }
+	modsRootButton.onClick = func() { openDirectory(app.config.Paths().Base) }
+	modsFolderButton.onClick = func() { openDirectory(app.config.Paths().Mods()) }
+	modsRefreshButton.onClick = func() { refreshMods() }
+	logClearButton.onClick = func() { logView.SetText("") }
+	logOpenButton.onClick = func() { openDirectory(app.config.Paths().Base) }
 
 	// Картинки, у которых есть прозрачные уголки: их тоже надо перерисовывать
 	// вместе с фоном, иначе по краям останутся застывшие кусочки.
@@ -572,6 +585,14 @@ func Run() error {
 									gameTitle.Declarative(),
 									gameInfo.Declarative(),
 									javaInfo.Declarative(),
+									Composite{
+										Layout: HBox{MarginsZero: true, Spacing: 10},
+										Children: []Widget{
+											gameRootButton.Declarative(),
+											gameModsButton.Declarative(),
+											HSpacer{},
+										},
+									},
 									VSpacer{},
 									Composite{
 										AssignTo: &gameButtons,
@@ -701,7 +722,15 @@ func Run() error {
 									modsHint.Declarative(),
 									modsList.Declarative(),
 									VSpacer{},
-									modsRefreshButton.Declarative(),
+									Composite{
+										Layout: HBox{MarginsZero: true, Spacing: 10},
+										Children: []Widget{
+											modsRefreshButton.Declarative(),
+											modsRootButton.Declarative(),
+											modsFolderButton.Declarative(),
+											HSpacer{},
+										},
+									},
 								},
 							},
 							Composite{

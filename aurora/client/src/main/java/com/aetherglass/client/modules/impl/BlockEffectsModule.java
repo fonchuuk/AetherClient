@@ -1,19 +1,20 @@
 package com.aetherglass.client.modules.impl;
 
+import com.aetherglass.client.config.ModConfig;
+import com.aetherglass.client.gui.theme.AuroraTheme;
+import com.aetherglass.client.modules.Module;
 import com.aetherglass.client.modules.ModuleCategory;
 import com.aetherglass.client.modules.ModuleManager;
-import com.aetherglass.client.modules.Module;
 import com.aetherglass.client.modules.settings.BooleanSetting;
 import com.aetherglass.client.modules.settings.ColorSetting;
 import com.aetherglass.client.modules.settings.EnumSetting;
 import com.aetherglass.client.modules.settings.FloatSetting;
 import com.aetherglass.client.modules.settings.IntSetting;
-import com.aetherglass.client.config.ModConfig;
-import com.aetherglass.client.gui.theme.AuroraTheme;
 import com.aetherglass.client.render.ColorController;
 import com.aetherglass.client.render.material.ColorSource;
 import com.aetherglass.client.render.material.FillMode;
 import com.aetherglass.client.render.material.Material;
+import com.aetherglass.client.render.shader.ShaderEffect;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -26,18 +27,45 @@ import net.minecraft.world.phys.Vec3;
 import java.util.Random;
 
 /**
- * Эффекты блоков (5.2): подсветка блока под прицелом, частицы при взаимодействии
+ * Эффекты блоков ({@code BlockShader}): 16 процедурных шейдер-эффектов, подсветка блока
+ * под прицелом по реальной геометрии {@code VoxelShape}, частицы при взаимодействии
  * и частицы вокруг отдельных категорий блоков.
  *
  * <p>Модуль ничего не меняет в самом мире: он только рисует. Свойства блоков
- * (прочность, ломаемость, свет) остаются ванильными, обработчики не дублируются —
- * состояние обновляется из общего игрового цикла один раз за кадр.</p>
+ * (прочность, ломаемость, свет, коллизии) остаются ванильными.</p>
  */
 public final class BlockEffectsModule extends Module {
     private static final Random RANDOM = new Random();
     private static final int MAX_TRACKED = 48;
     private static final float SCAN_PERIOD_SECONDS = 0.35F;
 
+    // ─────────────────────── Настройки 16 шейдер-эффектов (BlockShader) ───────────────────────
+    private final BooleanSetting useShaderEffect = register(new BooleanSetting("useShader",
+            "Шейдер-эффект (BlockShader)",
+            "Включает один из 16 процедурных шейдер-эффектов для блока под прицелом",
+            true, setting -> settingChanged(setting)));
+    private final EnumSetting<ShaderEffect> shaderEffect = register(new EnumSetting<>("shaderEffect",
+            "Эффект BlockShader",
+            "Выбор одного из 16 уникальных шейдер-эффектов для блоков",
+            ShaderEffect.LIQUID_GLASS, ShaderEffect.values(), setting -> settingChanged(setting)));
+    private final ColorSetting shaderColor = register(new ColorSetting("shaderColor",
+            "Цвет шейдера блока",
+            "Основной цвет выбранного шейдер-эффекта блока",
+            ShaderEffect.LIQUID_GLASS.defaultColor(), setting -> settingChanged(setting)));
+    private final FloatSetting shaderIntensity = register(new FloatSetting("shaderIntensity",
+            "Интенсивность шейдера",
+            "Яркость, контраст и выраженность шейдер-эффекта блока",
+            1.00F, 0.10F, 2.00F, 0.05F, setting -> settingChanged(setting)));
+    private final FloatSetting shaderSpeed = register(new FloatSetting("shaderSpeed",
+            "Скорость анимации шейдера",
+            "Скорость течения волн, разрядов и переливов шейдера блока",
+            1.00F, 0.10F, 3.00F, 0.05F, setting -> settingChanged(setting)));
+    private final FloatSetting shaderOpacity = register(new FloatSetting("shaderOpacity",
+            "Прозрачность шейдера",
+            "Непрозрачность поверхности и контура шейдера блока",
+            0.78F, 0.05F, 1.00F, 0.02F, setting -> settingChanged(setting)));
+
+    // ─────────────────────── Общие настройки заливки и частиц ───────────────────────
     private final EnumSetting<FillMode> mode = register(new EnumSetting<>("mode", "Режим заливки",
             "Чем закрашивается блок под прицелом", FillMode.SHADER_FILL, FillMode.values(),
             setting -> settingChanged(setting)));
@@ -116,7 +144,7 @@ public final class BlockEffectsModule extends Module {
     private boolean useWasDown;
 
     public BlockEffectsModule() {
-        super("blocks", "Эффекты блоков", "Подсветка блока под прицелом, частицы при взаимодействии и у блоков",
+        super("blocks", "Эффекты блоков", "BlockShader: 16 шейдер-эффектов, подсветка блока под прицелом и частицы",
                 ModuleCategory.VISUAL);
         for (int index = 0; index < this.tracked.length; index++) {
             this.tracked[index] = new BlockPos.MutableBlockPos();
@@ -150,12 +178,111 @@ public final class BlockEffectsModule extends Module {
         this.outlineFade = 0.0F;
     }
 
-    /** Сколько блоков сейчас под наблюдением: показывается в списке модулей. */
+    /** Сколько блоков сейчас под наблюдением и какой шейдер активен: показывается в списке модулей. */
     public String activity() {
+        if (this.useShaderEffect.isEnabled()) {
+            return this.shaderEffect.get().displayName() + " · блоков: " + this.trackedCount;
+        }
         return "блоков под наблюдением: " + this.trackedCount;
     }
 
-    // ─────────────────────── состояние для отрисовки ───────────────────────
+    // ─────────────────────── BlockShader (16 эффектов) ───────────────────────
+
+    public boolean useShaderEffect() {
+        return this.useShaderEffect.isEnabled();
+    }
+
+    public void setUseShaderEffect(boolean enabled) {
+        this.useShaderEffect.set(enabled);
+    }
+
+    public ShaderEffect shaderEffect() {
+        return this.shaderEffect.get();
+    }
+
+    public void setShaderEffect(ShaderEffect effect) {
+        if (effect != null) {
+            this.shaderEffect.set(effect);
+        }
+    }
+
+    /** Выбирает шейдер-эффект и применяет его эталонные параметры (цвет, интенсивность, скорость, прозрачность). */
+    public void selectShaderPreset(ShaderEffect effect) {
+        if (effect == null) {
+            return;
+        }
+        this.shaderEffect.set(effect);
+        this.shaderColor.set(effect.defaultColor());
+        this.shaderIntensity.set(effect.defaultIntensity());
+        this.shaderSpeed.set(effect.defaultSpeed());
+        this.shaderOpacity.set(effect.defaultOpacity());
+    }
+
+    /** Сбрасывает параметры текущего шейдер-эффекта к его эталонным значениям. */
+    public void resetCurrentShaderEffect() {
+        selectShaderPreset(this.shaderEffect.get());
+    }
+
+    /** Полный сброс всех настроек BlockShader к стандартным значениям. */
+    public void resetShaderDefaults() {
+        this.useShaderEffect.reset();
+        selectShaderPreset(ShaderEffect.LIQUID_GLASS);
+        this.mode.reset();
+        this.fillAlpha.reset();
+        this.outlineWidth.reset();
+        this.outlineAlpha.reset();
+        this.glow.reset();
+    }
+
+    public int shaderColor() {
+        return this.shaderColor.get();
+    }
+
+    public void setShaderColor(int colorValue) {
+        this.shaderColor.set(colorValue);
+    }
+
+    public ColorSetting shaderColorSetting() {
+        return this.shaderColor;
+    }
+
+    public float shaderIntensity() {
+        return this.shaderIntensity.get();
+    }
+
+    public void setShaderIntensity(float value) {
+        this.shaderIntensity.set(value);
+    }
+
+    public FloatSetting shaderIntensitySetting() {
+        return this.shaderIntensity;
+    }
+
+    public float shaderSpeed() {
+        return this.shaderSpeed.get();
+    }
+
+    public void setShaderSpeed(float value) {
+        this.shaderSpeed.set(value);
+    }
+
+    public FloatSetting shaderSpeedSetting() {
+        return this.shaderSpeed;
+    }
+
+    public float shaderOpacity() {
+        return this.shaderOpacity.get();
+    }
+
+    public void setShaderOpacity(float value) {
+        this.shaderOpacity.set(value);
+    }
+
+    public FloatSetting shaderOpacitySetting() {
+        return this.shaderOpacity;
+    }
+
+    // ─────────────────────── Состояние для отрисовки ───────────────────────
 
     /** Блок под прицелом или {@code null}. */
     public BlockPos outlined() {
@@ -308,9 +435,8 @@ public final class BlockEffectsModule extends Module {
         particles.spawnAt(point.x, point.y, point.z, speed, count);
     }
 
-    // ─────────────────────── фоновые частицы у блоков ───────────────────────
+    // ─────────────────────── Фоновые частицы у блоков ───────────────────────
 
-    /** Находит особые блоки рядом и запоминает их, чтобы не перебирать мир каждый кадр. */
     private void scanAround(Minecraft client, LocalPlayer player) {
         if (client.level == null) {
             return;
@@ -354,7 +480,6 @@ public final class BlockEffectsModule extends Module {
                 || state.is(BlockTags.LAPIS_ORES) || state.is(BlockTags.REDSTONE_ORES);
     }
 
-    /** Выпускает частицы над найденными блоками; расход ограничен, чтобы не забить пул. */
     private void spawnAmbient(float deltaSeconds) {
         ParticleModule particles = ModuleManager.get().typed("particles", ParticleModule.class);
         if (particles == null || !particles.isEnabled() || this.trackedCount == 0) {
@@ -374,17 +499,13 @@ public final class BlockEffectsModule extends Module {
             particles.spawnAt(position.getX() + 0.5D, position.getY() + 1.05D, position.getZ() + 0.5D, 0.25D, 1);
         }
     }
-    // ─────────────────────────── материалы ───────────────────────────
 
-    /** Идентификатор выбранного материала. */
+    // ─────────────────────────── Материалы ───────────────────────────
+
     public String activeMaterialId() {
         return this.activeMaterial;
     }
 
-    /**
-     * Применяет материал: переставляет все настройки заливки и запоминает
-     * выбор, чтобы он сохранился после перезапуска.
-     */
     public void applyMaterial(Material material) {
         if (material == null) {
             return;
@@ -403,10 +524,6 @@ public final class BlockEffectsModule extends Module {
         ModConfig.get().saveIfNeeded();
     }
 
-    /**
-     * Собирает материал из текущих настроек: основа кнопки
-     * «сохранить как» на экране материалов.
-     */
     public Material toMaterial(String id, String name) {
         return new Material(id, name, false, this.mode.get(), this.colorSource.get(), this.color.get(),
                 this.fillAlpha.get(), this.outlineWidth.get(), this.outlineAlpha.get(), this.glow.get(),

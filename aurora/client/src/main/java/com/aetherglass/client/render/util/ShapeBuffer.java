@@ -119,6 +119,26 @@ public final class ShapeBuffer {
         vertex(pose, consumer, x3, y3, z3, inner, nx, ny, nz);
     }
 
+    /**
+     * Четырёхугольник с собственным цветом в каждой из четырёх вершин и заданной нормалью.
+     * Используется процедурными шейдер-эффектами (BlockShader и HandsShader) для
+     * плавной аппаратной интерполяции паттерна по поверхности.
+     */
+    public static void addShadedQuad(PoseStack.Pose pose, VertexConsumer consumer,
+                                     float x0, float y0, float z0, int c0,
+                                     float x1, float y1, float z1, int c1,
+                                     float x2, float y2, float z2, int c2,
+                                     float x3, float y3, float z3, int c3,
+                                     float nx, float ny, float nz) {
+        if ((c0 >>> 24) == 0 && (c1 >>> 24) == 0 && (c2 >>> 24) == 0 && (c3 >>> 24) == 0) {
+            return;
+        }
+        vertex(pose, consumer, x0, y0, z0, c0, nx, ny, nz);
+        vertex(pose, consumer, x1, y1, z1, c1, nx, ny, nz);
+        vertex(pose, consumer, x2, y2, z2, c2, nx, ny, nz);
+        vertex(pose, consumer, x3, y3, z3, c3, nx, ny, nz);
+    }
+
     /** Полный NEW_ENTITY: незаполненные атрибуты приводят к ошибке завершения вершины. */
     private static void vertex(PoseStack.Pose pose, VertexConsumer consumer, float x, float y, float z,
                                int color, float nx, float ny, float nz) {

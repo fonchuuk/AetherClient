@@ -154,8 +154,8 @@ public final class AuroraMenuScreen extends AuroraScreen {
         int panelWidth = Math.min(clamp(Math.round(available * 0.36F), 330, 560), restWidth);
         int panelX = restLeft + Math.max(0, (restWidth - panelWidth) / 2);
 
-        int actions = 11;
-        int maxPanel = Math.min(380, this.height - MARGIN * 2 - TITLE_HEIGHT - 26);
+        int actions = 12;
+        int maxPanel = Math.min(396, this.height - MARGIN * 2 - TITLE_HEIGHT - 20);
         int panelHeight = Math.max(190, maxPanel);
         int buttonHeight = clamp((panelHeight - DOCK_PADDING * 2 - BUTTON_GAP * (actions - 1)) / actions,
                 MIN_BUTTON_HEIGHT, MAX_BUTTON_HEIGHT);
@@ -195,6 +195,8 @@ public final class AuroraMenuScreen extends AuroraScreen {
         });
         y = addAction(buttonX, y, buttonWidth, buttonHeight, "Экранные элементы", false,
                 () -> client().setScreen(new HudEditorScreen(this)));
+        y = addAction(buttonX, y, buttonWidth, buttonHeight, "Шейдер-эффекты (16)", true,
+                () -> client().setScreen(new ShaderEffectsScreen(this)));
         y = addAction(buttonX, y, buttonWidth, buttonHeight, "Материалы", false,
                 () -> client().setScreen(new MaterialsScreen(this)));
         y = addAction(buttonX, y, buttonWidth, buttonHeight, "О клиенте", false,
@@ -234,6 +236,9 @@ public final class AuroraMenuScreen extends AuroraScreen {
         this.list.add(new AuroraLabel(x + 4, 0, width - 8,
                 Component.literal("Модули включаются и выключаются сразу: перезапуск не требуется. "
                         + "Щелчок по карточке тоже переключает модуль."), AuroraLabel.Style.MUTED), 4);
+        this.list.add(new AuroraButton(x + 4, 0, Math.min(280, width - 8), 22,
+                Component.literal("Открыть меню 16 шейдер-эффектов (Block / Hands)…"),
+                button -> client().setScreen(new ShaderEffectsScreen(this)), 0, true), 6);
         for (Module module : manager.modules()) {
             this.list.add(new ModuleRow(x, 0, width, module, activity(module), this::rebuild,
                     () -> client().setScreen(new ModuleSettingsScreen(this, module))), 8);

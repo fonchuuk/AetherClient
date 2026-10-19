@@ -41,6 +41,15 @@ public final class ModuleSettingsScreen extends AuroraScreen {
         this.list.add(new AuroraLabel(x + 54, 0, 200, Component.literal("модуль включён"),
                 AuroraLabel.Style.BODY), -14);
 
+        if ("blocks".equals(this.module.id()) || "hands".equals(this.module.id())) {
+            ShaderEffectsScreen.Target target = "hands".equals(this.module.id())
+                    ? ShaderEffectsScreen.Target.HANDS
+                    : ShaderEffectsScreen.Target.BLOCK;
+            this.list.add(new AuroraButton(x + 4, 0, Math.min(280, width - 8), 20,
+                    Component.literal("Открыть меню 16 шейдер-эффектов…"),
+                    button -> client().setScreen(new ShaderEffectsScreen(this, target))), 10);
+        }
+
         SettingWidgets.addGroup(this.list, "Настройки", x, width);
         if (this.module.settings().isEmpty()) {
             this.list.add(new AuroraLabel(x + 4, 0, width - 8,

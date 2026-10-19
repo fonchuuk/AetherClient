@@ -59,6 +59,7 @@ fi
 
 # ── 4/5 мод, лаунчер и установщик ───────────────────────────────────
 echo "=== 4/5 gradle ==="
+python3 "$AURORA/tools/make_menu_assets.py"
 chmod +x gradlew
 ./gradlew --no-daemon --max-workers=1 --console=plain \
   test :client:remapJar :launcher:exe :installer:exe dist 2>&1 | tail -20
@@ -72,6 +73,7 @@ echo "=== 5/5 нативный лаунчер ==="
 # Мод вшивается в exe на этапе компиляции, поэтому копия обязана быть свежей:
 # иначе получится рабочий лаунчер со старым модом внутри, и половину вечера
 # уйдёт на поиски «почему не починилось».
+mkdir -p launcher-go/core/assets
 cp -f "$JAR" launcher-go/core/assets/AetherGlass.jar
 cd launcher-go
 bash ./build.sh 2>&1 | tail -8
