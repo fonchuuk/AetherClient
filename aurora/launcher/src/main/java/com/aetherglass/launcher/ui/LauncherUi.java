@@ -9,6 +9,7 @@ import com.aetherglass.launcher.core.JavaRuntime;
 import com.aetherglass.launcher.core.LauncherConfig;
 import com.aetherglass.launcher.core.LauncherPaths;
 import com.aetherglass.launcher.core.ModInstaller;
+import com.aetherglass.launcher.core.ModpackProfile;
 import com.aetherglass.launcher.core.ModrinthCatalog;
 import com.aetherglass.launcher.core.Rules;
 import com.aetherglass.launcher.core.VersionIndex;
@@ -94,7 +95,21 @@ public final class LauncherUi {
     private JTabbedPane tabs;
     private final JComponent root;
 
-    private final JComboBox<String> versionBox = UiKit.combo(new JComboBox<>());
+    private final JComboBox<String> versionBox = UiKit.combo(new JComboBox<>(
+            new String[]{"1.21.11", "1.21.4", "1.20.4", "1.20.1", "1.19.4", "1.18.2", "1.16.5"}));
+    private final JComboBox<String> loaderBox = UiKit.combo(new JComboBox<>(
+            ModpackProfile.SUPPORTED_LOADERS.toArray(new String[0])));
+    private final JComboBox<ModpackProfile> modpackBox = UiKit.combo(new JComboBox<>());
+    private final JCheckBox aetherClientBox = UiKit.check(
+            new JCheckBox("Установить AetherGlass Client"));
+    private final DefaultTableModel modpacksTableModel = new DefaultTableModel(
+            new Object[]{"Сборка", "Версия MC", "Загрузчик", "AetherGlass Client", "Оптимизация"}, 0) {
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            return false;
+        }
+    };
+    private final JTextField newPackNameField = UiKit.field(new JTextField(16));
     private final JLabel accountLabel = UiKit.chip("Вход не выполнен", UiTheme.DANGER);
     private final JLabel javaInfoLabel = UiKit.muted("Java не проверена");
     private final JLabel statusLabel = UiKit.muted("Готов к работе");
@@ -154,9 +169,11 @@ public final class LauncherUi {
         this.tabs = new JTabbedPane();
         UiKit.styleTabs(this.tabs);
         this.tabs.addTab("Игра", gameTab());
+        this.tabs.addTab("Сборки", modpacksTab());
         this.tabs.addTab("Моды", modsTab());
         this.tabs.addTab("Настройки", settingsTab());
         this.tabs.addTab("Логи", this.logPanel);
+        syncModpackControls();
 
         panel.add(header, BorderLayout.NORTH);
         panel.add(this.tabs, BorderLayout.CENTER);
@@ -282,9 +299,36 @@ public final class LauncherUi {
         constraints.anchor = GridBagConstraints.LINE_START;
         constraints.gridx = 0;
         constraints.gridy = 0;
-        settings.add(UiKit.muted("Версия Minecraft:"), constraints);
+        settings.add(UiKit.muted("Активная сборка:"), constraints);
         constraints.gridx = 1;
-        settings.add(this.versionBox, constraints);
+        settings.add(this.modpackBox, constraints);
+        constraints.gridx = 0;
+        constraints.gridy++;
+        settings.add(UiKit.muted("Версия и загрузчик:"), constraints);
+        constraints.gridx = 1;
+        JPanel verLoaderRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        verLoaderRow.setOpaque(false);
+        verLoaderRow.add(this.versionBox);
+        verLoaderRow.add(this.loaderBox);
+        verLoaderRow.add(this.aetherClientBox);
+        settings.add(verLoaderRow, constraints);
+
+        this.versionBox.addActionListener(e -> onVersionOrLoaderChanged());
+        this.loaderBox.addActionListener(e -> onVersionOrLoaderChanged());
+        this.aetherClientBox.addActionListener(e -> {
+            if (this.aetherClientBox.isEnabled()) {
+                this.config.installAetherGlassClient(this.aetherClientBox.isSelected());
+            }
+        });
+        this.modpackBox.addActionListener(e -> {
+            Object sel = this.modpackBox.getSelectedItem();
+            if (sel instanceof ModpackProfile pack) {
+                this.config.selectModpack(pack.id());
+                this.versionBox.setSelectedItem(pack.minecraftVersion());
+                this.loaderBox.setSelectedItem(pack.loader());
+                updateAetherClientGate(pack.minecraftVersion(), pack.loader(), pack.installAetherGlassClient());
+            }
+        });
         constraints.gridx = 0;
         constraints.gridy++;
         settings.add(UiKit.muted("Память (МБ):"), constraints);
@@ -352,6 +396,132 @@ public final class LauncherUi {
         panel.add(center, BorderLayout.CENTER);
         panel.add(UiKit.card(null, bottom), BorderLayout.SOUTH);
         return panel;
+    }
+
+    private JPanel modpacksTab() {
+        JPanel panel = new JPanel(new BorderLayout(0, 12));
+        panel.setOpaque(false);
+        panel.setBorder(BorderFactory.createEmptyBorder(12, 16, 16, 16));
+
+        JTable table = new JTable(this.modpacksTableModel);
+        UiKit.styleTable(table);
+        table.getSelectionModel().addListSelectionListener(e -> {
+            if (e.getValueIsAdjusting()) {
+                return;
+            }
+            int row = table.getSelectedRow();
+            List<ModpackProfile> packs = this.config.modpacks();
+            if (row >= 0 && row < packs.size()) {
+                ModpackProfile pack = packs.get(row);
+                this.config.selectModpack(pack.id());
+                syncModpackControls();
+            }
+        });
+
+        JPanel createRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        createRow.setOpaque(false);
+        this.newPackNameField.setToolTipText("Название новой сборки (например: My PvP 1.20.1)");
+        JButton createPackBtn = UiKit.primaryButton("Создать сборку");
+        createPackBtn.addActionListener(e -> {
+            String name = this.newPackNameField.getText().trim();
+            String ver = this.versionBox.getSelectedItem() != null
+                    ? this.versionBox.getSelectedItem().toString() : this.config.selectedVersion();
+            String loader = this.loaderBox.getSelectedItem() != null
+                    ? this.loaderBox.getSelectedItem().toString() : this.config.selectedLoader();
+            ModpackProfile created = createModpack(name, ver, loader,
+                    this.aetherClientBox.isEnabled() && this.aetherClientBox.isSelected(),
+                    this.installModsBox.isSelected());
+            this.newPackNameField.setText("");
+            status("Создана сборка: " + created.name());
+            log("Создана сборка: " + created);
+        });
+        createRow.add(UiKit.muted("Название:"));
+        createRow.add(this.newPackNameField);
+        createRow.add(createPackBtn);
+
+        panel.add(UiKit.card("Карточки сборок (Modpacks — Vanilla / Fabric / Forge / NeoForge / Quilt)",
+                UiKit.scroll(table)), BorderLayout.CENTER);
+        panel.add(UiKit.card("Новая сборка", createRow), BorderLayout.SOUTH);
+        return panel;
+    }
+
+    private void onVersionOrLoaderChanged() {
+        String ver = this.versionBox.getSelectedItem() != null
+                ? this.versionBox.getSelectedItem().toString() : this.config.selectedVersion();
+        String loader = this.loaderBox.getSelectedItem() != null
+                ? this.loaderBox.getSelectedItem().toString() : this.config.selectedLoader();
+        boolean wasSupported = ModpackProfile.isAetherGlassSupported(this.config.selectedVersion(), this.config.selectedLoader());
+        this.config.selectedVersion(ver);
+        this.config.selectedLoader(loader);
+        boolean nowSupported = ModpackProfile.isAetherGlassSupported(ver, loader);
+        boolean checkState = nowSupported && (!wasSupported || this.aetherClientBox.isSelected());
+        updateAetherClientGate(ver, loader, checkState);
+    }
+
+    private void updateAetherClientGate(String ver, String loader, boolean preferredSelected) {
+        boolean supported = ModpackProfile.isAetherGlassSupported(ver, loader);
+        this.aetherClientBox.setEnabled(supported);
+        this.aetherClientBox.setSelected(supported && preferredSelected);
+        this.aetherClientBox.setToolTipText(supported
+                ? "Установить мод AetherGlass Client (1.21.11 Fabric)"
+                : "AetherGlass Client доступен только для 1.21.11 (Fabric). Для этой версии будут запущены ваши моды.");
+        this.config.installAetherGlassClient(this.aetherClientBox.isSelected());
+    }
+
+    private void syncModpackControls() {
+        List<ModpackProfile> packs = this.config.modpacks();
+        DefaultComboBoxModel<ModpackProfile> comboModel = new DefaultComboBoxModel<>(
+                packs.toArray(new ModpackProfile[0]));
+        this.modpackBox.setModel(comboModel);
+        ModpackProfile active = this.config.activeModpack();
+        this.modpackBox.setSelectedItem(active);
+        this.versionBox.setSelectedItem(this.config.selectedVersion());
+        this.loaderBox.setSelectedItem(this.config.selectedLoader());
+        updateAetherClientGate(this.config.selectedVersion(), this.config.selectedLoader(),
+                this.config.installAetherGlassClient());
+
+        this.modpacksTableModel.setRowCount(0);
+        for (ModpackProfile p : packs) {
+            this.modpacksTableModel.addRow(new Object[]{
+                    p.name(),
+                    p.minecraftVersion(),
+                    p.loader(),
+                    p.installAetherGlassClient() ? "Включён (1.21.11)" : "Отключён (свои моды)",
+                    p.autoOptimizeMods() ? "Авто (Sodium/Lithium)" : "Базовый"
+            });
+        }
+    }
+
+    /** Программный выбор версии и загрузчика (Блок 5.2). */
+    public void selectVersionAndLoader(String mcVersion, String loader) {
+        DefaultComboBoxModel<String> verModel = (DefaultComboBoxModel<String>) this.versionBox.getModel();
+        if (verModel.getIndexOf(mcVersion) < 0) {
+            verModel.addElement(mcVersion);
+        }
+        this.versionBox.setSelectedItem(mcVersion);
+        this.loaderBox.setSelectedItem(ModpackProfile.normalizeLoader(loader));
+        onVersionOrLoaderChanged();
+    }
+
+    public boolean isAetherGlassCheckboxEnabled() {
+        return this.aetherClientBox.isEnabled();
+    }
+
+    public boolean isAetherGlassCheckboxSelected() {
+        return this.aetherClientBox.isSelected();
+    }
+
+    public ModpackProfile createModpack(String name, String mcVersion, String loader,
+                                        boolean installAetherClient, boolean autoOptimize) {
+        ModpackProfile created = this.config.addOrUpdateModpack(
+                name, mcVersion, loader, installAetherClient, autoOptimize);
+        this.config.save(this.paths.launcherConfig());
+        syncModpackControls();
+        return created;
+    }
+
+    public List<ModpackProfile> modpacks() {
+        return this.config.modpacks();
     }
 
     private JPanel modsTab() {
@@ -820,6 +990,7 @@ public final class LauncherUi {
                     GameInstaller.Installation installation = new GameInstaller(
                             LauncherUi.this.paths,
                             LauncherUi.this.config.selectedVersion(),
+                            LauncherUi.this.config.selectedLoader(),
                             LOADER_VERSION,
                             new ProgressBridge(),
                             LauncherUi.this.cancelRequested::get).install();
@@ -895,32 +1066,61 @@ public final class LauncherUi {
     }
 
     private void installMods(GameInstaller.Installation installation) throws IOException, InterruptedException {
-        ModInstaller installer = ModInstaller.fromResource(this.paths, new ProgressBridge(),
-                this.cancelRequested::get);
-        List<Path> installed = installer.install();
-        log("Установлено модов: " + installed.size());
-        if (installer.manifest().fabricApi() != null) {
-            ModInstaller.Manifest.Mod api = installer.manifest().fabricApi();
-            Path target = this.paths.mods().resolve(api.fileName());
-            if (!Files.isRegularFile(target) || !Http.sha512(target).equalsIgnoreCase(api.sha512())) {
-                Http.download(api.url(), target, api.size(), api.sha1(), new ProgressBridge(),
-                        this.cancelRequested::get);
-                log("Установлен Fabric API: " + api.fileName());
+        String ver = this.config.selectedVersion();
+        String loader = this.config.selectedLoader();
+        if (ModpackProfile.LOADER_VANILLA.equalsIgnoreCase(loader)) {
+            log("Выбран загрузчик Vanilla (" + ver + ") — моды не требуются.");
+            return;
+        }
+        if (ModpackProfile.isAetherGlassSupported(ver, loader)) {
+            ModInstaller installer = ModInstaller.fromResource(this.paths, new ProgressBridge(),
+                    this.cancelRequested::get);
+            List<Path> installed = installer.install();
+            log("Установлено модов оптимизации (1.21.11): " + installed.size());
+            if (installer.manifest().fabricApi() != null) {
+                ModInstaller.Manifest.Mod api = installer.manifest().fabricApi();
+                Path target = this.paths.mods().resolve(api.fileName());
+                if (!Files.isRegularFile(target) || !Http.sha512(target).equalsIgnoreCase(api.sha512())) {
+                    Http.download(api.url(), target, api.size(), api.sha1(), new ProgressBridge(),
+                            this.cancelRequested::get);
+                    log("Установлен Fabric API: " + api.fileName());
+                } else {
+                    log("Fabric API уже установлен: " + api.fileName());
+                }
+            }
+            if (this.config.installAetherGlassClient()) {
+                Path clientJar = findClientModJar();
+                if (clientJar == null) {
+                    if (!showMissingClientModDialog()) {
+                        throw new IOException("запуск отменён: не найден собранный мод клиента");
+                    }
+                    log("Внимание: мод клиента AetherGlass не найден, игра запускается без него.");
+                } else {
+                    Path copied = installer.installClientMod(clientJar);
+                    log("Мод клиента установлен: " + copied.getFileName());
+                }
             } else {
-                log("Fabric API уже установлен: " + api.fileName());
+                log("Галочка «Установить AetherGlass Client» снята — запуск без мода клиента.");
+            }
+            refreshModsTable();
+        } else if (ModpackProfile.LOADER_FABRIC.equalsIgnoreCase(loader)) {
+            // Блок 5.3: Авто-докачка базовых модов оптимизации для любой другой версии Fabric
+            log("Авто-докачка базовых модов оптимизации для Fabric " + ver + "…");
+            String[] coreOptimizationSlugs = {"P7dR8mSH", "AANobbMI", "gvQqBUqZ", "uXXizFIs", "NNAgCjsB"};
+            for (String projectId : coreOptimizationSlugs) {
+                if (this.cancelRequested.get()) {
+                    break;
+                }
+                try {
+                    Path downloaded = ModrinthCatalog.installOneClick(
+                            this.paths, ModrinthCatalog.TYPE_MOD, projectId, ver,
+                            new ProgressBridge(), this.cancelRequested::get);
+                    log("Авто-докачка (" + ver + "): " + downloaded.getFileName());
+                } catch (Exception ignored) {
+                    // Если конкретный мод ещё не выпущен под старую версию, пропускаем без срыва запуска
+                }
             }
         }
-        Path clientJar = findClientModJar();
-        if (clientJar == null) {
-            if (!showMissingClientModDialog()) {
-                throw new IOException("запуск отменён: не найден собранный мод клиента");
-            }
-            log("Внимание: мод клиента AetherGlass не найден, игра запускается без него.");
-        } else {
-            Path copied = installer.installClientMod(clientJar);
-            log("Мод клиента установлен: " + copied.getFileName());
-        }
-        refreshModsTable();
     }
 
     private boolean showMissingClientModDialog() {

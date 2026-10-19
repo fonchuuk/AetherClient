@@ -19,6 +19,11 @@ public final class Easing {
         return value * value * value;
     }
 
+    public static float easeInOutSine(float t) {
+        float value = clamp01(t);
+        return (float) (-(Math.cos(Math.PI * value) - 1.0D) * 0.5D);
+    }
+
     public static float easeInOutQuad(float t) {
         float value = clamp01(t);
         return value < 0.5F ? 2.0F * value * value : 1.0F - (2.0F - 2.0F * value) * (1.0F - value);

@@ -12,32 +12,32 @@ import com.aetherglass.client.render.sky.SkyEffectBlender;
 import com.aetherglass.client.render.sky.SkyPreset;
 
 /**
- * Шейдер неба ({@code SkyShader}, Блок 4.4): живое многоцветное переливание купола неба,
- * анимированные ленты северного сияния / туманности и возможность наложить любой из
- * 16 процедурных шейдер-эффектов прямо на 3D-купол неба.
+ * Видео-шейдер неба ({@code SkyShader}, Блок 3.1–3.2):
+ * бесшовное проигрывание видео-пресетов на 3D-куполе неба с размытым плейсхолдером,
+ * выбором видео-пресета, настройкой скорости проигрывания и интенсивности.
  */
 public final class SkyEffectsModule extends Module {
-    private final EnumSetting<SkyPreset> preset = register(new EnumSetting<>("preset", "Пресет неба",
-            "Готовая палитра и шейдер купола неба", SkyPreset.AURORA,
+    private final EnumSetting<SkyPreset> preset = register(new EnumSetting<>("preset", "Видео-пресет неба",
+            "Выбор видео-сцены и палитры для купола неба", SkyPreset.AURORA,
             SkyPreset.values(), setting -> applyPreset()));
     private final BooleanSetting auroraDome = register(new BooleanSetting("auroraDome",
-            "Анимированный 3D-купол",
-            "Рисует живые переливающиеся волны и шейдерную анимацию прямо на куполе неба",
+            "Видео на 3D-куполе",
+            "Проигрывает бесшовное видео и шейдерные волны прямо на куполе неба",
             true, setting -> apply()));
-    private final EnumSetting<ShaderEffect> domeShader = register(new EnumSetting<>("domeShader",
-            "Шейдер на куполе неба",
-            "Выбор анимации на куполе неба (Северное сияние, Туманность, Призма, Жидкое стекло и др.)",
-            ShaderEffect.AURORA, ShaderEffect.values(), setting -> apply()));
+    private final FloatSetting speed = register(new FloatSetting("speed", "Скорость видео неба",
+            "Скорость проигрывания и вращения видео-купола неба",
+            0.55F, 0.05F, 3.00F, 0.05F, setting -> apply()));
+    private final FloatSetting intensity = register(new FloatSetting("intensity", "Интенсивность неба",
+            "Насколько ярко видео-пресет окрашивает небосвод и горизонт",
+            0.82F, 0.10F, 1.20F, 0.05F, setting -> apply()));
     private final FloatSetting domeOpacity = register(new FloatSetting("domeOpacity",
-            "Яркость анимации купола",
-            "Насыщенность переливающихся волн на куполе неба",
-            0.58F, 0.10F, 1.00F, 0.05F, setting -> apply()));
-    private final FloatSetting speed = register(new FloatSetting("speed", "Скорость перелива",
-            "Скорость течения цветовых волн и сияния на небе",
-            0.45F, 0.05F, 2.50F, 0.05F, setting -> apply()));
-    private final FloatSetting intensity = register(new FloatSetting("intensity", "Глубина оттенка неба",
-            "Насколько сильно шейдер окрашивает небосвод и горизонт",
-            0.78F, 0.10F, 1.00F, 0.05F, setting -> apply()));
+            "Прозрачность видео-купола",
+            "Плотность отображения видео-слоя на небесной сфере",
+            0.68F, 0.10F, 1.00F, 0.05F, setting -> apply()));
+    private final EnumSetting<ShaderEffect> domeShader = register(new EnumSetting<>("domeShader",
+            "Шейдер-фильтр купола",
+            "Дополнительный шейдерный слой поверх видео-купола неба",
+            ShaderEffect.AURORA, ShaderEffect.values(), setting -> apply()));
     private final ColorSetting first = register(new ColorSetting("colorA", "Цвет зенита",
             "Первый цвет перелива неба", SkyPreset.AURORA.first(), setting -> apply()));
     private final ColorSetting second = register(new ColorSetting("colorB", "Цвет сияния",
@@ -47,7 +47,7 @@ public final class SkyEffectsModule extends Module {
 
     public SkyEffectsModule() {
         super("sky", "Эффекты неба",
-                "SkyShader: плавный многоцветный перелив и живая 3D-анимация на куполе неба",
+                "Видео-небо (SkyShader): бесшовный купол с пресетами и скоростью",
                 ModuleCategory.VISUAL);
     }
 
@@ -65,6 +65,7 @@ public final class SkyEffectsModule extends Module {
 
     private void apply() {
         SkyEffectBlender.configure(
+                this.preset.get(),
                 this.first.get(),
                 this.second.get(),
                 this.third.get(),

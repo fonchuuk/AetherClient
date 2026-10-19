@@ -670,7 +670,7 @@ public final class AuroraInlineMenuScreen extends Screen {
         DrawUtil.drawFrostedPill(graphics, switchX, switchY, switchW, switchH, 7, alpha,
                 headerHover ? 0.35F : 0.0F, toggleCurr * 0.85F);
         int knobX = switchX + 2 + Math.round(toggleCurr * (switchW - 12));
-        DrawUtil.fillRounded(graphics, knobX, switchY + 2, 10, 10, 5, ColorUtil.fade(0xFFFFFFFF, alpha));
+        DrawUtil.drawSliderKnob(graphics, knobX, switchY + 2, 10, ColorUtil.fade(0xFFFFFFFF, alpha));
 
         Runnable toggleExpand = () -> {
             if (this.expandedModules.contains(module)) {
@@ -876,7 +876,7 @@ public final class AuroraInlineMenuScreen extends Screen {
                 DrawUtil.drawFrostedPill(graphics, swX, swY, swW, swH, 6, alpha,
                         0.0F, boolSetting.isEnabled() ? 0.85F : 0.0F);
                 int knobX = swX + (boolSetting.isEnabled() ? swW - 10 : 2);
-                DrawUtil.fillRounded(graphics, knobX, swY + 2, 8, 8, 4, ColorUtil.fade(0xFFFFFFFF, alpha));
+                DrawUtil.drawSliderKnob(graphics, knobX, swY + 2, 8, ColorUtil.fade(0xFFFFFFFF, alpha));
 
                 this.hitZones.add(new HitZone(x, y, width, SETTING_ROW_H,
                         boolSetting::toggle,
@@ -1033,12 +1033,10 @@ public final class AuroraInlineMenuScreen extends Screen {
         DrawUtil.fillRounded(graphics, sliderX, trackY, fillW, trackH, 2,
                 ColorUtil.fade(AuroraTheme.accent(), 0.90F * alpha));
 
-        int knobSize = 7;
+        int knobSize = 8;
         int knobX = sliderX + Math.round((sliderW - knobSize) * clamped);
-        int knobY = trackY - 1;
-        DrawUtil.fillRounded(graphics, knobX, knobY, knobSize, knobSize, 3, ColorUtil.fade(0xFFFFFFFF, alpha));
-        DrawUtil.fillRoundedBordered(graphics, knobX, knobY, knobSize, knobSize, 3, 0,
-                ColorUtil.fade(AuroraTheme.accent(), 0.75F * alpha), 1);
+        int knobY = trackY - 2;
+        DrawUtil.drawSliderKnob(graphics, knobX, knobY, knobSize, ColorUtil.fade(0xFFFFFFFF, alpha));
 
         if (this.draggingSlider == setting) {
             updateSliderFromMouse(setting, mouseX, sliderX, sliderW);
@@ -1319,6 +1317,70 @@ public final class AuroraInlineMenuScreen extends Screen {
             return true;
         }
 
+        if (key == GLFW.GLFW_KEY_F6) {
+            this.accountsTabActive = false;
+            this.selectedCategory = ModuleCategory.VISUAL;
+            this.expandedModules.clear();
+            Module hands = ModuleManager.get().module("hands");
+            if (hands != null) {
+                this.expandedModules.add(hands);
+                this.expandAnims.put(hands, 1.0F);
+            }
+            this.scrollOffset = 285.0F;
+            NotificationManager.get().setSuppressedDuringInit(false);
+            NotificationManager.get().pushModuleToggle("ViewModel & Руки", true);
+            NotificationManager.get().pushAdvancement("Алмазы! · AetherGlass 1.0.8");
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_F5) {
+            this.accountsTabActive = false;
+            this.selectedCategory = ModuleCategory.VISUAL;
+            this.expandedModules.clear();
+            Module hands = ModuleManager.get().module("hands");
+            if (hands != null) {
+                this.expandedModules.add(hands);
+                this.expandAnims.put(hands, 1.0F);
+            }
+            this.scrollOffset = 430.0F;
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_F7) {
+            this.accountsTabActive = false;
+            this.selectedCategory = ModuleCategory.VISUAL;
+            this.expandedModules.clear();
+            Module sky = ModuleManager.get().module("sky");
+            if (sky != null) {
+                this.expandedModules.add(sky);
+                this.expandAnims.put(sky, 1.0F);
+            }
+            this.scrollOffset = 68.0F;
+            NotificationManager.get().setSuppressedDuringInit(false);
+            NotificationManager.get().pushModuleToggle("Видео-небо (SkyShader)", true);
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_F9) {
+            this.accountsTabActive = false;
+            this.selectedCategory = ModuleCategory.INTERFACE;
+            this.expandedModules.clear();
+            Module inv = ModuleManager.get().module("inventory");
+            if (inv != null) {
+                this.expandedModules.add(inv);
+                this.expandAnims.put(inv, 1.0F);
+            }
+            this.scrollOffset = 0.0F;
+            NotificationManager.get().setSuppressedDuringInit(false);
+            NotificationManager.get().pushModuleToggle("Инвентарь (Liquid Glass)", true);
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_F10) {
+            NotificationManager.get().setSuppressedDuringInit(false);
+            NotificationManager.get().pushAdvancement("Мастер AetherGlass 1.0.8");
+            com.aetherglass.client.render.hud.HudLayout.get().resetAll();
+            if (this.minecraft != null) {
+                this.minecraft.setScreen(new HudEditorScreen(this));
+            }
+            return true;
+        }
         if (key == GLFW.GLFW_KEY_ESCAPE || key == GLFW.GLFW_KEY_RIGHT_SHIFT) {
             onClose();
             return true;

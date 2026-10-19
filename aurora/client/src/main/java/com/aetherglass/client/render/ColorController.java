@@ -98,6 +98,10 @@ public final class ColorController {
     }
 
     /** Акцентный цвет темы с учётом глобального радужного перелива. */
+    public static int currentAccent() {
+        return accent();
+    }
+
     public static int accent() {
         return resolve(com.aetherglass.client.gui.theme.AuroraTheme.accent());
     }

@@ -609,6 +609,58 @@ input:focus{
           </div>
         </div>
 
+        <!-- Менеджер сборок (Modpacks, Блок 5.1–5.3) -->
+        <div class="launch-card" style="margin-bottom:12px">
+          <div class="launch-top" style="margin-bottom:8px">
+            <div>
+              <b style="font-size:14px">Менеджер сборок (Modpacks)</b>
+              <div class="mono" style="font-size:11.5px;opacity:.78">Карточки сборок с выбором версии и загрузчика (Vanilla, Fabric, Forge, NeoForge, Quilt)</div>
+            </div>
+            <button class="btn primary" id="createModpackBtn" onclick="window.addModpackCard && window.addModpackCard()">+ Создать сборку</button>
+          </div>
+          <div class="tiles" id="modpackCards" style="margin-bottom:10px">
+            <div class="tile modpack-card on" data-ver="1.21.11" data-loader="Fabric" onclick="window.selectModpackCard && window.selectModpackCard(this)">
+              <div class="tile-head"><b>AetherGlass 1.21.11</b><span class="tile-badge ok">Fabric</span></div>
+              <span class="mono">MC 1.21.11 · AetherGlass Client + Sodium</span>
+            </div>
+            <div class="tile modpack-card" data-ver="1.20.1" data-loader="Fabric" onclick="window.selectModpackCard && window.selectModpackCard(this)">
+              <div class="tile-head"><b>Sodium Boost 1.20.1</b><span class="tile-badge">Fabric</span></div>
+              <span class="mono">MC 1.20.1 · Свои моды + Оптимизация</span>
+            </div>
+            <div class="tile modpack-card" data-ver="1.19.4" data-loader="Vanilla" onclick="window.selectModpackCard && window.selectModpackCard(this)">
+              <div class="tile-head"><b>Classic PvP 1.19.4</b><span class="tile-badge">Vanilla</span></div>
+              <span class="mono">MC 1.19.4 · Чистая версия</span>
+            </div>
+            <div class="tile modpack-card" data-ver="1.16.5" data-loader="Forge" onclick="window.selectModpackCard && window.selectModpackCard(this)">
+              <div class="tile-head"><b>Forge Mods 1.16.5</b><span class="tile-badge">Forge</span></div>
+              <span class="mono">MC 1.16.5 · Пользовательские моды</span>
+            </div>
+          </div>
+          <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
+            <input type="text" id="mpNameInput" placeholder="Название новой сборки" style="max-width:190px">
+            <select id="mpVersionSelect" onchange="window.syncAetherClientGate && window.syncAetherClientGate()" style="padding:7px 10px;border-radius:10px;background:rgba(16,24,42,0.55);color:#eef6ff;border:1px solid rgba(255,255,255,0.16)">
+              <option value="1.21.11" selected>1.21.11</option>
+              <option value="1.21.4">1.21.4</option>
+              <option value="1.20.4">1.20.4</option>
+              <option value="1.20.1">1.20.1</option>
+              <option value="1.19.4">1.19.4</option>
+              <option value="1.18.2">1.18.2</option>
+              <option value="1.16.5">1.16.5</option>
+            </select>
+            <select id="mpLoaderSelect" onchange="window.syncAetherClientGate && window.syncAetherClientGate()" style="padding:7px 10px;border-radius:10px;background:rgba(16,24,42,0.55);color:#eef6ff;border:1px solid rgba(255,255,255,0.16)">
+              <option value="Fabric" selected>Fabric</option>
+              <option value="Vanilla">Vanilla</option>
+              <option value="Forge">Forge</option>
+              <option value="NeoForge">NeoForge</option>
+              <option value="Quilt">Quilt</option>
+            </select>
+            <label id="aetherClientLabel" style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer">
+              <input type="checkbox" id="installAetherClientCheck" checked>
+              <span>Установить AetherGlass Client</span>
+            </label>
+          </div>
+        </div>
+
         <!-- Карточка запуска клиента с крупной акцентной кнопкой «Играть» и встроенным прогресс-баром -->
         <div class="launch-card">
           <div class="launch-top">
@@ -1104,6 +1156,51 @@ function escapeHtml(text){
 AetherGlass.log('AetherGlass Launcher запущен');
 AetherGlass.log('Liquid Glass UI: оптическое преломление + авто-Java 21');
 call('ready');
+
+window.syncAetherClientGate = function() {
+  const verEl = document.getElementById('mpVersionSelect');
+  const loaderEl = document.getElementById('mpLoaderSelect');
+  const chk = document.getElementById('installAetherClientCheck');
+  const lbl = document.getElementById('aetherClientLabel');
+  if (!verEl || !loaderEl || !chk) return;
+  const supported = (verEl.value === '1.21.11' && loaderEl.value === 'Fabric');
+  chk.disabled = !supported;
+  chk.checked = supported;
+  if (lbl) lbl.style.opacity = supported ? '1' : '0.45';
+};
+window.selectModpackCard = function(el) {
+  document.querySelectorAll('.modpack-card').forEach(c => c.classList.remove('on'));
+  el.classList.add('on');
+  const ver = el.getAttribute('data-ver') || '1.21.11';
+  const loader = el.getAttribute('data-loader') || 'Fabric';
+  const verEl = document.getElementById('mpVersionSelect');
+  const loaderEl = document.getElementById('mpLoaderSelect');
+  if (verEl) verEl.value = ver;
+  if (loaderEl) loaderEl.value = loader;
+  window.syncAetherClientGate();
+};
+window.addModpackCard = function() {
+  const nameEl = document.getElementById('mpNameInput');
+  const verEl = document.getElementById('mpVersionSelect');
+  const loaderEl = document.getElementById('mpLoaderSelect');
+  const chk = document.getElementById('installAetherClientCheck');
+  const wrap = document.getElementById('modpackCards');
+  if (!verEl || !loaderEl || !wrap) return;
+  const ver = verEl.value;
+  const loader = loaderEl.value;
+  const name = (nameEl && nameEl.value.trim()) ? nameEl.value.trim() : ('Сборка ' + ver + ' (' + loader + ')');
+  const card = document.createElement('div');
+  card.className = 'tile modpack-card';
+  card.setAttribute('data-ver', ver);
+  card.setAttribute('data-loader', loader);
+  card.onclick = function() { window.selectModpackCard(card); };
+  const clientInfo = (chk && chk.checked && !chk.disabled) ? 'AetherGlass Client' : 'Свои моды';
+  card.innerHTML = '<div class="tile-head"><b>' + name + '</b><span class="tile-badge">' + loader + '</span></div>' +
+                   '<span class="mono">MC ' + ver + ' · ' + clientInfo + '</span>';
+  wrap.appendChild(card);
+  if (nameEl) nameEl.value = '';
+  window.selectModpackCard(card);
+};
 </script>
 </body>
 </html>

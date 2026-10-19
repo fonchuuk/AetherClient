@@ -678,6 +678,7 @@ public final class HudPainter {
                 {"particles", "❄ Частицы"},
                 {"sky", "☀ Небо"},
                 {"rainbow", "🌈 Перелив"},
+                {"inventory", "🎒 Инв"},
                 {"CLEAN", "📷 Экран"}
         };
         int gap = 3;

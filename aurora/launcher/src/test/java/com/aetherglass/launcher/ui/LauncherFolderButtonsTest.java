@@ -84,4 +84,31 @@ class LauncherFolderButtonsTest {
             }
         }
     }
+
+    @Test
+    void modpacksSupportMultipleLoadersAndGateAetherGlassClientTo12111Fabric(@TempDir Path tempDir) {
+        Path gameDir = tempDir.resolve("modpack-test");
+        LauncherConfig config = new LauncherConfig(gameDir);
+        LauncherUi ui = new LauncherUi(config, null);
+
+        // На 1.21.11 (Fabric) галочка «Установить AetherGlass Client» активна и включена по умолчанию
+        ui.selectVersionAndLoader("1.21.11", "Fabric");
+        assertTrue(ui.isAetherGlassCheckboxEnabled(), "На 1.21.11 (Fabric) галочка должна быть активна");
+        assertTrue(ui.isAetherGlassCheckboxSelected(), "На 1.21.11 (Fabric) галочка должна быть включена по умолчанию");
+
+        // На 1.20.1 (Fabric) галочка становится неактивной и выключается, но сборку создать можно
+        ui.selectVersionAndLoader("1.20.1", "Fabric");
+        assertFalse(ui.isAetherGlassCheckboxEnabled(), "На 1.20.1 галочка AetherGlass должна быть неактивной");
+        assertFalse(ui.isAetherGlassCheckboxSelected(), "На 1.20.1 галочка AetherGlass должна быть снята");
+
+        var customPack = ui.createModpack("My Custom 1.20.1", "1.20.1", "Fabric", true, true);
+        assertEquals("1.20.1", customPack.minecraftVersion());
+        assertEquals("Fabric", customPack.loader());
+        assertFalse(customPack.installAetherGlassClient(), "Для 1.20.1 AetherGlass Client не должен ставиться");
+
+        // На 1.16.5 (Forge) и 1.19.4 (Vanilla) также создаётся сборка без AetherGlass Client
+        var forgePack = ui.createModpack("Forge 1.16.5", "1.16.5", "Forge", true, false);
+        assertEquals("Forge", forgePack.loader());
+        assertFalse(forgePack.installAetherGlassClient());
+    }
 }

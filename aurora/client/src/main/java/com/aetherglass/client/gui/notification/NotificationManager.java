@@ -29,6 +29,7 @@ public final class NotificationManager {
         ENABLED("ON", 0xFF5CE6A0),
         DISABLED("OFF", 0xFFFF6E80),
         KEYBIND("KEY", 0xFF78DCFF),
+        ACHIEVEMENT("ACH", 0xFFFFD166),
         INFO("INFO", 0xFFC89BFF);
 
         private final String badge;
@@ -126,6 +127,18 @@ public final class NotificationManager {
                 enabled ? "Модуль активирован" : "Модуль отключён",
                 enabled ? Type.ENABLED : Type.DISABLED,
                 2.3F
+        );
+    }
+
+    public void pushAdvancement(String advancementTitle) {
+        if (this.suppressedDuringInit) {
+            return;
+        }
+        push(
+                "Достижение получено",
+                advancementTitle == null || advancementTitle.isBlank() ? "Новое достижение!" : advancementTitle,
+                Type.ACHIEVEMENT,
+                3.4F
         );
     }
 

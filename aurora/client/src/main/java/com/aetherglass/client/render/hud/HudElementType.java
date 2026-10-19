@@ -36,7 +36,7 @@ public enum HudElementType {
     ARROWS("arrows", "Боезапас стрел", 0.685F, 0.855F, Alignment.RIGHT, false),
 
     // 6. Панель быстрого доступа (Quick Access, Блок 5.3) и дополнительные капсулы
-    QUICK_ACCESS("quick_access", "Быстрый доступ (Quick Access)", 0.355F, 0.018F, Alignment.CENTER, true),
+    QUICK_ACCESS("quick_access", "Быстрый доступ (Quick Access)", 0.985F, 0.062F, Alignment.RIGHT, true),
     FPS("fps", "Отдельный индикатор FPS", 0.245F, 0.018F, Alignment.LEFT, false),
     CLOCK("clock", "Отдельные часы", 0.245F, 0.062F, Alignment.RIGHT, false),
     SESSION("session", "Время сессии", 0.145F, 0.855F, Alignment.RIGHT, false);

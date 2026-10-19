@@ -78,11 +78,7 @@ public final class AuroraToggle extends AuroraWidget {
         DrawUtil.drawGlow(graphics, knobX, knobY, knobSize, knobSize, knobSize / 2, AuroraTheme.accent(),
                 0.25F + 0.55F * this.state.current());
         int knobColor = ColorUtil.lerp(AuroraTheme.textSecondary(), AuroraTheme.accent(), eased);
-        DrawUtil.fillRounded(graphics, knobX, knobY, knobSize, knobSize, knobSize / 2,
-                ColorUtil.fade(knobColor, alpha));
-        // Блик на ползунке: стеклянная «капля».
-        DrawUtil.fillRounded(graphics, knobX + 1, knobY + 1, knobSize - 2, Math.max(1, knobSize / 3),
-                Math.max(1, knobSize / 4), ColorUtil.fade(ColorUtil.brighten(knobColor, 0.45F), alpha));
+        DrawUtil.drawSliderKnob(graphics, knobX, knobY, knobSize, ColorUtil.fade(knobColor, alpha));
 
         renderRipple(graphics, x, y, width, height, radius, AuroraTheme.accent());
 

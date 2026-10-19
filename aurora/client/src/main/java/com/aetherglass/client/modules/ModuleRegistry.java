@@ -5,6 +5,7 @@ import com.aetherglass.client.modules.impl.CrosshairModule;
 import com.aetherglass.client.modules.impl.HandEffectsModule;
 import com.aetherglass.client.modules.impl.HudModule;
 import com.aetherglass.client.modules.impl.InterfaceModule;
+import com.aetherglass.client.modules.impl.InventoryModule;
 import com.aetherglass.client.modules.impl.ParticleModule;
 import com.aetherglass.client.modules.impl.RainbowModule;
 import com.aetherglass.client.modules.impl.SkyEffectsModule;
@@ -24,6 +25,7 @@ public final class ModuleRegistry {
         manager.register(new RainbowModule());
         manager.register(new CrosshairModule());
         manager.register(new HudModule());
+        manager.register(new InventoryModule());
         manager.register(new InterfaceModule());
     }
 }

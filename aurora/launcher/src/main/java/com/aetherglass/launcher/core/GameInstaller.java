@@ -35,9 +35,12 @@ import java.util.zip.ZipFile;
 public final class GameInstaller {
     public static final String FABRIC_PROFILE_URL =
             "https://meta.fabricmc.net/v2/versions/loader/%s/%s/profile/json";
+    public static final String QUILT_PROFILE_URL =
+            "https://meta.quiltmc.org/v3/versions/loader/%s/%s/profile/json";
 
     private final LauncherPaths paths;
     private final String minecraftVersion;
+    private final String loaderType;
     private final String loaderVersion;
     private final Progress progress;
     private final Http.CancelFlag cancel;
@@ -47,8 +50,14 @@ public final class GameInstaller {
 
     public GameInstaller(LauncherPaths paths, String minecraftVersion, String loaderVersion,
                          Progress progress, Http.CancelFlag cancel) {
+        this(paths, minecraftVersion, ModpackProfile.LOADER_FABRIC, loaderVersion, progress, cancel);
+    }
+
+    public GameInstaller(LauncherPaths paths, String minecraftVersion, String loaderType, String loaderVersion,
+                         Progress progress, Http.CancelFlag cancel) {
         this.paths = paths;
         this.minecraftVersion = minecraftVersion;
+        this.loaderType = ModpackProfile.normalizeLoader(loaderType);
         this.loaderVersion = loaderVersion;
         this.progress = progress == null ? new SilentProgress() : progress;
         this.cancel = cancel;
@@ -88,10 +97,20 @@ public final class GameInstaller {
         String assetIndexId = Json.string(Json.asObject(version.get("assetIndex")), "id", this.minecraftVersion);
         ensureAssets(version);
 
-        this.progress.stage("Профиль Fabric Loader " + this.loaderVersion);
-        Map<String, Object> fabric = ensureFabricProfile();
-        String fabricId = Json.requireString(fabric, "id");
-        downloadFabricLibraries(fabric);
+        Map<String, Object> fabric = Map.of();
+        String fabricId;
+        String resolvedMainClass;
+        if (ModpackProfile.LOADER_VANILLA.equalsIgnoreCase(this.loaderType)) {
+            this.progress.stage("Профиль Vanilla " + this.minecraftVersion);
+            fabricId = "vanilla-" + this.minecraftVersion;
+            resolvedMainClass = Json.string(version, "mainClass", "net.minecraft.client.main.Main");
+        } else {
+            this.progress.stage("Профиль " + this.loaderType + " Loader " + this.loaderVersion);
+            fabric = ensureFabricProfile();
+            fabricId = Json.requireString(fabric, "id");
+            resolvedMainClass = Json.requireString(fabric, "mainClass");
+            downloadFabricLibraries(fabric);
+        }
 
         Map<String, Object> versionArguments = version.get("arguments") instanceof Map
                 ? Json.asObject(version.get("arguments")) : Map.of();
@@ -126,7 +145,7 @@ public final class GameInstaller {
         List<Path> orderedClasspath = new ArrayList<>(this.classpath);
         orderedClasspath.add(clientJar);
 
-        return new Installation(this.minecraftVersion, fabricId, Json.requireString(fabric, "mainClass"),
+        return new Installation(this.minecraftVersion, fabricId, resolvedMainClass,
                 orderedClasspath, jvmArguments, List.copyOf(this.gameArguments), assetIndexId,
                 this.paths.nativesDir(this.minecraftVersion), logConfig,
                 logConfigArgumentOf(version), java.executable(), java.source().title());

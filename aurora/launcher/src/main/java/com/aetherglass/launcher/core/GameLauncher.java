@@ -29,7 +29,7 @@ import java.util.function.Consumer;
  */
 public final class GameLauncher {
     public static final String LAUNCHER_NAME = "AetherGlassLauncher";
-    public static final String LAUNCHER_VERSION = "1.0.0";
+    public static final String LAUNCHER_VERSION = "1.0.8";
 
     private final AtomicReference<Process> current = new AtomicReference<>();
 

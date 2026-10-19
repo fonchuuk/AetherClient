@@ -393,6 +393,37 @@ public final class AuroraMenuScreen extends AuroraScreen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        if (event.key() == GLFW.GLFW_KEY_F5) {
+            AuroraInlineMenuScreen s = new AuroraInlineMenuScreen(this, ModuleManager.get().module("hands"), com.aetherglass.client.modules.ModuleCategory.VISUAL);
+            client().setScreen(s);
+            s.keyPressed(event);
+            return true;
+        }
+        if (event.key() == GLFW.GLFW_KEY_F6) {
+            AuroraInlineMenuScreen s = new AuroraInlineMenuScreen(this, ModuleManager.get().module("hands"), com.aetherglass.client.modules.ModuleCategory.VISUAL);
+            client().setScreen(s);
+            s.keyPressed(event);
+            return true;
+        }
+        if (event.key() == GLFW.GLFW_KEY_F7) {
+            AuroraInlineMenuScreen s = new AuroraInlineMenuScreen(this, ModuleManager.get().module("sky"), com.aetherglass.client.modules.ModuleCategory.VISUAL);
+            client().setScreen(s);
+            s.keyPressed(event);
+            return true;
+        }
+        if (event.key() == GLFW.GLFW_KEY_F9) {
+            AuroraInlineMenuScreen s = new AuroraInlineMenuScreen(this, ModuleManager.get().module("inventory"), com.aetherglass.client.modules.ModuleCategory.INTERFACE);
+            client().setScreen(s);
+            s.keyPressed(event);
+            return true;
+        }
+        if (event.key() == GLFW.GLFW_KEY_F10) {
+            com.aetherglass.client.gui.notification.NotificationManager.get().setSuppressedDuringInit(false);
+            com.aetherglass.client.gui.notification.NotificationManager.get().pushAdvancement("Мастер AetherGlass 1.0.8");
+            com.aetherglass.client.render.hud.HudLayout.get().resetAll();
+            client().setScreen(new HudEditorScreen(this));
+            return true;
+        }
         if (event.key() == GLFW.GLFW_KEY_RIGHT_SHIFT) {
             if (client().level != null) {
                 beginSmoothClose();

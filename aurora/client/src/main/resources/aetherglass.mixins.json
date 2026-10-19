@@ -10,6 +10,8 @@
     "GameRendererMixin",
     "SkyRendererMixin",
     "KeyboardHandlerMixin",
-    "MouseHandlerMixin"
+    "MouseHandlerMixin",
+    "AbstractContainerScreenMixin",
+    "AdvancementToastMixin"
   ]
 }

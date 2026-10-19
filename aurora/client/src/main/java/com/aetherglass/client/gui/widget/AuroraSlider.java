@@ -105,13 +105,10 @@ public final class AuroraSlider extends AuroraWidget {
                 ColorUtil.fade(ColorUtil.brighten(AuroraTheme.accent(), 0.22F), 0.92F * alpha));
 
         // Выпуклая стеклянная ручка 8x8
-        int knobSize = 8;
+        int knobSize = 9;
         int knobX = x + Math.round((width - knobSize) * progress);
         int knobY = y + (height - knobSize) / 2;
-        DrawUtil.fillRounded(graphics, knobX, knobY, knobSize, knobSize, 4,
-                ColorUtil.fade(0xFFFFFFFF, alpha));
-        DrawUtil.fillRoundedBordered(graphics, knobX, knobY, knobSize, knobSize, 4, 0,
-                ColorUtil.fade(AuroraTheme.accent(), 0.75F * alpha), 1);
+        DrawUtil.drawSliderKnob(graphics, knobX, knobY, knobSize, ColorUtil.fade(0xFFFFFFFF, alpha));
 
         String text = this.binding.display();
         graphics.drawString(font, text, x + width + 5, y + (height - font.lineHeight) / 2,
