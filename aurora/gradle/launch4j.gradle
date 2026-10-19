@@ -1,0 +1,129 @@
+// Обёртка jar в настоящий Windows .exe (launch4j 3.50, кросс-компиляция на Linux).
+//
+// Важно: Launch4j 3.50 записывает строковые ресурсы (.rc) в однобайтовой кодировке
+// ISO-8859-1 и вызывает Win32 MessageBoxA. Любая кириллица в <messages>, <errTitle>,
+// <productName> или <fileDescription> превращается в знаки вопроса «????».
+// Поэтому все строки заголовка PE и системных сообщений JRE задаются чистым ASCII.
+
+configurations {
+    launch4jTool
+}
+
+dependencies {
+    launch4jTool 'net.sf.launch4j:launch4j:3.50'
+}
+
+def launch4jHome = layout.buildDirectory.dir('launch4j/home')
+def launch4jJar = launch4jHome.map { it.file('launch4j-3.50.jar') }
+def launch4jConfig = layout.buildDirectory.file('launch4j/config.xml')
+
+tasks.register('prepareLaunch4j', Copy) {
+    group = 'distribution'
+    description = 'Готовит кросс-компилятор launch4j: тулчейн MinGW + jar launch4j.'
+    from(rootProject.file('tools/launch4j'))
+    from({
+        configurations.launch4jTool.files.findAll {
+            it.name.startsWith('launch4j-3.50') && !it.name.contains('workdir')
+        }
+    })
+    into launch4jHome
+    doLast {
+        fileTree(launch4jHome.map { it.dir('bin') }).each { it.setExecutable(true, false) }
+    }
+}
+
+tasks.register('writeLaunch4jConfig') {
+    group = 'distribution'
+    description = 'Пишет описание будущего .exe для launch4j.'
+    dependsOn tasks.named('jar')
+    outputs.file(launch4jConfig)
+    def jarFile = tasks.named('jar').flatMap { it.archiveFile }
+    def exeFile = layout.buildDirectory.file('exe/' + project.launch4jExeName)
+    def iconFile = project.launch4jIcon
+    def productVersion = project.mod_version
+    doLast {
+        def externalJar = project.hasProperty('launch4jExternalJar')
+                && String.valueOf(project.launch4jExternalJar) == 'true'
+        def jarRef = externalJar ? jarFile.get().asFile.name : jarFile.get().asFile.absolutePath
+        def target = exeFile.get().asFile
+        target.parentFile.mkdirs()
+        def baseBundled = project.hasProperty('launch4jBundledJre') ? String.valueOf(project.launch4jBundledJre) : 'runtime'
+        def jreSearchPaths = "${baseBundled};%LOCALAPPDATA%\\AetherGlass\\runtime\\jdk-21;%LOCALAPPDATA%\\AetherGlass\\runtime;%APPDATA%\\AetherGlass\\runtime\\jdk-21;%APPDATA%\\AetherGlass\\runtime;%JAVA_HOME%"
+        def xml = """<?xml version="1.0" encoding="UTF-8"?>
+<launch4jConfig>
+  <dontWrapJar>${externalJar}</dontWrapJar>
+  <headerType>gui</headerType>
+  <jar>${jarRef}</jar>
+  <outfile>${target.absolutePath}</outfile>
+  <errTitle>${project.launch4jProductName}</errTitle>
+  <chdir>.</chdir>
+  <priority>normal</priority>
+  <downloadUrl>https://adoptium.net/temurin/releases/?version=21</downloadUrl>
+  <stayAlive>false</stayAlive>
+  <restartOnCrash>false</restartOnCrash>
+  <icon>${iconFile.absolutePath}</icon>
+${project.hasProperty('launch4jManifest') ? '  <manifest>' + project.launch4jManifest.absolutePath + '</manifest>' : ''}
+  <singleInstance>
+    <mutexName>${project.launch4jExeName.replace('.exe', '')}</mutexName>
+    <windowTitle>${project.launch4jProductName}</windowTitle>
+  </singleInstance>
+  <jre>
+    <path>${jreSearchPaths}</path>
+    <requiresJdk>false</requiresJdk>
+    <requires64Bit>true</requires64Bit>
+    <minVersion>21</minVersion>
+    <initialHeapSize>64</initialHeapSize>
+    <maxHeapSize>${project.launch4jHeapMax}</maxHeapSize>
+  </jre>
+  <versionInfo>
+    <fileVersion>${productVersion}.0</fileVersion>
+    <txtFileVersion>${productVersion}</txtFileVersion>
+    <fileDescription>${project.launch4jDescription}</fileDescription>
+    <copyright>AetherGlass Client</copyright>
+    <productVersion>${productVersion}.0</productVersion>
+    <txtProductVersion>${productVersion}</txtProductVersion>
+    <productName>${project.launch4jProductName}</productName>
+    <companyName>AetherGlass</companyName>
+    <internalName>${project.launch4jExeName.replace('.exe', '')}</internalName>
+    <originalFilename>${project.launch4jExeName}</originalFilename>
+  </versionInfo>
+  <messages>
+    <startupErr>Failed to start AetherGlass.</startupErr>
+    <jreNotFoundErr>JDK 21 not found. Please install Java 21 (64-bit) or run AetherGlass-Launcher.exe.</jreNotFoundErr>
+    <jreVersionErr>JDK 21 not found (Java 21 64-bit is required). Please install it.</jreVersionErr>
+    <launcherErr>Failed to start Java 21 runtime. Please reinstall JDK 21.</launcherErr>
+    <instanceAlreadyExistsMsg>AetherGlass is already running.</instanceAlreadyExistsMsg>
+  </messages>
+</launch4jConfig>
+"""
+        launch4jConfig.get().asFile.parentFile.mkdirs()
+        launch4jConfig.get().asFile.setText(xml, 'UTF-8')
+    }
+}
+
+tasks.register('exe', JavaExec) {
+    group = 'distribution'
+    description = 'Собирает настоящий Windows .exe (внутри — jar модуля).'
+    dependsOn 'prepareLaunch4j', 'writeLaunch4jConfig'
+    inputs.files(tasks.named('jar').flatMap { it.archiveFile }, project.launch4jIcon)
+    if (project.hasProperty('launch4jManifest')) {
+        inputs.file(project.launch4jManifest)
+    }
+    inputs.file(launch4jConfig)
+    classpath = files(launch4jJar) + configurations.launch4jTool
+    mainClass = 'net.sf.launch4j.Main'
+    args launch4jConfig.get().asFile.absolutePath
+    workingDir = launch4jHome
+    outputs.file(layout.buildDirectory.file('exe/' + project.launch4jExeName))
+    standardInput = new ByteArrayInputStream(new byte[0])
+    doLast {
+        if (project.hasProperty('launch4jExternalJar')
+                && String.valueOf(project.launch4jExternalJar) == 'true') {
+            def jar = tasks.named('jar').get().archiveFile.get().asFile
+            def near = layout.buildDirectory.file('exe/' + jar.name).get().asFile
+            near.parentFile.mkdirs()
+            java.nio.file.Files.copy(jar.toPath(), near.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        }
+    }
+}

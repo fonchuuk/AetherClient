@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "package": "com.aetherglass.client.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "minVersion": "0.8",
+  "client": [
+    "MinecraftMixin",
+    "MinecraftUserAccessor",
+    "ItemInHandRendererMixin",
+    "GameRendererMixin",
+    "SkyRendererMixin",
+    "KeyboardHandlerMixin",
+    "MouseHandlerMixin"
+  ]
+}

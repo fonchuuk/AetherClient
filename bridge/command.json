@@ -1,0 +1,6 @@
+{
+  "id": "cmd-20261019-213926",
+  "action": "sync_and_capture",
+  "restart_client": false,
+  "upload_target": "fonchuuk/WorcspasePrivateArena"
+}

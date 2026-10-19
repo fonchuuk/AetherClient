@@ -1,0 +1,71 @@
+// Установщик: отдельный модуль без внешних зависимостей (Swing + свой JSON).
+// Он кладёт лаунчер в каталог установки, создаёт ярлыки, пишет запись в
+// «Программы и компоненты» и умеет обновлять и удалять установленное.
+plugins { id 'application' }
+
+base { archivesName = 'AetherGlassInstaller' }
+version = project.mod_version
+group = project.maven_group
+
+application {
+    applicationName = 'AetherGlassInstaller'
+    mainClass = 'com.aetherglass.installer.InstallerMain'
+    applicationDefaultJvmArgs = ['-Xmx256m']
+}
+
+dependencies {
+    // Оформление установщика берётся из модуля лаунчера (UiKit/UiTheme), чтобы
+    // окно установки выглядело продолжением лаунчера, а не отдельной программой.
+    implementation project(':launcher')
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
+    maxHeapSize = '256m'
+}
+
+// ── Полезная нагрузка ────────────────────────────────────────────────────────
+// Внутрь jar установщика кладутся сам лаунчер (готовый .exe) и номер версии:
+// благодаря этому AetherGlass-Setup.exe — один самодостаточный файл.
+
+def versionFile = layout.buildDirectory.file('generated/version.txt')
+
+tasks.register('writeVersion') {
+    outputs.file(versionFile)
+    doLast {
+        def file = versionFile.get().asFile
+        file.parentFile.mkdirs()
+        file.text = project.mod_version
+    }
+}
+
+processResources {
+    dependsOn ':launcher:exe', ':client:remapJar', 'writeVersion'
+    from(rootProject.file('launcher/build/exe/AetherGlassLauncher.exe')) {
+        into 'payload'
+    }
+    // Сам мод клиента едет внутри установщика: установщик положит его в
+    // каталог модов игры, иначе лаунчер запустил бы ванильный Minecraft.
+    from(rootProject.file('client/build/libs/AetherGlass.jar')) {
+        into 'payload'
+    }
+    // Лаунчер — это exe и jar рядом: exe сам по себе только запускает JVM.
+    from(rootProject.file('launcher/build/libs/AetherGlassLauncher.jar')) {
+        into 'payload'
+    }
+    from(versionFile)
+}
+
+// ── Настоящий Windows .exe ───────────────────────────────────────────────────
+ext.launch4jExeName = 'AetherGlass-Setup.exe'
+ext.launch4jProductName = 'AetherGlass Setup'
+ext.launch4jDescription = 'AetherGlass Launcher Installer and Updater'
+ext.launch4jIcon = rootProject.file('assets/icons/setup.ico')
+ext.launch4jManifest = rootProject.file('assets/windows/setup.exe.manifest')
+// Полная поставка (zip) кладёт runtime рядом с установщиком — тогда он
+// запускается даже на компьютере без Java.
+ext.launch4jBundledJre = 'runtime'
+ext.launch4jHeapMax = '256'
+apply from: rootProject.file('gradle/launch4j.gradle')

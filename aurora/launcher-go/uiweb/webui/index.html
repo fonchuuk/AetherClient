@@ -1,0 +1,1109 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>AetherGlass</title>
+<style>
+:root{
+  --bg-0:#050b1e;
+  --bg-1:#0a1738;
+  --text:#f7fbff;
+  --muted:#bfd6f6;
+  --violet:#7b61ff;
+  --cyan:#2ee6ff;
+  --aqua:#3cf5c8;
+  --glass-top:rgba(165,205,255,.22);
+  --glass-bot:rgba(36,68,148,.12);
+  --edge:rgba(210,240,255,.26);
+  --spring:cubic-bezier(.34,1.56,.64,1);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; overflow:hidden; color:var(--text);
+  font:600 14px/1.45 "Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+  background:var(--bg-0);
+  -webkit-font-smoothing:antialiased;
+  text-shadow:0 1px 2px rgba(0,8,24,.45);
+  user-select:none; cursor:default;
+}
+
+/* ── Тонкий стилизованный скроллбар по всему лаунчеру (никаких белых полос из 2000-х) ── */
+*::-webkit-scrollbar{width:5px; height:5px}
+*::-webkit-scrollbar-track{background:transparent}
+*::-webkit-scrollbar-thumb{
+  background:linear-gradient(180deg,rgba(46,230,255,.42),rgba(123,97,255,.42));
+  border-radius:999px;
+}
+*::-webkit-scrollbar-thumb:hover{
+  background:linear-gradient(180deg,rgba(46,230,255,.72),rgba(123,97,255,.72));
+}
+
+/* ── Яркий, сочный живой фон под панелями для настоящего преломления в жидком стекле ── */
+.bg{position:fixed; inset:-20%; z-index:0; pointer-events:none;
+  background:radial-gradient(circle at 50% 35%,#0e2658 0%,#060d24 72%)}
+.blob{position:absolute; border-radius:50%; filter:blur(64px); opacity:.78;
+  animation:drift 28s ease-in-out infinite alternate}
+.blob.b1{width:58vw;height:58vw;left:-8%;top:-14%;
+  background:radial-gradient(circle,#1ce8ff 0%,#1468d6 45%,transparent 70%)}
+.blob.b2{width:50vw;height:50vw;right:-10%;top:0%;
+  background:radial-gradient(circle,#8c52ff 0%,#3c219e 48%,transparent 70%);
+  animation-duration:34s; animation-delay:-5s}
+.blob.b3{width:56vw;height:56vw;left:18%;bottom:-22%;
+  background:radial-gradient(circle,#24f0c3 0%,#0b729c 46%,transparent 70%);
+  animation-duration:39s; animation-delay:-11s}
+.blob.b4{width:38vw;height:38vw;right:10%;bottom:-8%;
+  background:radial-gradient(circle,#ff4ecd 0%,#6828b5 48%,transparent 70%);
+  opacity:.56; animation-duration:31s; animation-delay:-17s}
+.blob.b5{width:32vw;height:32vw;left:38%;top:12%;
+  background:radial-gradient(circle,#68f2ff 0%,#3a66ff 48%,transparent 70%);
+  opacity:.52; animation-duration:24s}
+@keyframes drift{
+  from{transform:translate3d(0,0,0) scale(1) rotate(0deg)}
+  to{transform:translate3d(6%,5%,0) scale(1.18) rotate(8deg)}
+}
+
+/* ── Жидкое стекло (Liquid Glass) + скользящий «солнечный зайчик» по граням ── */
+.glass{
+  position:relative; border-radius:22px; border:1px solid var(--edge);
+  background:linear-gradient(155deg,var(--glass-top),var(--glass-bot));
+  backdrop-filter:blur(28px) saturate(210%) brightness(1.14);
+  -webkit-backdrop-filter:blur(28px) saturate(210%) brightness(1.14);
+  box-shadow:
+    inset 0 1.5px 1px rgba(255,255,255,.55),
+    inset 0 -2px 6px rgba(4,12,34,.42),
+    inset 0 0 36px rgba(80,210,255,.09),
+    0 22px 54px rgba(0,4,18,.52);
+  overflow:hidden;
+}
+.glass.lens::before{
+  content:''; position:absolute; inset:-2px; border-radius:inherit; z-index:0;
+  pointer-events:none;
+  backdrop-filter:url(#lens) blur(4px);
+  -webkit-backdrop-filter:url(#lens) blur(4px);
+}
+/* Скользящий солнечный зайчик по поверхности и граням стекла */
+.glass::after{
+  content:''; position:absolute; inset:-40% -60%; border-radius:inherit; z-index:1;
+  pointer-events:none;
+  background:linear-gradient(115deg,
+    rgba(255,255,255,0) 36%,
+    rgba(255,255,255,.16) 46%,
+    rgba(170,245,255,.28) 50%,
+    rgba(255,255,255,.14) 54%,
+    rgba(255,255,255,0) 64%);
+  transform:translateX(-45%) rotate(6deg);
+  animation:sunBunny 11s ease-in-out infinite;
+}
+.glass:hover::after{
+  animation-duration:5.5s;
+}
+@keyframes sunBunny{
+  0%,100%{transform:translateX(-42%) translateY(-4%) rotate(6deg)}
+  50%{transform:translateX(42%) translateY(4%) rotate(6deg)}
+}
+.glass > *{position:relative; z-index:2}
+
+/* ── Каркас окна ── */
+.app{position:relative; z-index:1; height:100%; display:flex; flex-direction:column;
+  padding:16px 18px; gap:12px}
+header{display:flex; align-items:center; gap:14px; padding:10px 18px; height:64px;
+  border-radius:20px; flex:0 0 64px}
+.logo{width:40px;height:40px;border-radius:14px;display:grid;place-items:center;
+  font-weight:900; font-size:20px; letter-spacing:-.5px; flex:0 0 auto; color:#fff;
+  background:radial-gradient(circle at 30% 22%,rgba(255,255,255,.95),rgba(46,230,255,.72) 38%,rgba(123,97,255,.68) 78%);
+  border:1px solid rgba(255,255,255,.72);
+  box-shadow:inset 0 2px 3px rgba(255,255,255,.9), 0 8px 22px rgba(46,200,255,.45),
+    inset 0 -6px 12px rgba(20,16,84,.45)}
+h1{margin:0; font-size:18px; font-weight:800; letter-spacing:.2px; color:#fff;
+  text-shadow:0 0 14px rgba(46,230,255,.42)}
+.sub{color:var(--muted); font-size:12px; font-weight:600; margin-top:1px}
+.spacer{flex:1}
+
+/* ── Статус-капсула ── */
+.pill{display:flex; align-items:center; gap:9px; padding:8px 16px; border-radius:999px;
+  font-size:12.5px; font-weight:700; max-width:44vw}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted); flex:0 0 auto;
+  animation:breathe 2.6s ease-in-out infinite}
+@keyframes breathe{0%,100%{opacity:.55;transform:scale(.88)}50%{opacity:1;transform:scale(1.14)}}
+.k-good .dot{background:#3cf5c8; box-shadow:0 0 12px #3cf5c8}
+.k-bad  .dot{background:#ff6c7c; box-shadow:0 0 12px #ff6c7c}
+.k-warn .dot{background:#ffc766; box-shadow:0 0 12px #ffc766}
+.k-info .dot{background:var(--cyan); box-shadow:0 0 12px var(--cyan)}
+.k-good{color:#c9fff0} .k-bad{color:#ffd2d7} .k-warn{color:#ffe8bd} .k-info{color:#d4f8ff}
+
+/* ── Тело: левое меню-капля и правая панель ── */
+.body{flex:1; display:flex; gap:14px; min-height:0}
+.rail{width:214px; flex:0 0 214px; padding:12px 10px; display:flex; flex-direction:column; gap:8px;
+  position:relative}
+
+/* Выбранная вкладка в левом меню — выпуклая 3D-капля воды с ярким бликом и солнечным зайчиком */
+.indicator{
+  position:absolute; left:10px; right:10px; top:12px; height:46px; border-radius:18px;
+  background:
+    radial-gradient(120% 95% at 28% 16%, rgba(255,255,255,.72) 0%, rgba(112,242,255,.42) 32%, rgba(123,97,255,.38) 68%, rgba(12,28,74,.52) 100%);
+  border:1px solid rgba(235,252,255,.72);
+  box-shadow:
+    inset 0 2.5px 4px rgba(255,255,255,.92),
+    inset 0 -5px 10px rgba(6,18,54,.58),
+    inset 0 0 18px rgba(46,230,255,.38),
+    0 10px 26px rgba(32,168,255,.42),
+    0 2px 8px rgba(123,97,255,.35);
+  backdrop-filter:blur(16px) saturate(200%);
+  -webkit-backdrop-filter:blur(16px) saturate(200%);
+  transition:transform .46s var(--spring);
+  z-index:1; overflow:hidden;
+}
+/* Скользящий солнечный зайчик внутри активной капли-вкладки */
+.indicator::before{
+  content:''; position:absolute; top:2px; left:12%; right:12%; height:42%;
+  border-radius:999px;
+  background:linear-gradient(180deg,rgba(255,255,255,.78),rgba(255,255,255,0));
+  pointer-events:none;
+}
+.indicator::after{
+  content:''; position:absolute; inset:-20% -50%;
+  background:linear-gradient(108deg,
+    rgba(255,255,255,0) 35%,
+    rgba(255,255,255,.55) 48%,
+    rgba(195,250,255,.82) 50%,
+    rgba(255,255,255,.45) 52%,
+    rgba(255,255,255,0) 65%);
+  animation:dropletGlint 4.2s ease-in-out infinite;
+  pointer-events:none;
+}
+@keyframes dropletGlint{
+  0%,100%{transform:translateX(-48%) rotate(8deg)}
+  50%{transform:translateX(48%) rotate(8deg)}
+}
+
+.tab{
+  position:relative; z-index:2; height:46px; border-radius:18px; border:1px solid transparent;
+  background:transparent; color:var(--muted); font:inherit; font-weight:700; font-size:14px;
+  letter-spacing:.15px; text-align:left; padding:0 16px; cursor:pointer;
+  display:flex; align-items:center; gap:10px;
+  transition:color .2s, background .22s, transform .3s var(--spring), text-shadow .2s;
+}
+.tab svg{width:17px; height:17px; flex:0 0 17px; opacity:.85; transition:transform .25s, opacity .25s}
+.tab:hover{color:#fff; background:rgba(255,255,255,.08); transform:translateX(2px)}
+.tab:hover svg{opacity:1; transform:scale(1.08)}
+.tab:active{transform:scale(.97)}
+.tab.on{color:#fff; font-weight:800; text-shadow:0 1px 6px rgba(6,24,68,.75), 0 0 12px rgba(255,255,255,.45)}
+.tab.on svg{opacity:1; filter:drop-shadow(0 0 6px rgba(255,255,255,.7))}
+
+/* ── Карточка активной страницы ── */
+.card{flex:1; padding:22px 26px; min-width:0; overflow:hidden; display:flex; flex-direction:column}
+.page{display:none; flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; padding-right:4px;
+  flex-direction:column; animation:enter .38s var(--spring)}
+.page.on{display:flex}
+@keyframes enter{from{opacity:0; transform:translateY(8px) scale(.99)}to{opacity:1; transform:none}}
+h2{margin:0 0 4px; font-size:22px; font-weight:800; letter-spacing:-.2px; color:#fff;
+  text-shadow:0 0 16px rgba(46,230,255,.28)}
+.hint{color:var(--muted); font-size:12.5px; font-weight:600; margin:0 0 14px}
+.row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+.grid{display:grid; grid-template-columns:150px 1fr; gap:14px 18px; align-items:center;
+  max-width:680px}
+label{color:#dceaff; font-size:13px; font-weight:700}
+
+/* ── Кнопки-капли (Liquid Glass Lens Buttons) со скользящим бликом ── */
+.btn{
+  position:relative; border-radius:16px; padding:10px 18px;
+  border:1px solid rgba(220,245,255,.32);
+  color:#fff; font:inherit; font-weight:700; font-size:13.5px; cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  background:
+    radial-gradient(120% 100% at 30% 15%, rgba(255,255,255,.28) 0%, rgba(140,210,255,.14) 48%, rgba(20,42,96,.24) 100%);
+  backdrop-filter:blur(16px) saturate(180%);
+  -webkit-backdrop-filter:blur(16px) saturate(180%);
+  box-shadow:
+    inset 0 1.5px 2px rgba(255,255,255,.62),
+    inset 0 -3px 6px rgba(4,12,38,.45),
+    0 8px 20px rgba(0,6,24,.36);
+  overflow:hidden;
+  transition:transform .28s var(--spring), box-shadow .22s, background .22s, border-color .22s, opacity .2s;
+}
+.btn svg{width:15px; height:15px; flex:0 0 15px}
+.btn::after{
+  content:''; position:absolute; inset:-30% -60%; pointer-events:none;
+  background:linear-gradient(110deg,rgba(255,255,255,0) 38%,rgba(255,255,255,.42) 50%,rgba(255,255,255,0) 62%);
+  transform:translateX(-70%) rotate(8deg);
+  transition:transform .55s ease;
+}
+.btn:hover:not(:disabled){
+  transform:translateY(-2px) scale(1.03);
+  border-color:rgba(235,252,255,.68);
+  box-shadow:
+    inset 0 2px 3px rgba(255,255,255,.82),
+    inset 0 -3px 8px rgba(12,36,88,.45),
+    0 12px 28px rgba(0,8,28,.46),
+    0 0 22px rgba(46,230,255,.32);
+}
+.btn:hover:not(:disabled)::after{
+  transform:translateX(70%) rotate(8deg);
+}
+.btn:active:not(:disabled){transform:scale(.96) translateY(1px)}
+.btn:disabled{opacity:.42; cursor:not-allowed}
+
+.btn.primary{
+  background:
+    radial-gradient(125% 100% at 28% 15%, rgba(255,255,255,.52) 0%, rgba(46,230,255,.46) 38%, rgba(123,97,255,.56) 82%, rgba(42,28,136,.65) 100%);
+  border-color:rgba(225,248,255,.62);
+  box-shadow:
+    inset 0 2px 3px rgba(255,255,255,.82),
+    inset 0 -4px 8px rgba(18,12,68,.52),
+    0 10px 26px rgba(68,140,255,.44);
+}
+.btn.ghost{
+  background:rgba(16,32,72,.34);
+  border-color:rgba(200,230,255,.20);
+}
+
+/* ── ГЛАВНАЯ КНОПКА «ИГРАТЬ» — самая крупная, заметная и акцентная в интерфейсе ── */
+.btn-play{
+  padding:15px 44px;
+  font-size:18px;
+  font-weight:900;
+  letter-spacing:.5px;
+  border-radius:20px;
+  color:#fff;
+  text-shadow:0 2px 8px rgba(6,24,68,.65), 0 0 14px rgba(255,255,255,.55);
+  background:
+    radial-gradient(125% 110% at 26% 14%, rgba(255,255,255,.78) 0%, rgba(56,242,255,.72) 32%, rgba(96,118,255,.76) 68%, rgba(112,64,245,.82) 100%);
+  border:1.5px solid rgba(240,253,255,.88);
+  box-shadow:
+    inset 0 2.5px 4px rgba(255,255,255,.95),
+    inset 0 -5px 12px rgba(16,12,74,.58),
+    0 14px 36px rgba(46,210,255,.52),
+    0 0 28px rgba(123,97,255,.48);
+}
+.btn-play svg{width:20px; height:20px; flex:0 0 20px; filter:drop-shadow(0 1px 4px rgba(0,0,0,.4))}
+.btn-play:hover:not(:disabled){
+  transform:translateY(-3px) scale(1.045);
+  box-shadow:
+    inset 0 3px 5px rgba(255,255,255,1),
+    inset 0 -5px 12px rgba(16,12,74,.52),
+    0 18px 42px rgba(46,225,255,.68),
+    0 0 36px rgba(123,97,255,.65);
+}
+
+/* ── Поля ввода с глубокой внутренней тенью (inner shadow) и лёгкой прозрачностью ── */
+input[type=text],input[type=number]{
+  width:100%; padding:10px 14px; border-radius:14px; color:#fff; font:inherit;
+  font-weight:600; font-size:13.5px;
+  border:1px solid rgba(200,235,255,.22);
+  background:rgba(5,12,32,.38);
+  backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+  box-shadow:
+    inset 0 3px 9px rgba(0,2,12,.68),
+    inset 0 1px 2px rgba(0,0,0,.52),
+    0 1px 0 rgba(255,255,255,.16);
+  transition:border-color .2s, box-shadow .2s, background .2s;
+}
+input::placeholder{color:rgba(190,215,248,.58); font-weight:600}
+input:focus{
+  outline:none;
+  background:rgba(8,18,46,.52);
+  border-color:rgba(86,232,255,.72);
+  box-shadow:
+    inset 0 3px 9px rgba(0,2,12,.72),
+    0 0 0 3px rgba(46,230,255,.24),
+    0 0 18px rgba(46,230,255,.22);
+}
+
+/* ── Стеклянная строка поиска с иконкой лупы внутри ── */
+.search-wrap{
+  position:relative; flex:1; display:flex; align-items:center;
+}
+.search-wrap svg{
+  position:absolute; left:14px; width:17px; height:17px; color:var(--cyan);
+  pointer-events:none; z-index:3; filter:drop-shadow(0 0 6px rgba(46,230,255,.45));
+}
+.search-wrap input[type=text]{
+  padding-left:40px;
+  background:linear-gradient(160deg,rgba(14,28,68,.46),rgba(6,14,38,.56));
+  border:1px solid rgba(180,235,255,.32);
+}
+
+/* ── Переключатель-капля ── */
+.switch{width:52px;height:28px;border-radius:999px;position:relative;cursor:pointer;
+  border:1px solid rgba(215,242,255,.28); background:rgba(6,14,38,.55);
+  box-shadow:inset 0 2px 6px rgba(0,0,0,.6);
+  transition:background .28s var(--spring), box-shadow .28s}
+.switch i{position:absolute; top:3px; left:3px; width:20px;height:20px;border-radius:50%;
+  background:radial-gradient(circle at 32% 24%,#fff,#b9e8ff);
+  box-shadow:0 2px 8px rgba(0,0,0,.5), inset 0 1px 2px #fff;
+  transition:transform .38s var(--spring)}
+.switch.on{background:linear-gradient(90deg,rgba(46,230,255,.75),rgba(123,97,255,.78));
+  box-shadow:0 0 20px rgba(46,230,255,.45), inset 0 1px 1px rgba(255,255,255,.45)}
+.switch.on i{transform:translateX(24px)}
+
+/* ── Карточки компонентов на вкладке «Игра» (с аккуратными иконками вместо точек-светофоров) ── */
+.tiles{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:14px}
+.tile{
+  position:relative; padding:14px 16px; border-radius:18px;
+  border:1px solid rgba(210,240,255,.22);
+  background:linear-gradient(155deg,rgba(170,215,255,.14),rgba(24,48,108,.10));
+  box-shadow:
+    inset 0 1.5px 1px rgba(255,255,255,.38),
+    inset 0 -3px 8px rgba(4,10,30,.38),
+    0 10px 24px rgba(0,4,18,.28);
+  display:flex; flex-direction:column; gap:6px; min-height:78px; justify-content:center;
+}
+.tile-head{display:flex; align-items:center; justify-content:space-between; gap:8px}
+.tile b{font-size:14px; font-weight:800; color:#fff; letter-spacing:.2px}
+.tile .mono{font-size:12px; font-weight:600; color:var(--muted); word-break:break-word}
+.tile-badge{
+  display:inline-flex; align-items:center; gap:5px;
+  padding:3px 9px; border-radius:999px; font-size:11px; font-weight:800;
+  border:1px solid rgba(255,255,255,.24);
+  background:rgba(255,255,255,.08); color:#dceaff;
+}
+.tile-badge svg{width:13px; height:13px; flex:0 0 13px}
+.tile.on .tile-badge{
+  background:linear-gradient(135deg,rgba(60,245,200,.26),rgba(46,230,255,.16));
+  border-color:rgba(60,245,200,.58); color:#d8fff3;
+  box-shadow:0 0 14px rgba(60,245,200,.25);
+}
+.tile.off .tile-badge{
+  background:linear-gradient(135deg,rgba(46,230,255,.20),rgba(123,97,255,.20));
+  border-color:rgba(140,220,255,.42); color:#e2f6ff;
+}
+@media (max-width:760px){ .tiles{grid-template-columns:1fr} }
+
+/* ── Главный блок запуска и прогресс-бара внутри карточки клиента ── */
+.launch-card{
+  padding:18px 20px; border-radius:20px; margin-bottom:14px;
+  border:1px solid rgba(210,245,255,.28);
+  background:
+    radial-gradient(120% 120% at 15% 10%, rgba(46,230,255,.16) 0%, rgba(123,97,255,.12) 52%, rgba(10,22,56,.28) 100%);
+  box-shadow:
+    inset 0 1.5px 2px rgba(255,255,255,.45),
+    inset 0 -3px 10px rgba(4,10,30,.42),
+    0 12px 30px rgba(0,6,22,.32);
+  display:flex; flex-direction:column; gap:14px;
+}
+.launch-top{display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap}
+.launch-actions{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+.folder-Chips{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.progress-wrap{display:flex; flex-direction:column; gap:7px}
+.progress-meta{display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:12.5px; font-weight:700}
+.progress-meta span{color:#e8f6ff}
+.progress-meta b{color:var(--cyan); font-family:"Cascadia Mono","Consolas",monospace}
+
+.bar{height:13px;border-radius:999px;overflow:hidden;position:relative;
+  background:rgba(4,10,28,.62); border:1px solid rgba(200,238,255,.22);
+  box-shadow:inset 0 2px 6px rgba(0,0,0,.65)}
+.bar > i{display:block;height:100%;width:0;border-radius:999px;
+  background:linear-gradient(90deg,#2ee6ff,#7b61ff,#3cf5c8);
+  box-shadow:0 0 20px rgba(46,230,255,.75);
+  transition:width .4s cubic-bezier(.22,1,.36,1)}
+.bar > u{position:absolute; inset:0; border-radius:999px; pointer-events:none;
+  background:linear-gradient(180deg,rgba(255,255,255,.52),transparent 55%)}
+
+/* ── Карточки модов и ресурспаков (иконка, название, описание и кнопка) ── */
+.mods-toolbar{
+  display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
+  padding:10px 14px; border-radius:16px; margin-bottom:12px;
+  background:rgba(12,26,64,.34); border:1px solid rgba(200,235,255,.20);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.28);
+}
+.mods-toolbar .btn{padding:8px 13px; font-size:12.5px; border-radius:13px}
+
+.results{
+  flex:1 1 220px; overflow-y:auto; overflow-x:hidden; min-height:150px;
+  margin:0 -4px 10px; padding:2px 6px;
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:10px;
+  align-content:start;
+}
+.result-caption{grid-column:1 / -1; padding:2px 6px; font-size:12px; color:var(--muted)}
+
+.mod-card{
+  position:relative; display:grid; grid-template-columns:46px 1fr auto; gap:12px; align-items:center;
+  padding:12px 14px; border-radius:16px;
+  border:1px solid rgba(210,240,255,.22);
+  background:linear-gradient(155deg,rgba(165,210,255,.14),rgba(18,38,88,.16));
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.35), inset 0 -2px 6px rgba(4,10,30,.36), 0 6px 18px rgba(0,4,16,.26);
+  transition:transform .26s var(--spring), background .22s, border-color .22s, box-shadow .22s;
+}
+.mod-card:hover{
+  transform:translateY(-2px);
+  border-color:rgba(120,235,255,.52);
+  background:linear-gradient(155deg,rgba(185,225,255,.20),rgba(28,56,120,.22));
+  box-shadow:inset 0 1.5px 2px rgba(255,255,255,.55), 0 10px 24px rgba(0,6,22,.38), 0 0 18px rgba(46,230,255,.20);
+}
+.mod-card img,.mod-card .stub{
+  width:46px; height:46px; border-radius:12px; object-fit:cover;
+  background:radial-gradient(circle at 30% 25%,rgba(46,230,255,.35),rgba(123,97,255,.28));
+  border:1px solid rgba(255,255,255,.32);
+  box-shadow:0 4px 12px rgba(0,0,0,.38);
+  display:grid; place-items:center; color:#fff; font-weight:800; font-size:16px;
+}
+.mod-card-body{min-width:0; display:flex; flex-direction:column; gap:3px}
+.mod-card-title{display:flex; align-items:center; gap:7px; flex-wrap:wrap}
+.mod-card-title b{font-weight:800; font-size:13.5px; color:#fff}
+.mod-card-ver{font-size:11px; font-weight:700; padding:1px 7px; border-radius:999px;
+  background:rgba(46,230,255,.16); border:1px solid rgba(46,230,255,.35); color:#cdf8ff}
+.mod-card-desc{
+  color:var(--muted); font-size:12px; font-weight:600; line-height:1.35;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+.mod-card .btn{padding:8px 14px; font-size:12.5px; border-radius:13px; white-space:nowrap}
+
+.mods{
+  flex:0 1 180px; min-height:110px; overflow-y:auto; overflow-x:hidden;
+  margin:2px -4px 0; padding:2px 6px;
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(290px,1fr)); gap:9px;
+  align-content:start;
+}
+
+/* ── Консоль на вкладке «Лог» ── */
+.console-wrap{
+  flex:1; min-height:0; display:flex; flex-direction:column;
+  border-radius:18px; overflow:hidden;
+  background:linear-gradient(165deg,rgba(6,14,36,.64),rgba(3,8,22,.76));
+  border:1px solid rgba(190,235,255,.24);
+  box-shadow:inset 0 4px 16px rgba(0,2,10,.72), inset 0 1px 0 rgba(255,255,255,.22), 0 12px 32px rgba(0,4,18,.42);
+  backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+}
+.console-head{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding:9px 14px; background:rgba(255,255,255,.05);
+  border-bottom:1px solid rgba(200,235,255,.14);
+  font:700 12px/1 "JetBrains Mono","Cascadia Mono","Consolas",monospace; color:var(--cyan);
+}
+.log{
+  flex:1; overflow-y:auto; padding:12px 16px;
+  font:600 12.5px/1.68 "JetBrains Mono","Cascadia Mono","Consolas",monospace;
+  color:#d8ebff; white-space:pre-wrap; word-break:break-word; user-select:text;
+}
+.log div{padding:1px 0; animation:slide .25s var(--spring)}
+@keyframes slide{from{opacity:0; transform:translateX(-5px)}to{opacity:1; transform:none}}
+
+.info{padding:12px 16px; border-radius:16px; background:rgba(14,30,72,.34);
+  border:1px solid rgba(200,235,255,.20); font-size:13px; line-height:1.6; margin-bottom:12px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.24)}
+.cut{margin:14px 0 8px; font-size:12px; font-weight:800; letter-spacing:.7px;
+  text-transform:uppercase; color:#c8e4ff}
+.warn{padding:12px 15px; border-radius:16px; margin-top:12px; font-size:12.5px; line-height:1.6;
+  color:#ffe9bf; background:rgba(255,196,92,.11);
+  border:1px solid rgba(255,205,112,.34);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18)}
+.warn b{color:#fff6e5}
+.info b{color:#fff}
+.foot{margin-top:auto; padding-top:12px; display:flex; flex-direction:column; gap:8px}
+.mono{font-family:"JetBrains Mono","Cascadia Mono","Consolas",monospace; font-size:12px; color:var(--muted)}
+
+/* ── Блок аккаунтов внизу страницы «Игра» ── */
+.accs{
+  margin-top:4px; padding-top:12px;
+  display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
+  border-top:1px solid rgba(200,235,255,.16);
+}
+.accs .lbl{font-size:13px; color:var(--muted); line-height:1.5}
+.accs .lbl b{color:#fff; font-weight:800}
+.accpanel{margin-top:12px; padding-top:4px; animation:slide .22s ease both}
+.accpanel[hidden]{display:none}
+
+/* ── Плашка обновления ── */
+.update{
+  display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
+  margin-bottom:14px; padding:12px 16px; border-radius:16px;
+  border:1px solid rgba(60,245,200,.45);
+  background:linear-gradient(120deg,rgba(60,245,200,.22),rgba(46,230,255,.08));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.32), 0 8px 22px rgba(0,0,0,.28);
+}
+.update[hidden]{display:none}
+.update-text{display:flex; flex-direction:column; gap:3px}
+.update-text b{font-size:13.5px; color:#ebfff8}
+.update-text .mono{font-size:11.5px; color:#b8f2de}
+</style>
+</head>
+<body>
+
+<!-- Оптический фильтр преломления воды/линзы -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="lens" x="-25%" y="-25%" width="150%" height="150%"
+          color-interpolation-filters="sRGB">
+    <feTurbulence type="fractalNoise" baseFrequency="0.011 0.014" numOctaves="2"
+                  seed="7" result="noise"/>
+    <feGaussianBlur in="noise" stdDeviation="1.1" result="soft"/>
+    <feDisplacementMap in="SourceGraphic" in2="soft" scale="16"
+                       xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>
+
+<div class="bg">
+  <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+  <div class="blob b4"></div><div class="blob b5"></div>
+</div>
+
+<div class="app">
+  <header class="glass lens">
+    <div class="logo">A</div>
+    <div>
+      <h1>AetherGlass</h1>
+      <div class="sub" id="versions">Minecraft · Fabric · свой клиент</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="pill glass" id="pill"><span class="dot"></span><span id="statusText">Готов к работе</span></div>
+  </header>
+
+  <div class="body">
+    <!-- Левое меню: 4 вкладки (вкладка Java полностью убрана, активная вкладка — выпуклая 3D-капля воды) -->
+    <nav class="rail glass lens">
+      <div class="indicator" id="indicator"></div>
+      <button class="tab on" data-page="1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <span>Игра</span>
+      </button>
+      <button class="tab" data-page="2">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>Настройки</span>
+      </button>
+      <button class="tab" data-page="3">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        <span>Моды и РП</span>
+      </button>
+      <button class="tab" data-page="4">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        <span>Лог</span>
+      </button>
+    </nav>
+
+    <main class="card glass lens">
+      <div class="update" id="updateBar" hidden>
+        <div class="update-text">
+          <b>Доступно обновление</b>
+          <span class="mono" id="updateInfo"></span>
+        </div>
+        <button class="btn primary" id="updateBtn">Обновить</button>
+      </div>
+
+      <!-- 1. Вкладка «Игра» -->
+      <section class="page on" data-page="1">
+        <h2>Игра</h2>
+        <p class="hint">Установка автоматически подготовит Minecraft, Fabric, клиент AetherGlass и Java 21.</p>
+
+        <!-- Три стеклянные карточки с аккуратными иконками статуса (галочка / стрелка обновления) -->
+        <div class="tiles">
+          <div class="tile" id="tGame">
+            <div class="tile-head">
+              <b>Minecraft</b>
+              <span class="tile-badge" id="tGameBadge"></span>
+            </div>
+            <span class="mono" id="tGameV">проверка…</span>
+          </div>
+          <div class="tile" id="tFabric">
+            <div class="tile-head">
+              <b>Fabric Loader</b>
+              <span class="tile-badge" id="tFabricBadge"></span>
+            </div>
+            <span class="mono" id="tFabricV">проверка…</span>
+          </div>
+          <div class="tile" id="tMod">
+            <div class="tile-head">
+              <b>Клиент AetherGlass</b>
+              <span class="tile-badge" id="tModBadge"></span>
+            </div>
+            <span class="mono" id="tModV">проверка…</span>
+          </div>
+        </div>
+
+        <!-- Карточка запуска клиента с крупной акцентной кнопкой «Играть» и встроенным прогресс-баром -->
+        <div class="launch-card">
+          <div class="launch-top">
+            <div class="launch-actions">
+              <button class="btn btn-play" id="playBtn">
+                <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+                <span>Играть</span>
+              </button>
+              <button class="btn primary" id="installBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>Установить / обновить</span>
+              </button>
+              <button class="btn ghost" id="cancelBtn">Отмена</button>
+            </div>
+            <div class="folder-Chips">
+              <button class="btn ghost" id="gameRootBtn" title="Открыть коренную папку игры">Коренная папка</button>
+              <button class="btn ghost" id="gameModsBtn" title="Открыть папку модов">Папка Mods</button>
+              <button class="btn ghost" id="gameLogsBtn" title="Открыть папку логов">Логи</button>
+            </div>
+          </div>
+
+          <div class="progress-wrap">
+            <div class="progress-meta">
+              <span id="gameInfo">Готов к установке или запуску</span>
+              <b id="progressPct">0%</b>
+            </div>
+            <div class="bar"><i id="barFill"></i><u></u></div>
+            <div class="mono" style="font-size:11.5px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+              <span>Папка игры: <span id="gameFolderPath" style="user-select:text">определяется…</span></span>
+              <span id="javaAutoStatus">Java 21: автоматически</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="accs">
+          <div class="lbl">
+            Аккаунты <b>Microsoft</b> + <b>Оффлайн аккаунты</b><br>
+            <span class="mono" id="accNow">Вы не вошли.</span>
+          </div>
+          <button class="btn" id="switchAccBtn">Скрыть</button>
+        </div>
+
+        <div class="accpanel" id="accPanel">
+          <div class="info" id="playerText">Вы не вошли.</div>
+          <div class="row">
+            <button class="btn primary" id="loginBtn">Войти через Microsoft</button>
+            <button class="btn ghost" id="logoutBtn">Выйти</button>
+          </div>
+
+          <div class="cut">Офлайн-аккаунт (без лицензии)</div>
+          <div class="grid" style="max-width:540px">
+            <label>Никнейм игрока</label>
+            <div class="row" style="flex-wrap:nowrap">
+              <input type="text" id="offlineName" maxlength="16" spellcheck="false"
+                     placeholder="латиница, цифры и _ — от 3 до 16">
+              <button class="btn primary" id="offlineBtn" style="flex:0 0 auto">Войти офлайн</button>
+            </div>
+          </div>
+          <div class="warn">
+            <b>Без входа в Microsoft.</b> Одиночная игра и локальная сеть работают полностью.
+            Серверы с проверкой лицензии (и Realms) требуют вход через Microsoft.
+          </div>
+          <div class="foot">
+            <div class="mono" id="accountHint">Профиль хранится в каталоге игры, рядом с настройками.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Вкладка «Настройки» (поля с внутренней тенью и полупрозрачностью) -->
+      <section class="page" data-page="2">
+        <h2>Настройки</h2>
+        <p class="hint">Все параметры сохраняются автоматически. Java 21 настраивается и скачивается автоматически в фоновом режиме.</p>
+        <div class="grid">
+          <label>Каталог игры</label>
+          <div>
+            <div class="row" style="flex-wrap:nowrap">
+              <input type="text" id="gameDir">
+              <button class="btn ghost" id="dirPickBtn" style="flex:0 0 auto">Обзор…</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <button class="btn ghost" id="settingsRootBtn">Коренная папка</button>
+              <button class="btn ghost" id="settingsModsBtn">Папка Mods</button>
+            </div>
+          </div>
+          <label>Память ОЗУ, МБ</label>
+          <div class="row" style="flex-wrap:nowrap">
+            <input type="number" id="minMem" step="256" title="Минимум МБ">
+            <span class="mono">—</span>
+            <input type="number" id="maxMem" step="512" title="Максимум МБ">
+          </div>
+          <label>Окно игры</label>
+          <div class="row" style="flex-wrap:nowrap">
+            <input type="number" id="winW" step="10">
+            <span class="mono">×</span>
+            <input type="number" id="winH" step="10">
+          </div>
+          <label>Ставить моды</label>
+          <div class="switch on" id="modsSwitch"><i></i></div>
+        </div>
+      </section>
+
+      <!-- 3. Вкладка «Моды и Ресурспаки» (стеклянный поиск с лупой, карточки модов, аккуратный тулбар папок) -->
+      <section class="page" data-page="3">
+        <h2>Моды и Ресурспаки</h2>
+        <p class="hint">Бесконечный каталог Modrinth и встроенный пакет оптимизации с установкой в 1 клик.</p>
+
+        <!-- Аккуратный стеклянный тулбар переключения разделов и быстрого открытия папок -->
+        <div class="mods-toolbar">
+          <div class="row">
+            <button class="btn primary" id="modTypeModsBtn">Моды (Fabric)</button>
+            <button class="btn ghost" id="modTypeRpBtn">Ресурспаки</button>
+            <span class="mono" id="modFilesInfo" style="margin-left:6px"></span>
+          </div>
+          <div class="row">
+            <button class="btn ghost" id="modsRefreshBtn">Обновить список</button>
+            <button class="btn ghost" id="modsRootBtn">Коренная папка</button>
+            <button class="btn ghost" id="modsFolderBtn">Папка Mods</button>
+            <button class="btn ghost" id="rpFolderBtn">Папка Ресурспаков</button>
+          </div>
+        </div>
+
+        <!-- Стеклянная строка поиска с иконкой лупы внутри -->
+        <div class="row" style="flex-wrap:nowrap; margin-bottom:12px">
+          <div class="search-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="modQuery" spellcheck="false"
+                   placeholder="Поиск модов и ресурспаков (например: sodium, iris, xaero, faithful)…">
+          </div>
+          <button class="btn primary" id="modSearchBtn" style="flex:0 0 auto">Найти</button>
+          <button class="btn ghost" id="modPopularBtn" style="flex:0 0 auto">Популярные</button>
+        </div>
+
+        <div class="results" id="modResults"></div>
+
+        <div class="cut">Базовый пакет оптимизации клиента</div>
+        <div class="mods" id="modsList"></div>
+      </section>
+
+      <!-- 4. Вкладка «Лог» (полупрозрачный тёмный консольный блок с моноширинным шрифтом) -->
+      <section class="page" data-page="4">
+        <h2>Лог</h2>
+        <p class="hint">Журнал работы лаунчера и запуска игры в реальном времени.</p>
+        <div class="console-wrap">
+          <div class="console-head">
+            <span>AETHERGLASS CONSOLE // LIVE STREAM</span>
+            <div class="row">
+              <button class="btn ghost" id="logClearBtn" style="padding:6px 14px;font-size:12px">Очистить</button>
+              <button class="btn primary" id="openBtn" style="padding:6px 14px;font-size:12px">Открыть папку</button>
+            </div>
+          </div>
+          <div class="log" id="logView"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const pages = [...document.querySelectorAll('.page')];
+const tabs  = [...document.querySelectorAll('.tab')];
+const indicator = $('indicator');
+
+/* ── Переключение вкладок с плавным перетеканием 3D-капли ── */
+function selectTab(index){
+  tabs.forEach((tab, i) => tab.classList.toggle('on', i === index));
+  pages.forEach((page, i) => page.classList.toggle('on', i === index));
+  indicator.style.transform = 'translateY(' + (index * 54) + 'px)';
+}
+tabs.forEach((tab, index) => tab.addEventListener('click', () => selectTab(index)));
+
+const accPanel = $('accPanel');
+$('updateBtn').onclick = () => {
+  $('updateBtn').disabled = true;
+  $('updateBtn').textContent = 'Скачиваю…';
+  call('applyUpdate').catch(() => {
+    $('updateBtn').disabled = false;
+    $('updateBtn').textContent = 'Обновить';
+  });
+};
+
+$('switchAccBtn').addEventListener('click', () => {
+  accPanel.hidden = !accPanel.hidden;
+  $('switchAccBtn').textContent = accPanel.hidden ? 'Сменить аккаунт' : 'Скрыть';
+  if (!accPanel.hidden) { $('offlineName').focus(); }
+});
+selectTab(0);
+
+/* ── Вызовы в Go ── */
+function call(name, ...args){
+  const fn = window[name];
+  if (typeof fn !== 'function'){ AetherGlass.log('нет функции ' + name); return; }
+  const result = fn(...args);
+  if (result && typeof result.catch === 'function'){
+    result.catch((error) => AetherGlass.log('Ошибка: ' + error));
+  }
+  return result;
+}
+
+/* ── Запоминание размера окна лаунчера при изменении ── */
+let resizeTimer = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    const w = Math.max(window.outerWidth || 0, window.innerWidth || 0);
+    const h = Math.max(window.outerHeight || 0, window.innerHeight || 0);
+    if (w >= 1100 && h >= 700 && typeof window.saveLauncherSize === 'function') {
+      call('saveLauncherSize', JSON.stringify({ w, h }));
+    }
+  }, 400);
+});
+
+/* ── Сохранение настроек ── */
+let saveTimer = 0;
+let hiddenJavaPath = '';
+function collect(){
+  return JSON.stringify({
+    gameDirectory: $('gameDir').value,
+    javaPath: hiddenJavaPath,
+    minMemory: parseInt($('minMem').value, 10) || 0,
+    maxMemory: parseInt($('maxMem').value, 10) || 0,
+    width: parseInt($('winW').value, 10) || 0,
+    height: parseInt($('winH').value, 10) || 0,
+    mods: $('modsSwitch').classList.contains('on')
+  });
+}
+function scheduleSave(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => call('saveSettings', collect()), 450);
+}
+['gameDir','minMem','maxMem','winW','winH'].forEach((id) => {
+  $(id).addEventListener('change', scheduleSave);
+});
+$('modsSwitch').addEventListener('click', () => {
+  $('modsSwitch').classList.toggle('on');
+  scheduleSave();
+});
+
+/* ── Кнопки ── */
+$('loginBtn').onclick        = () => call('login');
+function enterOffline(){
+  const name = $('offlineName').value.trim();
+  if (!name){ AetherGlass.log('Введите имя игрока для офлайн-профиля'); return; }
+  call('loginOffline', name);
+}
+$('offlineBtn').onclick      = enterOffline;
+$('offlineName').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') enterOffline();
+});
+$('logoutBtn').onclick       = () => call('logout');
+$('playBtn').onclick         = () => call('play');
+$('installBtn').onclick      = () => call('install');
+$('cancelBtn').onclick       = () => call('cancelTask');
+$('dirPickBtn').onclick      = () => call('pickFolder');
+$('modsRefreshBtn').onclick  = () => call('refreshMods');
+$('modPopularBtn').onclick   = browsePopular;
+if ($('modTypeModsBtn')) $('modTypeModsBtn').onclick = () => call('setModProjectType', 'mod');
+if ($('modTypeRpBtn'))   $('modTypeRpBtn').onclick   = () => call('setModProjectType', 'resourcepack');
+
+let modAutoLoading = false;
+let currentModOffset = 0;
+let currentModTotal = 0;
+$('modResults').addEventListener('scroll', () => {
+  const box = $('modResults');
+  if (modAutoLoading || currentModOffset >= currentModTotal) return;
+  if (box.scrollTop + box.clientHeight >= box.scrollHeight - 80) {
+    modAutoLoading = true;
+    call('moreMods');
+  }
+});
+
+function browsePopular(){
+  $('modQuery').value = '';
+  call('browseMods');
+}
+function runSearch(){
+  const query = $('modQuery').value.trim();
+  if (!query){ browsePopular(); return; }
+  call('searchMods', query);
+}
+$('modSearchBtn').onclick = runSearch;
+$('modQuery').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') runSearch();
+});
+$('logClearBtn').onclick     = () => call('clearLog');
+$('openBtn').onclick         = () => call('openFolder');
+$('gameRootBtn').onclick     = () => call('openFolder');
+$('gameModsBtn').onclick     = () => call('openModsFolder');
+$('gameLogsBtn').onclick     = () => call('openLogsFolder');
+if ($('modsRootBtn'))     $('modsRootBtn').onclick     = () => call('openFolder');
+if ($('modsFolderBtn'))   $('modsFolderBtn').onclick   = () => call('openModsFolder');
+if ($('rpFolderBtn'))     $('rpFolderBtn').onclick     = () => call('openResourcePacksFolder');
+if ($('settingsRootBtn')) $('settingsRootBtn').onclick = () => call('openFolder');
+if ($('settingsModsBtn')) $('settingsModsBtn').onclick = () => call('openModsFolder');
+
+const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+const ICON_UPDATE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><polyline points="7 11 12 16 17 11"/><line x1="5" y1="20" x2="19" y2="20"/></svg>';
+
+function setTile(id, ok, text, valueId, badgeId){
+  const t = $(id); if (!t) return;
+  t.classList.toggle('on', !!ok);
+  t.classList.toggle('off', !ok);
+  const v = $(valueId); if (v) v.textContent = text;
+  const b = $(badgeId);
+  if (b) {
+    b.innerHTML = ok
+      ? (ICON_CHECK + '<span>Готово</span>')
+      : (ICON_UPDATE + '<span>Установить</span>');
+  }
+}
+
+const AetherGlass = {
+  state(s){
+    if (!s) return;
+    hiddenJavaPath = s.javaPath || '';
+    $('versions').textContent = 'Minecraft ' + (s.version||'') + ' · Fabric ' +
+      (s.loader||'') + ' · свой клиент' +
+      (s.build && s.build !== 'dev' ? '  ·  сборка ' + s.build : '');
+
+    $('playerText').textContent = s.loggedIn
+      ? (s.offline
+          ? 'Офлайн-профиль: ' + s.player + ' (одиночная игра и локальная сеть).'
+          : 'Аккаунт Microsoft: ' + s.player + '. Можно запускать игру.')
+      : 'Вы не вошли. Войдите через Microsoft или укажите никнейм для офлайн-игры.';
+    const bar = $('updateBar');
+    if (s.update && s.update.version) {
+      const size = s.update.assetSize ? Math.round(s.update.assetSize / 1048576) + ' МБ' : '';
+      $('updateInfo').textContent = 'версия ' + s.update.version + (size ? '  ·  ' + size : '');
+      bar.hidden = false;
+    } else {
+      bar.hidden = true;
+    }
+
+    const gameReady = !!(s.installed && s.installed !== '');
+    setTile('tGame',   gameReady, gameReady ? ('Minecraft ' + s.version + ' установлен') : ('Minecraft ' + (s.version || '1.21.11') + ' · готов к установке'), 'tGameV', 'tGameBadge');
+    setTile('tFabric', gameReady, gameReady ? ('Fabric Loader ' + s.loader + ' активен') : ('Fabric Loader ' + (s.loader || '0.19.5') + ' · ставится автоматически'), 'tFabricV', 'tFabricBadge');
+    setTile('tMod',    !!s.modReady, s.modReady ? 'Клиент AetherGlass установлен в mods' : 'Встроен в лаунчер · распакуется при запуске', 'tModV', 'tModBadge');
+
+    if ($('javaAutoStatus')) {
+      $('javaAutoStatus').textContent = 'Java 21: ' + (s.java || 'автоматически (системная / Mojang)');
+    }
+
+    $('accNow').textContent = s.loggedIn
+      ? (s.offline ? 'Оффлайн: ' + s.player : 'Microsoft: ' + s.player)
+      : 'Вы не вошли.';
+    $('loginBtn').disabled   = !!s.busy || s.loggedIn;
+    $('logoutBtn').disabled  = !!s.busy || !s.loggedIn;
+    $('offlineBtn').disabled = !!s.busy;
+    if (document.activeElement !== $('offlineName')){
+      $('offlineName').value = s.offlineName || '';
+    }
+
+    const pct = Math.max(0, Math.min(100, Math.round(s.progress || (gameReady && !s.busy ? 100 : 0))));
+    $('gameInfo').textContent = s.busy
+      ? (s.status || 'Выполняется установка и проверка файлов…')
+      : (s.installed
+          ? 'Клиент установлен и готов к игре (' + s.installed + (s.mods ? ' + пакет оптимизации' : '') + ')'
+          : 'Нажмите «Играть» или «Установить / обновить» — все файлы и Java 21 скачаются автоматически');
+    $('progressPct').textContent = pct + '%';
+    $('playBtn').disabled    = !!s.busy;
+    $('installBtn').disabled = !!s.busy;
+    $('cancelBtn').disabled  = !s.busy;
+    $('barFill').style.width = pct + '%';
+
+    $('gameFolderPath').textContent = s.gameDir || 'Путь не определён';
+    if (document.activeElement !== $('gameDir')) $('gameDir').value = s.gameDir || '';
+    if (document.activeElement !== $('minMem'))  $('minMem').value  = s.minMemory || 1024;
+    if (document.activeElement !== $('maxMem'))  $('maxMem').value  = s.maxMemory || 4096;
+    if (document.activeElement !== $('winW'))    $('winW').value    = s.width || 1280;
+    if (document.activeElement !== $('winH'))    $('winH').value    = s.height || 720;
+    $('modsSwitch').classList.toggle('on', !!s.mods);
+
+    const pill = $('pill');
+    pill.className = 'pill glass k-' + (s.kind || 'muted');
+    $('statusText').textContent = s.status || 'Готов к работе';
+
+    const pType = s.modProjectType === 'resourcepack' ? 'resourcepack' : 'mod';
+    if ($('modTypeModsBtn')) {
+      $('modTypeModsBtn').className = pType === 'mod' ? 'btn primary' : 'btn ghost';
+    }
+    if ($('modTypeRpBtn')) {
+      $('modTypeRpBtn').className = pType === 'resourcepack' ? 'btn primary' : 'btn ghost';
+    }
+    currentModOffset = s.modOffset || 0;
+    currentModTotal = s.modTotal || 0;
+    modAutoLoading = false;
+    renderResults(s.modResults, s.modOffset, s.modTotal, s.modQuery, pType);
+
+    const modCount = (s.modFiles && s.modFiles.length) ? s.modFiles.length : 0;
+    const rpCount = (s.resourcePackFiles && s.resourcePackFiles.length) ? s.resourcePackFiles.length : 0;
+    $('modFilesInfo').textContent = 'Установлено модов: ' + modCount + ' · ресурспаков: ' + rpCount;
+
+    /* Карточки встроенных модов оптимизации (иконка, название, описание и кнопка) */
+    const list = $('modsList');
+    list.innerHTML = '';
+    (s.modRows || []).forEach((row) => {
+      const card = document.createElement('div');
+      card.className = 'mod-card';
+      const installed = /установлен/.test(row.State || '');
+      const initials = (row.Name || 'M').slice(0, 2).toUpperCase();
+      card.innerHTML =
+        '<div class="stub">' + escapeHtml(initials) + '</div>' +
+        '<div class="mod-card-body">' +
+          '<div class="mod-card-title"><b>' + escapeHtml(row.Name) + '</b>' +
+            (row.Version ? '<span class="mod-card-ver">' + escapeHtml(row.Version) + '</span>' : '') +
+          '</div>' +
+          '<div class="mod-card-desc">' + escapeHtml(row.Purpose || 'Мод оптимизации клиента') + '</div>' +
+        '</div>' +
+        '<button class="btn ' + (installed ? 'ghost' : 'primary') + '">' +
+          (installed ? '✓ Установлен' : 'Скачать / Установить') +
+        '</button>';
+      card.querySelector('button').onclick = () => call('install');
+      list.appendChild(card);
+    });
+    if (!s.modRows || !s.modRows.length){
+      list.innerHTML = '<div class="mono" style="grid-column:1/-1;padding:6px">Список пуст — нажмите «Обновить список».</div>';
+    }
+  },
+  log(line){
+    const view = $('logView');
+    const atBottom = view.scrollTop + view.clientHeight >= view.scrollHeight - 20;
+    const row = document.createElement('div');
+    row.textContent = line;
+    view.appendChild(row);
+    while (view.childElementCount > 600) view.removeChild(view.firstChild);
+    if (atBottom) view.scrollTop = view.scrollHeight;
+  },
+  clearLog(){ $('logView').innerHTML = ''; }
+};
+window.AetherGlass = AetherGlass;
+
+/* Карточки каталога Modrinth: иконка, название, краткое описание и кнопка «Скачать / Установить» */
+function renderResults(rows, offset, total, query, pType){
+  const box = $('modResults');
+  const prevScroll = box.scrollTop;
+  box.innerHTML = '';
+  if (!rows || !rows.length){
+    box.innerHTML = '<div class="mono result-caption">Ничего не найдено.</div>';
+    return;
+  }
+  const typeLabel = pType === 'resourcepack' ? 'ресурспаков' : 'модов';
+  const caption = document.createElement('div');
+  caption.className = 'mono result-caption';
+  caption.textContent = (query ? 'По запросу «' + query + '»: ' : 'Популярные в каталоге: ')
+    + 'показано ' + rows.length + ' из ' + formatCount(total) + ' ' + typeLabel;
+  box.appendChild(caption);
+
+  rows.forEach((hit) => {
+    const item = document.createElement('div');
+    item.className = 'mod-card';
+    const initials = ((hit.title || hit.slug || 'M').trim().slice(0, 2)).toUpperCase();
+    const icon = hit.icon_url
+      ? '<img src="' + escapeHtml(hit.icon_url) + '" alt="">'
+      : '<div class="stub">' + escapeHtml(initials) + '</div>';
+    const desc = hit.description || 'Проект Modrinth для Minecraft ' + '1.21.11';
+    item.innerHTML = icon +
+      '<div class="mod-card-body">' +
+        '<div class="mod-card-title"><b>' + escapeHtml(hit.title || hit.slug) + '</b>' +
+          '<span class="mod-card-ver">' + formatCount(hit.downloads) + ' загрузок</span>' +
+        '</div>' +
+        '<div class="mod-card-desc">' + escapeHtml(desc) + '</div>' +
+      '</div>' +
+      '<button class="btn primary">Скачать / Установить</button>';
+    item.querySelector('button').onclick = () => call('installMod', hit.project_id);
+    box.appendChild(item);
+  });
+
+  if (offset < total){
+    const more = document.createElement('div');
+    more.className = 'result-caption';
+    more.style.paddingTop = '6px';
+    const button = document.createElement('button');
+    button.className = 'btn ghost';
+    button.textContent = 'Показать ещё (' + rows.length + ' / ' + formatCount(total) + ')';
+    button.onclick = () => call('moreMods');
+    more.appendChild(button);
+    box.appendChild(more);
+  }
+  if (prevScroll > 0) {
+    box.scrollTop = prevScroll;
+  }
+}
+
+function formatCount(value){
+  const digits = String(value == null ? 0 : value);
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
+
+function escapeHtml(text){
+  return String(text == null ? '' : text)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+AetherGlass.log('AetherGlass Launcher запущен');
+AetherGlass.log('Liquid Glass UI: оптическое преломление + авто-Java 21');
+call('ready');
+</script>
+</body>
+</html>

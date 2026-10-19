@@ -1,0 +1,49 @@
+# ── Тулчейны сборки: скачиваются одной командой, в репозитории им не место
+/tools/
+/.cache/
+/.config/
+
+# Кросс-компилятор launch4j (10 МБ чужих двоичных файлов под GPL).
+# Собирается из официальных источников:  bash tools/setup-launch4j.sh
+**/tools/launch4j/
+
+# ── Продукты сборки
+*.syso
+*.class
+build/
+.gradle/
+bin/
+.run/
+/dist/
+/aurora/dist/
+**/logs/
+
+# ── Системный мусор
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+
+# ── Готовые сборки: они уезжают в Релизы GitHub, а не в историю коммитов.
+# Двоичный файл в гите распухает репозиторий и его нельзя обновлять по частям.
+/AetherGlass-Launcher.exe
+/AetherGlass.jar
+
+# ── Личные файлы: скриншоты и загрузки пользователя
+/uploads/
+
+# Private workspace data (also applies to nested workspace copies).
+**/.config/
+**/.cache/
+**/uploads/
+**/backup/
+**/aurora-auth.json
+**/aurora-launcher.json
+**/.env
+**/.env.*
+!**/.env.example
+
+# Handoff notes may include personal circumstances.
+**/HANDOFF-PROMPT.md
+aurora/client/logs/
+aurora/launcher-go/*.syso

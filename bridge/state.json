@@ -1,0 +1,13 @@
+{
+  "build_id": "20261019-213926",
+  "mc_version": "1.21.11",
+  "jar_sha256": "7d2d022d9cf5c7d55f1c71205d1df377ac297f049f07e9660b16548d5948dcd9",
+  "jar_git_blob": "7d65602673b7aa228b3f3dc6e9665e84ace2caf2",
+  "screenshots": [
+    "screenshots/01_main_menu_frosted_glass.png",
+    "screenshots/02_right_shift_modules_compact_sliders.png",
+    "screenshots/03_right_shift_accounts_tab.png",
+    "screenshots/04_world_shaders_preview.png"
+  ],
+  "target_repository": "fonchuuk/WorcspasePrivateArena"
+}
