@@ -3,6 +3,10 @@
 /.cache/
 /.config/
 
+# Кросс-компилятор launch4j (10 МБ чужих двоичных файлов под GPL).
+# Собирается из официальных источников:  bash tools/setup-launch4j.sh
+**/tools/launch4j/
+
 # ── Продукты сборки
 *.syso
 *.class
@@ -10,6 +14,9 @@ build/
 .gradle/
 bin/
 .run/
+/dist/
+/aurora/dist/
+**/logs/
 
 # ── Системный мусор
 .DS_Store

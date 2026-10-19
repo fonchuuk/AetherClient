@@ -1,7 +1,144 @@
-# Настоящий журнал запуска (сокращённая выдержка)
+# Журнал проверок
 
-Источник: `~/.aurora-run/logs/` — лог самой игры, запущенной лаунчером Aurora
-под Xvfb на программном OpenGL (llvmpipe). Дата прогона: 2026-10-15.
+Здесь — только то, что действительно выполнялось, с датой и выводом.
+Если что-то не проверялось, это сказано прямо, а не опущено.
+
+---
+
+## 19.10.2026 — полный прогон после исправления ресурсов меню
+
+Окружение: Linux x86_64, 2 ядра, 2 ГБ ОЗУ (свободно ~1.5 ГБ), Temurin
+21.0.12.1, Gradle 9.7.1, Go 1.23.6, binutils 2.44 для `i686-w64-mingw32`.
+Minecraft **не запускался** — по условию задачи и потому, что в среде нет
+ни экрана, ни видеокарты.
+
+### Что нашлось до прогона
+
+Чтение кода и ресурсов, без сборки:
+
+1. **`BackdropGallery` просила 16 текстур, которых не существовало.**
+   `WinterNight` → `AuroraMenuScreen` (главное меню) рисует галерею из
+   четырёх фонов по четыре ступени размытия:
+   `textures/gui/menu_backdrop{,_aurora,_glass,_night}_b{0..3}.png`.
+   В ресурсах лежала одна картинка `menu_backdrop.png` (1376×768, 1.28 МБ),
+   которую не читал никто. Генераторы `tools/make_backdrops.py` и
+   `tools/make_backdrop_levels.py` писали в жёстко вписанный
+   `/home/user/aurora/...` и молча пропускали отсутствующие файлы —
+   поэтому текстур в репозитории никогда и не было.
+2. **Спрайты стекла не совпадали с кодом.** `make_glass.py` сохранял стекло
+   полным кадром 1376×768, а `AuroraMenuScreen` объявлял
+   `TEX_LOGO_SIZE = 426`, `TEX_PANEL_W = 715`, `TEX_PANEL_H = 506`.
+   `drawNineSlice` с такими числами вырезал из текстуры левый верхний угол,
+   то есть вместо стекла рисовался фрагмент другой картинки.
+3. **Тулчейн launch4j отсутствовал и не был воспроизводим.** `/tools/`
+   исключён в `.gitignore`, а без него `:launcher:exe` и `:installer:exe`
+   не собрать. В Maven-архиве launch4j — 32-битные `ld`/`windres` без
+   сценариев компоновщика.
+4. **CI не запускался ни на одной живой ветке.** Срабатывание было прописано
+   на `arena/081f1c5d-aetherclient`, рабочая ветка — другая; шаг сборки шёл
+   из `workspace/aurora`, а публиковать релиз мешала жёсткая проверка
+   `test "$version" = "0.1.6"`.
+5. **Две копии исходников** — `aurora/` и `workspace/aurora/` (224 файла
+   каждая). Разъехаться успели только два документа, но правки приходилось
+   вносить дважды, что и зафиксировано в `RENDER-DIAGNOSTICS.md`.
+6. **Готовые сборки в истории.** `AetherGlass-Launcher.exe` (13 444 096 Б)
+   и `AetherGlass.jar` (245 990 Б) лежали в git, хотя `.gitignore` их
+   исключает — то есть попали туда до правила и с тех пор только устаревали.
+
+### Что сделано
+
+| Что | Как |
+|---|---|
+| Ресурсы меню | новый `aurora/tools/make_menu_assets.py`: 4 фона × 4 ступени + 2 спрайта стекла, размеры из кода, фоны в палитре |
+| Защита от рассинхрона | `MenuAssetTest` — 5 тестов: наличие каждой текстуры, точные размеры спрайтов и ступеней, спрайты частиц, общий вес |
+| Тулчейн | `aurora/tools/setup-launch4j.sh` — собирает из дистрибутива launch4j и binutils `i686-w64-mingw32` |
+| Цикл сборки | `tools/rebuild.sh` переписан: пути от своего расположения, сам везёт JDK, Go и тулчейн |
+| CI | срабатывает на `master` и `arena/**`, собирает все четыре файла, релиз только из `master`, версия читается из кода |
+| Проверка PE | `scripts/check_pe.py` — сигнатуры, машина, секции, подсистема, каталог ресурсов |
+| Структура | дубль `aurora/` удалён, `workspace/*` поднят в корень, устаревшие сборки убраны из индекса |
+
+### Результат прогона
+
+`bash tools/rebuild.sh` — от начала до конца, тулчейн launch4j перед этим
+был удалён, чтобы проверить восстановление:
+
+```
+=== 3/5 launch4j ===
+→ дистрибутив launch4j 3.50
+→ собираю tools/launch4j
+GNU ld (GNU Binutils) 2.44
+GNU windres (GNU Binutils) 2.44
+
+=== 4/5 gradle ===
+BUILD SUCCESSFUL in 1m 41s
+26 actionable tasks: 26 executed
+мод: .../client/build/libs/AetherGlass.jar (962292 байт)
+текстур меню внутри: 18
+
+=== 5/5 нативный лаунчер ===
+ok  aetherglass/launcher/core  1.681s
+ok  aetherglass/launcher/ui    0.287s
+-rwxr-xr-x 9350656 AetherGlass-Launcher.exe
+PE32+ executable for MS Windows 6.01 (GUI), x86-64, 9 sections
+
+=== разбор заголовков PE ===
+  AetherGlassLauncher.exe: PE32 i386, подсистема GUI, секций 9, ресурсы 71592 байт
+  AetherGlass-Setup.exe:   PE32 i386, подсистема GUI, секций 9, ресурсы 64704 байт
+  AetherGlass-Launcher.exe: PE32+ x86-64, подсистема GUI, секций 9, ресурсы 69688 байт
+Все файлы (3) — настоящие исполняемые Windows.
+```
+
+Тесты: **116 Java-тестов, 0 провалов** (клиент 50, установщик 38, лаунчер 28)
+и **59 Go-тестов, 0 провалов**. `go vet` чисто для хоста и для
+`GOOS=windows`. `tools/verify_mods.py` — все 10 модов совпадают с живым
+API Modrinth, файлы доступны (HTTP 200).
+
+Ремап миксинов проверен по содержимому собранного jar — в нём
+intermediary-имена, а не исходные:
+
+| Миксин | Цель в jar |
+|---|---|
+| `MinecraftMixin` | `class_310` / `method_1507` |
+| `ItemInHandRendererMixin` | `class_759` / `method_22976` |
+| `SkyRendererMixin` | `class_9975` / `method_74926` |
+
+Вес ресурсов меню: **2.18 МБ → 0.69 МБ**, jar мода **2 659 934 → 962 292 байт**
+(−64 %).
+
+### Проверка, что новый тест не пустой
+
+`MenuAssetTest` прогнан на нарочно сломанных ресурсах: спрятан
+`menu_backdrop_glass_b2.png` и `TEX_PANEL_W` изменён с 715 на 700.
+
+```
+MenuAssetTest > glassSpritesMatchDeclaredSpriteSize()  FAILED
+  → Спрайт панели не совпадает с TEX_PANEL_W: стекло поедет
+    ==> expected: <700> but was: <715>
+MenuAssetTest > backdropGalleryLevelsAllExistWithExpectedSize()  FAILED
+  → Галерея просит отсутствующий фон: menu_backdrop_glass_b2.png
+```
+
+Оба файла возвращены на место, прогон повторён — 5 из 5 зелёные.
+
+### Чего этот прогон НЕ доказывает
+
+- **Как выглядит меню.** Ни одного кадра не отрисовано: нет ни экрана, ни
+  GPU. Что спрайты теперь того размера, который читает код, доказано
+  разбором заголовков PNG и тестом; что картинка при этом красивая — нет.
+- **Что игра запускается.** Minecraft не запускался вовсе.
+- **Работу установщика в Windows.** Ярлыки и запись в реестр проверены
+  тестами на файлах, но не в настоящей Windows-сессии.
+- **Смену аккаунта без перезапуска.** Её нет: лаунчер перезапускает игру
+  с выбранным аккаунтом. In-game-переключателя в моде нет.
+
+---
+
+## 15.10.2026 — прогон игры под Xvfb (сохранено как есть)
+
+Источник: `~/.aurora-run/logs/` — лог самой игры, запущенной лаунчером под
+Xvfb на программном OpenGL (llvmpipe). Этот прогон относится к прежнему
+состоянию кода и оставлен здесь как свидетельство, что установка и загрузчик
+работали вживую.
 
 ```
 [20:12:54] [main/INFO]: Loading 91 mods:
@@ -11,8 +148,11 @@
 [20:13:05] [Render thread/INFO]: [Aurora] обработчики отрисовки мира подключены
 [20:13:05] [Render thread/INFO]: [Aurora] AetherGlass Client готов: Minecraft 1.21.11, загрузчик 0.19.5
 [20:13:07] [Render thread/INFO]: Initializing ImmediatelyFast 1.14.3+1.21.11 on llvmpipe (LLVM 19.1.7, 256 bits) (Mesa) with OpenGL 4.5 (Core Profile) Mesa 25.0.7-2+
-[20:13:07] [Render thread/INFO]: OpenGL Vendor: Mesa
 [20:13:07] [Render thread/INFO]: OpenGL Renderer: llvmpipe (LLVM 19.1.7, 256 bits)
-[20:13:07] [Render thread/INFO]: OpenGL Version: 4.5 (Core Profile) Mesa 25.0.7-2+deb13u1
-[20:13:07] [Render thread/INFO]: Reloading ResourceManager: vanilla, aetherglass, badoptimizations, c2me, dynamic_fps, entityculling, fabric-api, fabric-api-base, 
+[20:13:07] [Render thread/INFO]: Reloading ResourceManager: vanilla, aetherglass, badoptimizations, c2me, dynamic_fps, entityculling, fabric-api, fabric-api-base,
 ```
+
+До титульного экрана игра тогда не дошла: загрузка остановилась на создании
+текстурных атласов и компиляции шейдеров, что на двух ядрах без видеокарты
+идёт десятки минут. Контрольный прогон без десяти оптимизаций останавливался
+ровно там же — значит, дело в программном OpenGL, а не в моде.
