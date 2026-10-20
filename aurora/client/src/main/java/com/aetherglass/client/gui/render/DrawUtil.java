@@ -7,6 +7,8 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.FontDescription;
+import net.minecraft.network.chat.Style;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.FormattedCharSequence;
 
@@ -30,6 +32,13 @@ public final class DrawUtil {
             Identifier.fromNamespaceAndPath("aetherglass", "textures/gui/nine_slice_glass_panel.png");
     public static final Identifier TEX_SLIDER_KNOB =
             Identifier.fromNamespaceAndPath("aetherglass", "textures/gui/slider_knob_sdf.png");
+
+    public static final Style STYLE_MODERN = Style.EMPTY.withFont(
+            new FontDescription.Resource(Identifier.fromNamespaceAndPath("aetherglass", "modern")));
+    public static final Style STYLE_MODERN_BOLD = Style.EMPTY.withFont(
+            new FontDescription.Resource(Identifier.fromNamespaceAndPath("aetherglass", "modern_bold")));
+    public static final Style STYLE_MODERN_SMALL = Style.EMPTY.withFont(
+            new FontDescription.Resource(Identifier.fromNamespaceAndPath("aetherglass", "modern_small")));
 
     private static final int NINE_TEX_SIZE = 256;
     private static final int NINE_CORNER_TEX = 64;
@@ -222,34 +231,31 @@ public final class DrawUtil {
         }
         float a = Math.max(0.0F, Math.min(1.0F, alpha));
         float glow = Math.max(0.0F, Math.min(1.0F, neonGlow));
-        int r = limit(Math.max(8, Math.min(12, radius)), width, height);
+        int r = limit(Math.max(4, Math.min(10, radius)), width, height);
 
         // 1. Внешнее неоновое свечение (glow) по периметру — ТОЛЬКО когда включено
         if (glow > 0.015F) {
-            int outerGlow = ColorUtil.withAlpha(neonColor, Math.round(145 * a * glow));
-            int midGlow = ColorUtil.withAlpha(neonColor, Math.round(220 * a * glow));
-            drawNineSlice(graphics, TEX_NINE_SHADOW, x - 6, y - 6, width + 12, height + 12,
-                    Math.min(28, r + 6), NINE_CORNER_TEX, NINE_TEX_SIZE, outerGlow);
-            drawNineSlice(graphics, TEX_NINE_SHADOW, x - 3, y - 3, width + 6, height + 6,
-                    Math.min(24, r + 3), NINE_CORNER_TEX, NINE_TEX_SIZE, midGlow);
+            int outerGlow = ColorUtil.withAlpha(neonColor, Math.round(115 * a * glow));
+            int midGlow = ColorUtil.withAlpha(neonColor, Math.round(180 * a * glow));
+            drawNineSlice(graphics, TEX_NINE_SHADOW, x - 4, y - 4, width + 8, height + 8,
+                    Math.min(22, r + 4), NINE_CORNER_TEX, NINE_TEX_SIZE, outerGlow);
+            drawNineSlice(graphics, TEX_NINE_SHADOW, x - 2, y - 2, width + 4, height + 4,
+                    Math.min(18, r + 2), NINE_CORNER_TEX, NINE_TEX_SIZE, midGlow);
         } else {
-            drawSoftShadow(graphics, x, y, width, height, r, a * 0.85F);
+            drawSoftShadow(graphics, x, y, width, height, r, a * 0.70F);
         }
 
         // 2. Фон: Матовый чёрный (#0B0C10) с лёгкой прозрачностью — НИКОГДА не перекрашивается
-        int matteBlack = ColorUtil.withAlpha(0xFF0B0C10, Math.round(238 * a));
+        int matteBlack = ColorUtil.withAlpha(0xFF0B0C10, Math.round(240 * a));
         drawNineSlice(graphics, TEX_NINE_FILL, x, y, width, height, r, NINE_CORNER_TEX, NINE_TEX_SIZE, matteBlack);
 
-        // 3. Обводка по периметру: неоновая при включении, еле заметная серая без свечения при выключении
+        // 3. Обводка по периметру: тонкая современная неоновая при включении, деликатная грань при выключении
         if (glow > 0.015F) {
-            int neonBorder = ColorUtil.withAlpha(neonColor, Math.round(255 * a * glow));
-            int neonCore = ColorUtil.withAlpha(ColorUtil.lerp(neonColor, 0xFFFFFFFF, 0.45F), Math.round(190 * a * glow));
-            drawNineSlice(graphics, TEX_NINE_BORDER, x - 1, y - 1, width + 2, height + 2,
-                    r + 1, NINE_CORNER_TEX, NINE_TEX_SIZE, neonBorder);
+            int neonBorder = ColorUtil.withAlpha(ColorUtil.lerp(neonColor, 0xFFFFFFFF, 0.22F), Math.round(245 * a * glow));
             drawNineSlice(graphics, TEX_NINE_BORDER, x, y, width, height,
-                    r, NINE_CORNER_TEX, NINE_TEX_SIZE, neonCore);
+                    r, NINE_CORNER_TEX, NINE_TEX_SIZE, neonBorder);
         } else {
-            int subtleGrey = ColorUtil.withAlpha(0xFFFFFFFF, Math.round(14 * a));
+            int subtleGrey = ColorUtil.withAlpha(0xFFFFFFFF, Math.round(16 * a));
             drawNineSlice(graphics, TEX_NINE_BORDER, x, y, width, height,
                     r, NINE_CORNER_TEX, NINE_TEX_SIZE, subtleGrey);
         }
@@ -424,21 +430,60 @@ public final class DrawUtil {
         graphics.fill(x, y, x + width, y + 1, color);
     }
 
+    public static Component modernComponent(String text, Style style) {
+        return Component.literal(text == null ? "" : text).withStyle(style);
+    }
+
+    public static int modernWidth(Font font, String text) {
+        if (font == null || text == null || text.isEmpty()) {
+            return 0;
+        }
+        return font.width(modernComponent(text, STYLE_MODERN));
+    }
+
+    public static int modernBoldWidth(Font font, String text) {
+        if (font == null || text == null || text.isEmpty()) {
+            return 0;
+        }
+        return font.width(modernComponent(text, STYLE_MODERN_BOLD));
+    }
+
+    public static int modernSmallWidth(Font font, String text) {
+        if (font == null || text == null || text.isEmpty()) {
+            return 0;
+        }
+        return font.width(modernComponent(text, STYLE_MODERN_SMALL));
+    }
+
+    public static void drawModern(GuiGraphics graphics, Font font, String text, int x, int y, int color) {
+        if (text == null || text.isEmpty() || ColorUtil.alpha(color) <= 0) {
+            return;
+        }
+        graphics.drawString(font, modernComponent(text, STYLE_MODERN), x, y, color, false);
+    }
+
+    public static void drawModernBold(GuiGraphics graphics, Font font, String text, int x, int y, int color) {
+        if (text == null || text.isEmpty() || ColorUtil.alpha(color) <= 0) {
+            return;
+        }
+        graphics.drawString(font, modernComponent(text, STYLE_MODERN_BOLD), x, y, color, false);
+    }
+
+    public static void drawModernSmall(GuiGraphics graphics, Font font, String text, int x, int y, int color) {
+        if (text == null || text.isEmpty() || ColorUtil.alpha(color) <= 0) {
+            return;
+        }
+        graphics.drawString(font, modernComponent(text, STYLE_MODERN_SMALL), x, y, color, false);
+    }
+
     public static void drawTextScaled(GuiGraphics graphics, Font font, String text, int x, int y,
                                       int color, float scale, boolean shadow) {
         if (text == null || text.isEmpty() || ColorUtil.alpha(color) <= 0) {
             return;
         }
-        if (Math.abs(scale - 1.0F) < 0.001F) {
-            graphics.drawString(font, text, x, y, color, shadow);
-            return;
-        }
-        var pose = graphics.pose();
-        pose.pushMatrix();
-        pose.translate((float) x, (float) y);
-        pose.scale(scale, scale);
-        graphics.drawString(font, text, 0, 0, color, shadow);
-        pose.popMatrix();
+        Style style = scale >= 0.88F ? STYLE_MODERN_BOLD : (scale <= 0.78F ? STYLE_MODERN_SMALL : STYLE_MODERN);
+        Component comp = modernComponent(text, style);
+        graphics.drawString(font, comp, x, y, color, false);
     }
 
     public static void drawCenteredTextScaled(GuiGraphics graphics, Font font, String text, int centerX, int y,
@@ -446,8 +491,10 @@ public final class DrawUtil {
         if (text == null || text.isEmpty()) {
             return;
         }
-        int width = Math.round(font.width(text) * scale);
-        drawTextScaled(graphics, font, text, centerX - width / 2, y, color, scale, shadow);
+        Style style = scale >= 0.88F ? STYLE_MODERN_BOLD : (scale <= 0.78F ? STYLE_MODERN_SMALL : STYLE_MODERN);
+        Component comp = modernComponent(text, style);
+        int width = font.width(comp);
+        graphics.drawString(font, comp, centerX - width / 2, y, color, false);
     }
 
     public static int rowInset(int row, int height, int radius) {

@@ -195,22 +195,24 @@ public final class UiKit {
      */
     public static JPanel matteNeonGridCard(String title, String description,
                                            BooleanSupplier isEnabled, Runnable onLeftClick) {
-        JPanel card = new JPanel(new BorderLayout(0, 3)) {
+        JPanel card = new JPanel(new BorderLayout(0, 1)) {
             @Override
             protected void paintComponent(Graphics graphics) {
                 Graphics2D g = (Graphics2D) graphics.create();
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 boolean active = isEnabled != null && isEnabled.getAsBoolean();
-                paintMatteNeonRect(g, 0, 0, getWidth(), getHeight(), CARD_RADIUS, active ? 1.0F : 0.0F);
+                paintMatteNeonRect(g, 0, 0, getWidth(), getHeight(), 9, active ? 1.0F : 0.0F);
+                g.setColor(active ? UiTheme.ACCENT : new Color(0x3E, 0x46, 0x58));
+                g.fillOval(11, 12, 6, 6);
                 g.dispose();
             }
         };
         card.setOpaque(false);
         card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        card.setBorder(BorderFactory.createEmptyBorder(10, 12, 10, 12));
+        card.setBorder(BorderFactory.createEmptyBorder(7, 22, 7, 10));
 
         JLabel titleLbl = new JLabel(title);
-        titleLbl.setFont(UiTheme.HEADING);
+        titleLbl.setFont(UiTheme.SMALL_BOLD);
         titleLbl.setForeground(UiTheme.TEXT);
 
         JLabel descLbl = new JLabel(description);
@@ -232,23 +234,23 @@ public final class UiKit {
         return card;
     }
 
-    /** Карточка-контейнер: матовый чёрный прямоугольник со скруглением 12px. */
+    /** Карточка-контейнер: матовый чёрный прямоугольник со скруглением 10px. */
     public static JPanel card(String title, JComponent content) {
         return card(title, content, false);
     }
 
     public static JPanel card(String title, JComponent content, boolean neonOutline) {
-        JPanel card = new JPanel(new BorderLayout(0, 6)) {
+        JPanel card = new JPanel(new BorderLayout(0, 5)) {
             @Override
             protected void paintComponent(Graphics graphics) {
                 Graphics2D g = (Graphics2D) graphics.create();
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                paintMatteNeonRect(g, 0, 0, getWidth(), getHeight(), CARD_RADIUS, neonOutline ? 1.0F : 0.0F);
+                paintMatteNeonRect(g, 0, 0, getWidth(), getHeight(), 10, neonOutline ? 1.0F : 0.0F);
                 g.dispose();
             }
         };
         card.setOpaque(false);
-        card.setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 14));
+        card.setBorder(BorderFactory.createEmptyBorder(9, 11, 9, 11));
         if (title != null && !title.isBlank()) {
             card.add(heading(title), BorderLayout.NORTH);
         }
@@ -262,7 +264,18 @@ public final class UiKit {
     // ─────────────────────────── Текст ───────────────────────────
 
     public static JLabel heading(String text) {
-        JLabel label = new JLabel(text);
+        JLabel label = new JLabel(text) {
+            @Override
+            protected void paintComponent(Graphics graphics) {
+                Graphics2D g = (Graphics2D) graphics.create();
+                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g.setColor(UiTheme.ACCENT);
+                g.fillOval(0, (getHeight() - 5) / 2, 5, 5);
+                g.dispose();
+                super.paintComponent(graphics);
+            }
+        };
+        label.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 0));
         label.setFont(UiTheme.HEADING);
         label.setForeground(UiTheme.TEXT);
         return label;

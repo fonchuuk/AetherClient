@@ -1,0 +1,26 @@
+{
+    "providers": [
+        {
+            "type": "space",
+            "advances": {
+                " ": 2.5,
+                "\u200c": 0.0
+            }
+        },
+        {
+            "type": "ttf",
+            "file": "aetherglass:montserrat_bold.ttf",
+            "size": 7.0,
+            "oversample": 2.0,
+            "shift": [0.0, 0.0]
+        },
+        {
+            "type": "reference",
+            "id": "minecraft:include/default"
+        },
+        {
+            "type": "reference",
+            "id": "minecraft:include/unifont"
+        }
+    ]
+}

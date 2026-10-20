@@ -52,18 +52,33 @@ public final class UiTheme {
     public static final Color BORDER = CARD_BORDER;
     public static final Color CONSOLE = new Color(0x07, 0x08, 0x0B);
 
-    // ── Шрифты ──
-    public static final Font BASE = new Font(Font.SANS_SERIF, Font.PLAIN, 13);
-    public static final Font SMALL = new Font(Font.SANS_SERIF, Font.PLAIN, 11);
-    public static final Font SMALL_BOLD = new Font(Font.SANS_SERIF, Font.BOLD, 12);
-    public static final Font HEADING = new Font(Font.SANS_SERIF, Font.BOLD, 14);
-    public static final Font TITLE = new Font(Font.SANS_SERIF, Font.BOLD, 22);
-    public static final Font SUBTITLE = new Font(Font.SANS_SERIF, Font.PLAIN, 12);
-    public static final Font TAB = new Font(Font.SANS_SERIF, Font.PLAIN, 13);
-    public static final Font TAB_BOLD = new Font(Font.SANS_SERIF, Font.BOLD, 13);
-    public static final Font BUTTON_FONT = new Font(Font.SANS_SERIF, Font.BOLD, 13);
-    public static final Font BUTTON_BOLD = new Font(Font.SANS_SERIF, Font.BOLD, 15);
-    public static final Font MONO = new Font(Font.MONOSPACED, Font.PLAIN, 12);
+    // ── Шрифты (Montserrat TrueType, компактные и современные) ──
+    private static final Font BASE_MEDIUM = loadFont("/fonts/montserrat_medium.ttf", Font.PLAIN, 12f);
+    private static final Font BASE_BOLD = loadFont("/fonts/montserrat_bold.ttf", Font.BOLD, 12f);
+
+    public static final Font BASE = BASE_MEDIUM.deriveFont(11.5f);
+    public static final Font SMALL = BASE_MEDIUM.deriveFont(10.0f);
+    public static final Font SMALL_BOLD = BASE_BOLD.deriveFont(10.5f);
+    public static final Font HEADING = BASE_BOLD.deriveFont(12.0f);
+    public static final Font TITLE = BASE_BOLD.deriveFont(18.0f);
+    public static final Font SUBTITLE = BASE_MEDIUM.deriveFont(11.0f);
+    public static final Font TAB = BASE_MEDIUM.deriveFont(11.5f);
+    public static final Font TAB_BOLD = BASE_BOLD.deriveFont(11.5f);
+    public static final Font BUTTON_FONT = BASE_BOLD.deriveFont(11.5f);
+    public static final Font BUTTON_BOLD = BASE_BOLD.deriveFont(13.0f);
+    public static final Font MONO = new Font(Font.MONOSPACED, Font.PLAIN, 11);
+
+    private static Font loadFont(String resourcePath, int fallbackStyle, float size) {
+        try (java.io.InputStream in = UiTheme.class.getResourceAsStream(resourcePath)) {
+            if (in != null) {
+                Font f = Font.createFont(Font.TRUETYPE_FONT, in);
+                java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().registerFont(f);
+                return f.deriveFont(size);
+            }
+        } catch (Exception ignored) {
+        }
+        return new Font(Font.SANS_SERIF, fallbackStyle, Math.round(size));
+    }
 
     private UiTheme() {
     }

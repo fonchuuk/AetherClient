@@ -455,9 +455,9 @@ public final class LauncherUi {
 
         JPanel columnsRow = new JPanel(new java.awt.GridLayout(1, 3, 10, 0));
         columnsRow.setOpaque(false);
-        columnsRow.add(UiKit.card("✦ ВИЗУАЛ И КЛИЕНТ", col1));
-        columnsRow.add(UiKit.card("◎ ОПТИМИЗАЦИЯ", col2));
-        columnsRow.add(UiKit.card("◈ ИНТЕРФЕЙС И HUD", col3));
+        columnsRow.add(UiKit.card("ВИЗУАЛ И КЛИЕНТ", col1));
+        columnsRow.add(UiKit.card("ОПТИМИЗАЦИЯ", col2));
+        columnsRow.add(UiKit.card("ИНТЕРФЕЙС И HUD", col3));
 
         JPanel center = new JPanel(new BorderLayout(0, 10));
         center.setOpaque(false);
