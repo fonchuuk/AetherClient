@@ -83,9 +83,37 @@ public final class JavaRuntime {
      */
     public static List<Path> candidates() {
         List<Path> result = new ArrayList<>();
+        String currentHome = System.getProperty("java.home");
+        if (currentHome != null && !currentHome.isBlank()) {
+            Path currentBin = Path.of(currentHome, "bin", executableName());
+            if (Files.isRegularFile(currentBin)) {
+                result.add(currentBin);
+            }
+        }
         String javaHome = System.getenv("JAVA_HOME");
         if (javaHome != null && !javaHome.isBlank()) {
             result.add(Path.of(javaHome, "bin", executableName()));
+        }
+        String localAppData = System.getenv("LOCALAPPDATA");
+        if (localAppData != null && !localAppData.isBlank()) {
+            scanSubdirs(Path.of(localAppData, "AetherGlass", "runtime"), 3, result);
+            scanSubdirs(Path.of(localAppData, "Programs", "Eclipse Adoptium"), 2, result);
+            scanSubdirs(Path.of(localAppData, "Packages", "Microsoft.4297127D64EC6_8wekyb3d8bbwe",
+                    "LocalCache", "Local", "runtime"), 4, result);
+        }
+        String appData = System.getenv("APPDATA");
+        if (appData != null && !appData.isBlank()) {
+            scanSubdirs(Path.of(appData, ".minecraft", "runtime"), 4, result);
+            scanSubdirs(Path.of(appData, ".tlauncher", "jvms"), 3, result);
+            scanSubdirs(Path.of(appData, "PrismLauncher", "java"), 3, result);
+            scanSubdirs(Path.of(appData, "ModrinthApp", "meta", "java_versions"), 3, result);
+        }
+        String userHome = System.getProperty("user.home");
+        if (userHome != null && !userHome.isBlank()) {
+            scanSubdirs(Path.of(userHome, ".aetherglass", "runtime"), 4, result);
+            scanSubdirs(Path.of(userHome, ".jdks"), 2, result);
+            scanSubdirs(Path.of(userHome, "curseforge", "minecraft", "Install", "runtime"), 4, result);
+            scanSubdirs(Path.of(userHome, ".lunarclient", "jre"), 4, result);
         }
         String path = System.getenv("PATH");
         if (path != null) {
@@ -149,6 +177,24 @@ public final class JavaRuntime {
 
     public static String executableName() {
         return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win") ? "java.exe" : "java";
+    }
+
+    private static void scanSubdirs(Path root, int depth, List<Path> out) {
+        if (root == null || depth < 0 || !Files.isDirectory(root)) {
+            return;
+        }
+        Path binJava = root.resolve("bin").resolve(executableName());
+        if (Files.isRegularFile(binJava)) {
+            out.add(binJava);
+            return;
+        }
+        if (depth == 0) {
+            return;
+        }
+        try (var stream = Files.list(root)) {
+            stream.filter(Files::isDirectory).forEach(sub -> scanSubdirs(sub, depth - 1, out));
+        } catch (IOException ignored) {
+        }
     }
 
     /** Объём оперативной памяти компьютера в мегабайтах (для подсказки по объёму кучи). */

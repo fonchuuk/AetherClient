@@ -82,9 +82,16 @@ public final class JavaFinder {
         }
     }
 
-    /** Кандидаты на проверку: JAVA_HOME, PATH, типовые каталоги установки. */
+    /** Кандидаты на проверку: текущая JVM, JAVA_HOME, каталоги рантаймов лаунчеров, PATH, Program Files. */
     static List<Path> candidates() {
         List<Path> result = new ArrayList<>();
+        String currentHome = System.getProperty("java.home");
+        if (currentHome != null && !currentHome.isBlank()) {
+            Path bin = Path.of(currentHome).resolve("bin");
+            result.add(bin.resolve("javaw.exe"));
+            result.add(bin.resolve("java.exe"));
+            result.add(bin.resolve("java"));
+        }
         String javaHome = System.getenv("JAVA_HOME");
         if (javaHome != null && !javaHome.isBlank()) {
             Path bin = Path.of(javaHome).resolve("bin");
@@ -97,6 +104,11 @@ public final class JavaFinder {
             result.add(rt.resolve("jdk-21").resolve("bin").resolve("javaw.exe"));
             result.add(rt.resolve("jdk-21").resolve("bin").resolve("java.exe"));
             result.addAll(installedJava(rt.toString()));
+            result.addAll(installedJava(Path.of(localAppData, "Programs", "Eclipse Adoptium").toString()));
+            Path mcStore = Path.of(localAppData, "Packages",
+                    "Microsoft.4297127D64EC6_8wekyb3d8bbwe", "LocalCache", "Local", "runtime",
+                    "java-runtime-delta", "windows-x64", "java-runtime-delta", "bin", "javaw.exe");
+            result.add(mcStore);
         }
         String appData = System.getenv("APPDATA");
         if (appData != null && !appData.isBlank()) {
@@ -104,6 +116,15 @@ public final class JavaFinder {
             result.add(rt.resolve("jdk-21").resolve("bin").resolve("javaw.exe"));
             result.add(rt.resolve("jdk-21").resolve("bin").resolve("java.exe"));
             result.addAll(installedJava(rt.toString()));
+            result.add(Path.of(appData, ".minecraft", "runtime",
+                    "java-runtime-delta", "windows-x64", "java-runtime-delta", "bin", "javaw.exe"));
+            result.addAll(installedJava(Path.of(appData, ".tlauncher", "jvms").toString()));
+        }
+        String userHome = System.getProperty("user.home");
+        if (userHome != null && !userHome.isBlank()) {
+            result.addAll(installedJava(Path.of(userHome, ".jdks").toString()));
+            result.add(Path.of(userHome, ".aetherglass", "runtime",
+                    "java-runtime-delta", "windows-x64", "bin", "javaw.exe"));
         }
         result.add(Path.of("javaw.exe"));
         result.add(Path.of("java.exe"));

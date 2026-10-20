@@ -1,129 +1,144 @@
-// Обёртка jar в настоящий Windows .exe (launch4j 3.50, кросс-компиляция на Linux).
+// Нативная сборка самодостаточных 64-битных Windows .exe (x86_64-w64-mingw32-gcc + windres)
+// без зависимости от Launch4j и без ошибки «JDK 21 not found».
 //
-// Важно: Launch4j 3.50 записывает строковые ресурсы (.rc) в однобайтовой кодировке
-// ISO-8859-1 и вызывает Win32 MessageBoxA. Любая кириллица в <messages>, <errTitle>,
-// <productName> или <fileDescription> превращается в знаки вопроса «????».
-// Поэтому все строки заголовка PE и системных сообщений JRE задаются чистым ASCII.
+// Как устроен получаемый .exe:
+// 1. Нативный 64-битный GUI-загрузчик (tools/native_bootstrap.c) с иконкой (.ico),
+//    манифестом Windows и таблицей VERSIONINFO.
+// 2. В конец .exe напрямую приклеивается собранный .jar-архив (ZIP читается с конца файла).
+// 3. При запуске на Windows загрузчик сам находит любую установленную Java 17..25+
+//    (в системе, PATH, Program Files, .jdks, Minecraft Launcher, TLauncher, Prism,
+//    Modrinth, CurseForge, LunarClient и реестре), а если на чистом ПК вообще нет Java —
+//    автоматически скачивает портативную OpenJDK 21 в %LOCALAPPDATA%\AetherGlass\runtime.
 
-configurations {
-    launch4jTool
-}
+def buildWorkDir = layout.buildDirectory.dir('launch4j')
+def rcFile = layout.buildDirectory.file('launch4j/app.rc')
 
-dependencies {
-    launch4jTool 'net.sf.launch4j:launch4j:3.50'
-}
-
-def launch4jHome = layout.buildDirectory.dir('launch4j/home')
-def launch4jJar = launch4jHome.map { it.file('launch4j-3.50.jar') }
-def launch4jConfig = layout.buildDirectory.file('launch4j/config.xml')
-
-tasks.register('prepareLaunch4j', Copy) {
+tasks.register('prepareLaunch4j') {
     group = 'distribution'
-    description = 'Готовит кросс-компилятор launch4j: тулчейн MinGW + jar launch4j.'
-    from(rootProject.file('tools/launch4j'))
-    from({
-        configurations.launch4jTool.files.findAll {
-            it.name.startsWith('launch4j-3.50') && !it.name.contains('workdir')
-        }
-    })
-    into launch4jHome
+    description = 'Подготавливает рабочий каталог для сборки нативного Windows .exe.'
     doLast {
-        fileTree(launch4jHome.map { it.dir('bin') }).each { it.setExecutable(true, false) }
+        buildWorkDir.get().asFile.mkdirs()
     }
 }
 
 tasks.register('writeLaunch4jConfig') {
     group = 'distribution'
-    description = 'Пишет описание будущего .exe для launch4j.'
-    dependsOn tasks.named('jar')
-    outputs.file(launch4jConfig)
-    def jarFile = tasks.named('jar').flatMap { it.archiveFile }
-    def exeFile = layout.buildDirectory.file('exe/' + project.launch4jExeName)
+    description = 'Генерирует файл ресурсов Windows (.rc) с иконкой, манифестом и версией.'
+    dependsOn tasks.named('jar'), 'prepareLaunch4j'
+    outputs.file(rcFile)
     def iconFile = project.launch4jIcon
     def productVersion = project.mod_version
     doLast {
-        def externalJar = project.hasProperty('launch4jExternalJar')
-                && String.valueOf(project.launch4jExternalJar) == 'true'
-        def jarRef = externalJar ? jarFile.get().asFile.name : jarFile.get().asFile.absolutePath
-        def target = exeFile.get().asFile
-        target.parentFile.mkdirs()
-        def baseBundled = project.hasProperty('launch4jBundledJre') ? String.valueOf(project.launch4jBundledJre) : 'runtime'
-        def jreSearchPaths = "${baseBundled};%LOCALAPPDATA%\\AetherGlass\\runtime\\jdk-21;%LOCALAPPDATA%\\AetherGlass\\runtime;%APPDATA%\\AetherGlass\\runtime\\jdk-21;%APPDATA%\\AetherGlass\\runtime;%JAVA_HOME%"
-        def xml = """<?xml version="1.0" encoding="UTF-8"?>
-<launch4jConfig>
-  <dontWrapJar>${externalJar}</dontWrapJar>
-  <headerType>gui</headerType>
-  <jar>${jarRef}</jar>
-  <outfile>${target.absolutePath}</outfile>
-  <errTitle>${project.launch4jProductName}</errTitle>
-  <chdir>.</chdir>
-  <priority>normal</priority>
-  <downloadUrl>https://adoptium.net/temurin/releases/?version=21</downloadUrl>
-  <stayAlive>false</stayAlive>
-  <restartOnCrash>false</restartOnCrash>
-  <icon>${iconFile.absolutePath}</icon>
-${project.hasProperty('launch4jManifest') ? '  <manifest>' + project.launch4jManifest.absolutePath + '</manifest>' : ''}
-  <singleInstance>
-    <mutexName>${project.launch4jExeName.replace('.exe', '')}</mutexName>
-    <windowTitle>${project.launch4jProductName}</windowTitle>
-  </singleInstance>
-  <jre>
-    <path>${jreSearchPaths}</path>
-    <requiresJdk>false</requiresJdk>
-    <requires64Bit>true</requires64Bit>
-    <minVersion>21</minVersion>
-    <initialHeapSize>64</initialHeapSize>
-    <maxHeapSize>${project.launch4jHeapMax}</maxHeapSize>
-  </jre>
-  <versionInfo>
-    <fileVersion>${productVersion}.0</fileVersion>
-    <txtFileVersion>${productVersion}</txtFileVersion>
-    <fileDescription>${project.launch4jDescription}</fileDescription>
-    <copyright>AetherGlass Client</copyright>
-    <productVersion>${productVersion}.0</productVersion>
-    <txtProductVersion>${productVersion}</txtProductVersion>
-    <productName>${project.launch4jProductName}</productName>
-    <companyName>AetherGlass</companyName>
-    <internalName>${project.launch4jExeName.replace('.exe', '')}</internalName>
-    <originalFilename>${project.launch4jExeName}</originalFilename>
-  </versionInfo>
-  <messages>
-    <startupErr>Failed to start AetherGlass.</startupErr>
-    <jreNotFoundErr>JDK 21 not found. Please install Java 21 (64-bit) or run AetherGlass-Launcher.exe.</jreNotFoundErr>
-    <jreVersionErr>JDK 21 not found (Java 21 64-bit is required). Please install it.</jreVersionErr>
-    <launcherErr>Failed to start Java 21 runtime. Please reinstall JDK 21.</launcherErr>
-    <instanceAlreadyExistsMsg>AetherGlass is already running.</instanceAlreadyExistsMsg>
-  </messages>
-</launch4jConfig>
+        def verParts = (productVersion + '.0.0.0').split('\\.')[0..3].collect {
+            it.replaceAll('[^0-9]', '') ?: '0'
+        }.join(', ')
+        def manifestLine = project.hasProperty('launch4jManifest')
+                ? "1 24 \"${project.launch4jManifest.absolutePath.replace('\\', '/')}\""
+                : ""
+        def iconPath = iconFile.absolutePath.replace('\\', '/')
+        def internalName = project.launch4jExeName.replace('.exe', '')
+        def rcText = """#include <winver.h>
+1 ICON "${iconPath}"
+${manifestLine}
+1 VERSIONINFO
+FILEVERSION ${verParts}
+PRODUCTVERSION ${verParts}
+FILEFLAGSMASK 0x3fL
+FILEFLAGS 0x0L
+FILEOS 0x40004L
+FILETYPE 0x1L
+FILESUBTYPE 0x0L
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904E4"
+    BEGIN
+      VALUE "CompanyName", "AetherGlass\\0"
+      VALUE "FileDescription", "${project.launch4jDescription}\\0"
+      VALUE "FileVersion", "${productVersion}\\0"
+      VALUE "InternalName", "${internalName}\\0"
+      VALUE "LegalCopyright", "AetherGlass Client\\0"
+      VALUE "OriginalFilename", "${project.launch4jExeName}\\0"
+      VALUE "ProductName", "${project.launch4jProductName}\\0"
+      VALUE "ProductVersion", "${productVersion}\\0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0409, 1252
+  END
+END
 """
-        launch4jConfig.get().asFile.parentFile.mkdirs()
-        launch4jConfig.get().asFile.setText(xml, 'UTF-8')
+        def f = rcFile.get().asFile
+        f.parentFile.mkdirs()
+        f.setText(rcText, 'UTF-8')
     }
 }
 
-tasks.register('exe', JavaExec) {
+tasks.register('exe') {
     group = 'distribution'
-    description = 'Собирает настоящий Windows .exe (внутри — jar модуля).'
-    dependsOn 'prepareLaunch4j', 'writeLaunch4jConfig'
-    inputs.files(tasks.named('jar').flatMap { it.archiveFile }, project.launch4jIcon)
+    description = 'Собирает автономный 64-битный Windows .exe (нативный загрузчик + встроенный .jar).'
+    dependsOn 'prepareLaunch4j', 'writeLaunch4jConfig', tasks.named('jar')
+    def jarFile = tasks.named('jar').flatMap { it.archiveFile }
+    def exeFile = layout.buildDirectory.file('exe/' + project.launch4jExeName)
+    def bootstrapSrc = rootProject.file('tools/native_bootstrap.c')
+    inputs.files(jarFile, project.launch4jIcon, rcFile, bootstrapSrc)
     if (project.hasProperty('launch4jManifest')) {
         inputs.file(project.launch4jManifest)
     }
-    inputs.file(launch4jConfig)
-    classpath = files(launch4jJar) + configurations.launch4jTool
-    mainClass = 'net.sf.launch4j.Main'
-    args launch4jConfig.get().asFile.absolutePath
-    workingDir = launch4jHome
-    outputs.file(layout.buildDirectory.file('exe/' + project.launch4jExeName))
-    standardInput = new ByteArrayInputStream(new byte[0])
+    outputs.file(exeFile)
+
     doLast {
+        def workDir = buildWorkDir.get().asFile
+        workDir.mkdirs()
+        def resObj = new File(workDir, 'app_res.o')
+        def stubExe = new File(workDir, 'stub.exe')
+        def targetExe = exeFile.get().asFile
+        targetExe.parentFile.mkdirs()
+
+        // 1. Компилируем ресурсы Windows (.ico + .manifest + VERSIONINFO)
+        def windresProc = new ProcessBuilder(
+                'x86_64-w64-mingw32-windres',
+                '-i', rcFile.get().asFile.absolutePath,
+                '-o', resObj.absolutePath
+        ).redirectErrorStream(true).start()
+        def windresOut = windresProc.inputStream.getText('UTF-8')
+        if (windresProc.waitFor() != 0) {
+            throw new GradleException("Ошибка windres:\n" + windresOut)
+        }
+
+        // 2. Компилируем нативный 64-битный Win32 GUI-загрузчик
+        def heapMax = project.hasProperty('launch4jHeapMax') ? String.valueOf(project.launch4jHeapMax) : '512'
+        def prodTitle = String.valueOf(project.launch4jProductName)
+        def gccProc = new ProcessBuilder(
+                'x86_64-w64-mingw32-gcc',
+                '-O2', '-s', '-municode', '-mwindows',
+                "-DHEAP_MAX_MB=${heapMax}",
+                "-DPRODUCT_TITLE_W=L\"${prodTitle}\"",
+                bootstrapSrc.absolutePath,
+                resObj.absolutePath,
+                '-ladvapi32', '-lshell32', '-luser32', '-lgdi32',
+                '-o', stubExe.absolutePath
+        ).redirectErrorStream(true).start()
+        def gccOut = gccProc.inputStream.getText('UTF-8')
+        if (gccProc.waitFor() != 0) {
+            throw new GradleException("Ошибка x86_64-w64-mingw32-gcc:\n" + gccOut)
+        }
+
+        // 3. Склеиваем нативный PE-загрузчик и .jar в единый самодостаточный .exe
+        def jar = jarFile.get().asFile
+        targetExe.withOutputStream { out ->
+            stubExe.withInputStream { out << it }
+            jar.withInputStream { out << it }
+        }
+
+        // Дополнительно кладём копию .jar рядом, если включён launch4jExternalJar
         if (project.hasProperty('launch4jExternalJar')
                 && String.valueOf(project.launch4jExternalJar) == 'true') {
-            def jar = tasks.named('jar').get().archiveFile.get().asFile
             def near = layout.buildDirectory.file('exe/' + jar.name).get().asFile
-            near.parentFile.mkdirs()
             java.nio.file.Files.copy(jar.toPath(), near.toPath(),
                     java.nio.file.StandardCopyOption.REPLACE_EXISTING)
         }
+        println "Собран автономный .exe: ${targetExe.name} (${targetExe.length()} байт)"
     }
 }

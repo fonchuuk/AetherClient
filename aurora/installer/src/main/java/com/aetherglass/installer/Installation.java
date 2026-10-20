@@ -78,6 +78,9 @@ public final class Installation {
 
             Path launcher = target.resolve(LAUNCHER);
             copyPayload(LAUNCHER, launcher);
+            if (Installation.class.getResource(PAYLOAD + "AetherGlassLauncher.jar") != null) {
+                copyPayload("AetherGlassLauncher.jar", target.resolve("AetherGlassLauncher.jar"));
+            }
             note("Лаунчер: " + launcher);
 
             Path clientMod = placeClientMod();
@@ -100,13 +103,16 @@ public final class Installation {
 
             Path java = javaForced != null ? javaForced : JavaFinder.find();
             if (java == null) {
-                note("Java 21 не найдена: лаунчер установлен, но не запустится. Установите Java 21.");
+                note("Среда Java 21: будет автоматически скачана лаунчером при первом запуске игры.");
             } else {
                 note("Java: " + java);
             }
 
             List<String> files = new ArrayList<>(
                     List.of(LAUNCHER, uninstaller.getFileName().toString(), MANIFEST, README));
+            if (Files.isRegularFile(target.resolve("AetherGlassLauncher.jar"))) {
+                files.add("AetherGlassLauncher.jar");
+            }
             if (runtime != null) {
                 files.add(RUNTIME);
             }
@@ -389,6 +395,23 @@ public final class Installation {
 
     /** Путь к собственному исполняемому файлу (или jar) установщика. */
     static Path selfExecutable() {
+        String prop = System.getProperty("aetherglass.self.exe");
+        if (prop != null && !prop.isBlank()) {
+            Path p = Path.of(prop);
+            if (Files.isRegularFile(p)) {
+                return p;
+            }
+        }
+        try {
+            var codeSource = Installation.class.getProtectionDomain().getCodeSource();
+            if (codeSource != null && codeSource.getLocation() != null) {
+                Path p = Path.of(codeSource.getLocation().toURI());
+                if (Files.isRegularFile(p)) {
+                    return p;
+                }
+            }
+        } catch (Exception ignored) {
+        }
         return ProcessHandle.current().info().command().map(Path::of).orElse(null);
     }
 

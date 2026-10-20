@@ -26,6 +26,19 @@ tasks.named('test', Test) {
     maxHeapSize = '256m'
 }
 
+tasks.named('jar', Jar) {
+    archiveFileName = 'AetherGlassInstaller.jar'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from(project(':launcher').sourceSets.main.output)
+    manifest {
+        attributes(
+                'Main-Class': 'com.aetherglass.installer.InstallerMain',
+                'Implementation-Title': 'AetherGlass Setup',
+                'Implementation-Version': project.mod_version
+        )
+    }
+}
+
 // ── Полезная нагрузка ────────────────────────────────────────────────────────
 // Внутрь jar установщика кладутся сам лаунчер (готовый .exe) и номер версии:
 // благодаря этому AetherGlass-Setup.exe — один самодостаточный файл.
