@@ -84,17 +84,21 @@ public final class InstallerUi {
         if (this.frame == null) {
             this.frame = new JFrame(WINDOW_TITLE);
             this.frame.setContentPane(this.root);
-            this.frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+            this.frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         }
         this.frame.pack();
         this.frame.setLocationRelativeTo(null);
         this.frame.setVisible(true);
     }
 
-    /** Закрывает окно, если оно было показано. */
+    /** Закрывает окно и завершает процесс установщика. */
     private void closeWindow() {
         if (this.frame != null) {
+            this.frame.setVisible(false);
             this.frame.dispose();
+            if (!GraphicsEnvironment.isHeadless()) {
+                System.exit(0);
+            }
         }
     }
 
@@ -292,6 +296,9 @@ public final class InstallerUi {
                 runBox.setSelected(false);
             } catch (IOException ignored) {
             }
+        }
+        if (success) {
+            closeWindow();
         }
     }
 

@@ -80,6 +80,8 @@ public final class LauncherUi {
         }
     };
     private final List<ModrinthCatalog.Hit> modrinthHits = new ArrayList<>();
+    private final java.util.concurrent.atomic.AtomicInteger modrinthRequestSeq =
+            new java.util.concurrent.atomic.AtomicInteger(0);
     private String modrinthProjectType = ModrinthCatalog.TYPE_MOD;
     private String modrinthQuery = "";
     private int modrinthOffset = 0;
@@ -124,7 +126,7 @@ public final class LauncherUi {
     private final JTextField widthField = UiKit.field(new JTextField(6));
     private final JTextField heightField = UiKit.field(new JTextField(6));
     private final JTextField offlineNickField = UiKit.field(new JTextField(14));
-    private final JTextField modrinthQueryField = UiKit.field(new JTextField(20));
+    private final JTextField modrinthQueryField = UiKit.field(new JTextField(10));
     private final JLabel modrinthInfoLabel = UiKit.muted("Каталог Modrinth: моды и ресурспаки");
     private JTable modrinthTable;
     private final JSlider memorySlider = UiKit.slider(new JSlider(1024, 16384, 4096));
@@ -141,6 +143,10 @@ public final class LauncherUi {
         this.authStore = new AuthStore(this.paths.authFile());
         this.root = buildUi();
         reloadSession();
+        applyModrinthPage(ModrinthCatalog.builtinPage(this.modrinthProjectType, "", 0), false);
+        if (!java.awt.GraphicsEnvironment.isHeadless()) {
+            loadModrinthPage("", false);
+        }
         loadVersionsInBackground();
         loadManifestInBackground();
         log("Лаунчер запущен. Каталог игры: " + this.paths.base());
@@ -173,6 +179,11 @@ public final class LauncherUi {
         this.tabs.addTab("Моды", modsTab());
         this.tabs.addTab("Настройки", settingsTab());
         this.tabs.addTab("Логи", this.logPanel);
+        this.tabs.addChangeListener(e -> {
+            if (this.tabs.getSelectedIndex() == 2 && !java.awt.GraphicsEnvironment.isHeadless()) {
+                loadModrinthPage(this.modrinthQueryField.getText().trim(), false);
+            }
+        });
         syncModpackControls();
 
         panel.add(header, BorderLayout.NORTH);
@@ -608,7 +619,7 @@ public final class LauncherUi {
 
         JPanel catalogPanel = new JPanel(new BorderLayout(0, 8));
         catalogPanel.setOpaque(false);
-        JPanel searchBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        JPanel searchBar = new JPanel(new BorderLayout(6, 0));
         searchBar.setOpaque(false);
         JButton typeModsBtn = UiKit.primaryButton("Моды (Fabric)");
         JButton typeRpBtn = UiKit.button("Ресурспаки");
@@ -634,16 +645,30 @@ public final class LauncherUi {
         moreBtn.addActionListener(event -> loadModrinthPage(this.modrinthQuery, true));
         installOneClickBtn.addActionListener(event -> installSelectedModrinthHit());
 
-        searchBar.add(typeModsBtn);
-        searchBar.add(typeRpBtn);
-        searchBar.add(this.modrinthQueryField);
-        searchBar.add(searchBtn);
-        searchBar.add(popularBtn);
-        searchBar.add(moreBtn);
-        searchBar.add(installOneClickBtn);
+        JPanel leftTypeBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        leftTypeBar.setOpaque(false);
+        leftTypeBar.add(typeModsBtn);
+        leftTypeBar.add(typeRpBtn);
+
+        JPanel rightActionBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
+        rightActionBar.setOpaque(false);
+        rightActionBar.add(searchBtn);
+        rightActionBar.add(popularBtn);
+
+        searchBar.add(leftTypeBar, BorderLayout.WEST);
+        searchBar.add(this.modrinthQueryField, BorderLayout.CENTER);
+        searchBar.add(rightActionBar, BorderLayout.EAST);
 
         this.modrinthTable = new JTable(this.modrinthModel);
         UiKit.styleTable(this.modrinthTable);
+        this.modrinthTable.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent event) {
+                if (event.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(event)) {
+                    installSelectedModrinthHit();
+                }
+            }
+        });
         JScrollPane catalogScroll = UiKit.scroll(this.modrinthTable);
         catalogScroll.getVerticalScrollBar().addAdjustmentListener(event -> {
             if (event.getValueIsAdjusting() || this.modrinthLoading) {
@@ -657,9 +682,19 @@ public final class LauncherUi {
                 loadModrinthPage(this.modrinthQuery, true);
             }
         });
+
+        JPanel catalogFooter = new JPanel(new BorderLayout(8, 0));
+        catalogFooter.setOpaque(false);
+        JPanel catalogFooterBtns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        catalogFooterBtns.setOpaque(false);
+        catalogFooterBtns.add(moreBtn);
+        catalogFooterBtns.add(installOneClickBtn);
+        catalogFooter.add(this.modrinthInfoLabel, BorderLayout.CENTER);
+        catalogFooter.add(catalogFooterBtns, BorderLayout.EAST);
+
         catalogPanel.add(searchBar, BorderLayout.NORTH);
         catalogPanel.add(catalogScroll, BorderLayout.CENTER);
-        catalogPanel.add(this.modrinthInfoLabel, BorderLayout.SOUTH);
+        catalogPanel.add(catalogFooter, BorderLayout.SOUTH);
 
         JPanel top = new JPanel(new BorderLayout(0, 8));
         top.setOpaque(false);
@@ -826,15 +861,49 @@ public final class LauncherUi {
         }
     }
 
-    private void loadModrinthPage(String query, boolean append) {
-        if (this.modrinthLoading) {
+    private void applyModrinthPage(ModrinthCatalog.SearchPage page, boolean append) {
+        if (page == null) {
             return;
         }
-        this.modrinthLoading = true;
+        if (!append) {
+            this.modrinthHits.clear();
+            this.modrinthModel.setRowCount(0);
+        }
+        for (ModrinthCatalog.Hit hit : page.hits()) {
+            this.modrinthHits.add(hit);
+            this.modrinthModel.addRow(new Object[]{
+                    hit.title(),
+                    hit.author(),
+                    ModrinthCatalog.formatDownloads(hit.downloads()),
+                    hit.description()
+            });
+        }
+        if (this.modrinthTable != null && this.modrinthModel.getRowCount() > 0
+                && this.modrinthTable.getSelectedRow() < 0) {
+            this.modrinthTable.setRowSelectionInterval(0, 0);
+        }
+        this.modrinthOffset = page.offset();
+        this.modrinthTotal = Math.max(page.totalHits(), this.modrinthHits.size());
+        String kindLabel = ModrinthCatalog.TYPE_RESOURCEPACK.equals(this.modrinthProjectType)
+                ? "ресурспаков" : "модов";
+        this.modrinthInfoLabel.setText("Показано " + this.modrinthHits.size()
+                + " из " + this.modrinthTotal + " " + kindLabel
+                + " · Двойной клик или «Скачать в 1 клик» для установки");
+    }
+
+    private void loadModrinthPage(String query, boolean append) {
         final String projectType = this.modrinthProjectType;
         final String cleanQuery = query == null ? "" : query.trim();
         final int offset = append ? this.modrinthOffset : 0;
-        this.modrinthInfoLabel.setText("Загрузка каталога Modrinth…");
+        final int reqId = this.modrinthRequestSeq.incrementAndGet();
+        this.modrinthQuery = cleanQuery;
+
+        if (!append) {
+            // Мгновенно отображаем предзагруженный каталог без ожидания сети
+            applyModrinthPage(ModrinthCatalog.builtinPage(projectType, cleanQuery, 0), false);
+        }
+        this.modrinthLoading = true;
+        this.modrinthInfoLabel.setText("Обновление каталога Modrinth… (" + this.modrinthHits.size() + " в списке)");
 
         new SwingWorker<ModrinthCatalog.SearchPage, Void>() {
             private String failure;
@@ -855,6 +924,9 @@ public final class LauncherUi {
 
             @Override
             protected void done() {
+                if (reqId != LauncherUi.this.modrinthRequestSeq.get()) {
+                    return;
+                }
                 LauncherUi.this.modrinthLoading = false;
                 ModrinthCatalog.SearchPage page = null;
                 try {
@@ -862,30 +934,18 @@ public final class LauncherUi {
                 } catch (Exception exception) {
                     this.failure = exception.getMessage();
                 }
-                if (page == null) {
-                    LauncherUi.this.modrinthInfoLabel.setText("Не удалось загрузить каталог: " + this.failure);
+                if (page == null || page.hits().isEmpty()) {
+                    if (LauncherUi.this.modrinthHits.isEmpty()) {
+                        applyModrinthPage(ModrinthCatalog.builtinPage(projectType, cleanQuery, 0), false);
+                    } else {
+                        String kindLabel = ModrinthCatalog.TYPE_RESOURCEPACK.equals(projectType)
+                                ? "ресурспаков" : "модов";
+                        LauncherUi.this.modrinthInfoLabel.setText("Показано " + LauncherUi.this.modrinthHits.size()
+                                + " " + kindLabel + " · Двойной клик или «Скачать в 1 клик» для установки");
+                    }
                     return;
                 }
-                if (!append) {
-                    LauncherUi.this.modrinthHits.clear();
-                    LauncherUi.this.modrinthModel.setRowCount(0);
-                }
-                for (ModrinthCatalog.Hit hit : page.hits()) {
-                    LauncherUi.this.modrinthHits.add(hit);
-                    LauncherUi.this.modrinthModel.addRow(new Object[]{
-                            hit.title(),
-                            hit.author(),
-                            String.valueOf(hit.downloads()),
-                            hit.description()
-                    });
-                }
-                LauncherUi.this.modrinthQuery = cleanQuery;
-                LauncherUi.this.modrinthOffset = page.offset();
-                LauncherUi.this.modrinthTotal = page.totalHits();
-                String kindLabel = ModrinthCatalog.TYPE_RESOURCEPACK.equals(projectType) ? "ресурспаков" : "модов";
-                LauncherUi.this.modrinthInfoLabel.setText("Показано " + LauncherUi.this.modrinthHits.size()
-                        + " из " + page.totalHits() + " " + kindLabel
-                        + " (прокрутите вниз или нажмите «Показать ещё»)");
+                applyModrinthPage(page, append);
             }
         }.execute();
     }
@@ -1129,7 +1189,9 @@ public final class LauncherUi {
                 }
                 setBusy(started);
                 if (started) {
-                    status("Игра запущена");
+                    status("Игра запущена — закрытие лаунчера…");
+                    LauncherUi.this.config.save(LauncherUi.this.paths.launcherConfig());
+                    closeLauncherOnGameStart();
                 } else {
                     status("Запуск не выполнен");
                     log("Ошибка запуска: " + this.failure);
@@ -1140,6 +1202,21 @@ public final class LauncherUi {
             }
         };
         worker.execute();
+    }
+
+    private void closeLauncherOnGameStart() {
+        if (java.awt.GraphicsEnvironment.isHeadless()) {
+            return;
+        }
+        javax.swing.Timer exitTimer = new javax.swing.Timer(300, event -> {
+            if (this.dialogParent instanceof java.awt.Window window) {
+                window.setVisible(false);
+                window.dispose();
+            }
+            System.exit(0);
+        });
+        exitTimer.setRepeats(false);
+        exitTimer.start();
     }
 
     private void installMods(GameInstaller.Installation installation) throws IOException, InterruptedException {

@@ -17,7 +17,9 @@ import java.util.Map;
 
 /** Обёртка над {@link HttpClient}: запросы JSON и загрузка файлов с прогрессом и отменой. */
 public final class Http {
-    private static final Duration TIMEOUT = Duration.ofSeconds(30);
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(15);
+    private static final String USER_AGENT = "AetherGlassLauncher/1.0.8 (github.com/fonchuuk/AetherClient)";
     private static volatile HttpClient client;
 
     private Http() {
@@ -30,8 +32,9 @@ public final class Http {
                 local = client;
                 if (local == null) {
                     local = HttpClient.newBuilder()
+                            .version(HttpClient.Version.HTTP_1_1)
                             .followRedirects(HttpClient.Redirect.NORMAL)
-                            .connectTimeout(TIMEOUT)
+                            .connectTimeout(CONNECT_TIMEOUT)
                             .build();
                     client = local;
                 }
@@ -43,9 +46,9 @@ public final class Http {
     /** Выполняет GET и разбирает ответ как JSON. */
     public static Object getJson(String url) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-                .timeout(TIMEOUT)
+                .timeout(REQUEST_TIMEOUT)
                 .header("Accept", "application/json")
-                .header("User-Agent", "AuroraLauncher/1.0")
+                .header("User-Agent", USER_AGENT)
                 .GET()
                 .build();
         HttpResponse<String> response = client().send(request, HttpResponse.BodyHandlers.ofString());
@@ -60,10 +63,10 @@ public final class Http {
             throws IOException, InterruptedException {
         String payload = Json.write(body);
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
-                .timeout(TIMEOUT)
+                .timeout(REQUEST_TIMEOUT)
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
-                .header("User-Agent", "AuroraLauncher/1.0");
+                .header("User-Agent", USER_AGENT);
         if (headers != null) {
             headers.forEach(builder::header);
         }
@@ -81,10 +84,10 @@ public final class Http {
     /** Выполняет POST с формой {@code application/x-www-form-urlencoded} (используется в OAuth). */
     public static Map<String, Object> postForm(String url, String form) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-                .timeout(TIMEOUT)
+                .timeout(REQUEST_TIMEOUT)
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .header("Accept", "application/json")
-                .header("User-Agent", "AuroraLauncher/1.0")
+                .header("User-Agent", USER_AGENT)
                 .POST(HttpRequest.BodyPublishers.ofString(form))
                 .build();
         HttpResponse<String> response = client().send(request, HttpResponse.BodyHandlers.ofString());
@@ -116,7 +119,7 @@ public final class Http {
         Path temporary = target.resolveSibling(target.getFileName() + ".part");
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofMinutes(5))
-                .header("User-Agent", "AuroraLauncher/1.0")
+                .header("User-Agent", USER_AGENT)
                 .GET()
                 .build();
         HttpResponse<InputStream> response = client().send(request, HttpResponse.BodyHandlers.ofInputStream());

@@ -115,28 +115,50 @@ public final class GameLauncher {
         if (isRunning()) {
             throw new IllegalStateException("игра уже запущена — дождитесь её завершения");
         }
+        Path logsDir = plan.workingDirectory().resolve("logs");
+        Files.createDirectories(logsDir);
+        Path logFile = logsDir.resolve("launcher-game.log");
+        Files.writeString(logFile, "", StandardCharsets.UTF_8);
+
         ProcessBuilder builder = new ProcessBuilder(plan.command());
         builder.directory(plan.workingDirectory().toFile());
         builder.redirectErrorStream(true);
+        // Перенаправляем вывод в файл на диске, а не в pipe родительского процесса:
+        // когда лаунчер закрывается после запуска игры (System.exit(0)), у процесса
+        // Minecraft не обрывается stdout/stderr pipe в Windows/Linux.
+        builder.redirectOutput(ProcessBuilder.Redirect.to(logFile.toFile()));
         Process process = builder.start();
         this.current.set(process);
-        Thread reader = new Thread(() -> readOutput(process, outputConsumer, onExit), "aurora-game-output");
+        Thread reader = new Thread(() -> readOutput(process, logFile, outputConsumer, onExit), "aurora-game-output");
         reader.setDaemon(true);
         reader.start();
         return process;
     }
 
-    private void readOutput(Process process, Consumer<String> outputConsumer, Runnable onExit) {
-        try (InputStream stream = process.getInputStream();
-             BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+    private void readOutput(Process process, Path logFile, Consumer<String> outputConsumer, Runnable onExit) {
+        try (BufferedReader reader = Files.newBufferedReader(logFile, StandardCharsets.UTF_8)) {
+            while (process.isAlive()) {
+                String line = reader.readLine();
+                if (line != null) {
+                    if (outputConsumer != null) {
+                        outputConsumer.accept(line);
+                    }
+                } else {
+                    try {
+                        Thread.sleep(60L);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
             String line;
             while ((line = reader.readLine()) != null) {
                 if (outputConsumer != null) {
                     outputConsumer.accept(line);
                 }
             }
-        } catch (IOException exception) {
-            // Процесс завершился — поток вывода закрылся, это нормальная ситуация.
+        } catch (IOException ignored) {
         }
         try {
             process.waitFor();

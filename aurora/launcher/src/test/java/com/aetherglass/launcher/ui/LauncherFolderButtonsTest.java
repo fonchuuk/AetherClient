@@ -72,6 +72,12 @@ class LauncherFolderButtonsTest {
         assertEquals("sodium-fabric.jar", ModrinthCatalog.sanitizeFilename("mod", "../../sodium-fabric.jar"));
         assertEquals("", ModrinthCatalog.sanitizeFilename("mod", "pack.zip"));
         assertEquals("faithful-64x.zip", ModrinthCatalog.sanitizeFilename("resourcepack", "../faithful-64x.zip"));
+
+        // Проверяем мгновенную предзагрузку каталога Modrinth (не пустой при открытии)
+        var builtinMods = ModrinthCatalog.builtinPage(ModrinthCatalog.TYPE_MOD, "", 0);
+        assertTrue(builtinMods.hits().size() >= 20, "Встроенный каталог модов Modrinth должен содержать >= 20 модов");
+        var builtinRp = ModrinthCatalog.builtinPage(ModrinthCatalog.TYPE_RESOURCEPACK, "", 0);
+        assertTrue(builtinRp.hits().size() >= 10, "Встроенный каталог ресурспаков Modrinth должен содержать >= 10 паков");
     }
 
     private static void collectButtons(Component component, List<String> out) {
