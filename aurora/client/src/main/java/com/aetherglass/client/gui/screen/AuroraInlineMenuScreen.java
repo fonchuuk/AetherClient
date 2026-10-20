@@ -31,8 +31,10 @@ import net.minecraft.client.gui.screens.worldselection.SelectWorldScreen;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
+import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -245,16 +247,20 @@ public final class AuroraInlineMenuScreen extends Screen {
                               int mouseX, int mouseY, float alpha, boolean titleScreenMode) {
         DrawUtil.drawLiquidGlassPanel(graphics, x, y, width, height, 7, alpha);
 
-        // Неоновая точка-индикатор бренда + современный логотип Montserrat Bold
-        DrawUtil.drawSliderKnob(graphics, x + 6, y + 7, 4, ColorUtil.fade(AuroraTheme.accent(), alpha));
-        DrawUtil.drawModernBold(graphics, this.font, "AETHERGLASS", x + 13, y + 5,
+        // Неоново-фиолетовый логотип «A» + современный заголовок Montserrat Bold
+        Identifier texLogo = Identifier.fromNamespaceAndPath("aetherglass", "textures/gui/menu_glass_logo.png");
+        int logoTint = ColorUtil.argb(Math.round(255 * alpha), 255, 255, 255);
+        graphics.blit(RenderPipelines.GUI_TEXTURED, texLogo,
+                x + 4, y + 3, 0.0F, 0.0F,
+                12, 12, 426, 426, 426, 426, logoTint);
+        DrawUtil.drawModernBold(graphics, this.font, "AETHERGLASS", x + 19, y + 5,
                 ColorUtil.fade(0xFFFFFFFF, alpha));
         int logoW = DrawUtil.modernBoldWidth(this.font, "AETHERGLASS");
-        DrawUtil.drawModernSmall(graphics, this.font, "v1.0.8", x + 16 + logoW, y + 6,
+        DrawUtil.drawModernSmall(graphics, this.font, "v1.0.8", x + 22 + logoW, y + 6,
                 ColorUtil.fade(AuroraTheme.accent(), alpha));
 
         // Компактное поле поиска
-        int searchX = x + 42 + logoW;
+        int searchX = x + 46 + logoW;
         int searchW = 94;
         int searchY = y + 3;
         int searchH = height - 6;
@@ -1023,7 +1029,7 @@ public final class AuroraInlineMenuScreen extends Screen {
             DrawUtil.drawModernBold(graphics, this.font,
                     trimStyle(acc, cardW - 22, DrawUtil.STYLE_MODERN_BOLD),
                     cardX + 9, curY + 3, ColorUtil.fade(0xFFFFFFFF, alpha));
-            DrawUtil.drawModernSmall(graphics, this.font, isCurrent ? "Активен в сессии" : "ЛКМ — выбрать ник",
+            DrawUtil.drawModernSmall(graphics, this.font, isCurrent ? "Активен · ПКМ — удалить" : "ЛКМ — выбрать · ПКМ — удалить",
                     cardX + 9, curY + 12, ColorUtil.fade(isCurrent ? AuroraTheme.accent() : 0xFF7D8699, alpha));
 
             int delX = cardX + cardW - 12;
@@ -1031,8 +1037,10 @@ public final class AuroraInlineMenuScreen extends Screen {
             DrawUtil.drawModernSmall(graphics, this.font, "×", delX + 3, delY + 1,
                     ColorUtil.fade(0xFF727B8E, alpha));
 
-            this.hitZones.add(new HitZone(cardX, curY, cardW - 16, CARD_HEADER_H, () -> am.switchAccount(acc), null, null));
-            this.hitZones.add(new HitZone(delX, delY, 12, 12, () -> am.removeAccount(acc), null, null));
+            this.hitZones.add(new HitZone(cardX, curY, cardW - 16, CARD_HEADER_H,
+                    () -> am.switchAccount(acc), () -> am.removeAccount(acc), null));
+            this.hitZones.add(new HitZone(delX, delY, 12, 12,
+                    () -> am.removeAccount(acc), () -> am.removeAccount(acc), null));
             curY += CARD_HEADER_H + CARD_GAP;
         }
 

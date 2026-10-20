@@ -207,7 +207,7 @@ public final class AuroraMenuScreen extends AuroraScreen {
         DrawUtil.drawModernSmall(graphics, this.font, subTitle, subX + 1, subY + 1,
                 ColorUtil.withAlpha(0xFF04070E, Math.round(140 * progress)));
         DrawUtil.drawModernSmall(graphics, this.font, subTitle, subX, subY,
-                ColorUtil.fade(0xFFAEC0D6, progress));
+                ColorUtil.fade(0xFFC8B6E2, progress));
 
         // ── 4. Три вертикальные иллюстрированные карточки ──
         int c0X = startX;
@@ -251,19 +251,17 @@ public final class AuroraMenuScreen extends AuroraScreen {
                               float delta, float progress, boolean blockHover) {
         int topY = 14 + Math.round((1.0F - progress) * -5.0F);
 
-        // Слева: значок + название бренда
+        // Слева: фирменный неоново-фиолетовый логотип «A» + название бренда
         int logoX = 18;
-        DrawUtil.fillRoundedPixelExact(graphics, logoX, topY, 16, 16, 4,
-                ColorUtil.withAlpha(0xFF101622, Math.round(210 * progress)));
-        DrawUtil.drawThinRoundedOutline(graphics, logoX, topY, 16, 16, 4,
-                ColorUtil.withAlpha(0xFF5CA8FF, Math.round(145 * progress)), 1);
-        // Мини-иконка кристалла/гор внутри значка
-        int iconCol = ColorUtil.fade(0xFF72BCFF, progress);
-        graphics.fill(logoX + 7, topY + 4, logoX + 9, topY + 6, iconCol);
-        graphics.fill(logoX + 5, topY + 6, logoX + 11, topY + 9, iconCol);
-        graphics.fill(logoX + 4, topY + 9, logoX + 12, topY + 12, ColorUtil.fade(0xFFFFFFFF, progress));
+        int logoSz = 18;
+        int logoTint = ColorUtil.argb(Math.round(255 * progress), 255, 255, 255);
+        graphics.blit(RenderPipelines.GUI_TEXTURED, TEX_LOGO,
+                logoX, topY - 1, 0.0F, 0.0F,
+                logoSz, logoSz, TEX_LOGO_SIZE, TEX_LOGO_SIZE, TEX_LOGO_SIZE, TEX_LOGO_SIZE, logoTint);
+        DrawUtil.drawThinRoundedOutline(graphics, logoX, topY - 1, logoSz, logoSz, 4,
+                ColorUtil.withAlpha(0xFFAA3DFF, Math.round(175 * progress)), 1);
 
-        DrawUtil.drawModernBold(graphics, this.font, "AetherGlass", logoX + 21, topY + 4,
+        DrawUtil.drawModernBold(graphics, this.font, "AetherGlass", logoX + 23, topY + 4,
                 ColorUtil.fade(0xFFFFFFFF, progress));
 
         // Справа: плашка профиля [<аватар> <ник> ▾]
@@ -276,8 +274,8 @@ public final class AuroraMenuScreen extends AuroraScreen {
         boolean hov = !blockHover && inside(mouseX, mouseY, pillX, pillY, pillW, pillH);
         this.topBadgeHover += ((hov ? 1.0F : 0.0F) - this.topBadgeHover) * Math.min(1.0F, delta * 10.0F);
 
-        int bgCol = ColorUtil.lerp(0xC6121721, 0xDF1B2434, this.topBadgeHover);
-        int brdCol = ColorUtil.lerp(0x42FFFFFF, 0xCC70B8FF, this.topBadgeHover);
+        int bgCol = ColorUtil.lerp(0xC6120D1E, 0xDF1E1433, this.topBadgeHover);
+        int brdCol = ColorUtil.lerp(0x48B666FF, 0xEEAA3DFF, this.topBadgeHover);
         DrawUtil.fillRoundedPixelExact(graphics, pillX, pillY, pillW, pillH, 6,
                 ColorUtil.fade(bgCol, progress));
         DrawUtil.drawThinRoundedOutline(graphics, pillX, pillY, pillW, pillH, 6,
@@ -290,14 +288,14 @@ public final class AuroraMenuScreen extends AuroraScreen {
         graphics.fill(avX, avY, avX + 12, avY + 3, ColorUtil.fade(0xFF422818, progress));
         graphics.fill(avX, avY + 3, avX + 2, avY + 5, ColorUtil.fade(0xFF422818, progress));
         graphics.fill(avX + 10, avY + 3, avX + 12, avY + 5, ColorUtil.fade(0xFF422818, progress));
-        graphics.fill(avX + 2, avY + 5, avX + 4, avY + 7, ColorUtil.fade(0xFF2B3A67, progress));
-        graphics.fill(avX + 8, avY + 5, avX + 10, avY + 7, ColorUtil.fade(0xFF2B3A67, progress));
+        graphics.fill(avX + 2, avY + 5, avX + 4, avY + 7, ColorUtil.fade(0xFF6B21A8, progress));
+        graphics.fill(avX + 8, avY + 5, avX + 10, avY + 7, ColorUtil.fade(0xFF6B21A8, progress));
         graphics.fill(avX + 4, avY + 8, avX + 8, avY + 10, ColorUtil.fade(0xFF7D4930, progress));
 
         DrawUtil.drawModernSmall(graphics, this.font, activeNick, avX + 16, pillY + 6,
                 ColorUtil.fade(0xFFFFFFFF, progress));
         DrawUtil.drawModernSmall(graphics, this.font, "▾", pillX + pillW - 10, pillY + 6,
-                ColorUtil.fade(0xFF9EB0C8, progress));
+                ColorUtil.fade(0xFFC8A8E8, progress));
 
         if (!blockHover) {
             this.hitBoxes.add(new HitBox(pillX, pillY, pillW, pillH, this::openAccountModal, null));
@@ -317,11 +315,11 @@ public final class AuroraMenuScreen extends AuroraScreen {
         int hoverLift = Math.round(hv * 4.0F);
         int y = baseY + entranceOffset - hoverLift;
 
-        // Внешняя мягкая тень и деликатное свечение при наведении
+        // Внешняя мягкая тень и деликатное неоново-фиолетовое свечение при наведении
         DrawUtil.drawSoftShadow(graphics, x, y + 2, w, h, 9, cardAppear * (0.75F + hv * 0.25F));
         if (hv > 0.02F || heroCenter) {
-            int glowCol = heroCenter ? 0xFF4CA8FF : AuroraTheme.accent();
-            float glowStrength = heroCenter ? (0.28F + hv * 0.45F) : (hv * 0.42F);
+            int glowCol = heroCenter ? 0xFFAA3DFF : AuroraTheme.accent();
+            float glowStrength = heroCenter ? (0.32F + hv * 0.45F) : (hv * 0.42F);
             DrawUtil.drawGlow(graphics, x, y, w, h, 9, glowCol, glowStrength * cardAppear);
         }
 
@@ -332,15 +330,15 @@ public final class AuroraMenuScreen extends AuroraScreen {
                 x, y, 0.0F, 0.0F,
                 w, h, CARD_TEX_W, CARD_TEX_H, CARD_TEX_W, CARD_TEX_H, tint);
 
-        // Тонкая 1px скруглённая рамка вокруг карточки + светящийся верхний блик на центральной карточке
-        int baseBorder = heroCenter ? 0x78B8DCFF : 0x36FFFFFF;
-        int hoverBorder = heroCenter ? 0xFFD4ECFF : 0xAA88C4FF;
+        // Тонкая 1px скруглённая неоново-фиолетовая рамка вокруг карточки + светящийся верхний блик
+        int baseBorder = heroCenter ? 0x99C06CFF : 0x42B464FF;
+        int hoverBorder = heroCenter ? 0xFFE8B8FF : 0xCCAA3DFF;
         int borderCol = ColorUtil.fade(ColorUtil.lerp(baseBorder, hoverBorder, hv), cardAppear);
         DrawUtil.drawThinRoundedOutline(graphics, x, y, w, h, 9, borderCol, 1);
 
         if (heroCenter || hv > 0.05F) {
             float topHighlightAlpha = (heroCenter ? 0.65F : 0.0F) + hv * 0.35F;
-            int hlCol = ColorUtil.withAlpha(0xFFEAF6FF, Math.round(160 * Math.min(1.0F, topHighlightAlpha) * cardAppear));
+            int hlCol = ColorUtil.withAlpha(0xFFF3D8FF, Math.round(165 * Math.min(1.0F, topHighlightAlpha) * cardAppear));
             graphics.fill(x + 9, y, x + w - 9, y + 1, hlCol);
         }
 
@@ -352,11 +350,11 @@ public final class AuroraMenuScreen extends AuroraScreen {
         int subY = heroCenter ? (y + h - 33) : (y + h - 14);
 
         int badgeFill = heroCenter
-                ? ColorUtil.lerp(0xD8183D78, 0xEE20529E, hv)
-                : ColorUtil.lerp(0xCC161C26, 0xE0202938, hv);
+                ? ColorUtil.lerp(0xD84B1482, 0xEE681CB0, hv)
+                : ColorUtil.lerp(0xCC161024, 0xE024183A, hv);
         int badgeBorder = heroCenter
-                ? ColorUtil.lerp(0x994CA8FF, 0xFF82C4FF, hv)
-                : ColorUtil.lerp(0x40FFFFFF, 0x88FFFFFF, hv);
+                ? ColorUtil.lerp(0xAAAF4CFF, 0xFFD888FF, hv)
+                : ColorUtil.lerp(0x48B86CFF, 0xAAAF4CFF, hv);
 
         DrawUtil.fillRoundedPixelExact(graphics, x + padX, badgeY, badgeSize, badgeSize, 4,
                 ColorUtil.fade(badgeFill, cardAppear));
@@ -369,16 +367,16 @@ public final class AuroraMenuScreen extends AuroraScreen {
                 ColorUtil.fade(0xFFFFFFFF, cardAppear));
         DrawUtil.drawModernSmall(graphics, this.font,
                 trimStyle(subtitle, w - padX * 2, DrawUtil.STYLE_MODERN_SMALL),
-                x + padX, subY, ColorUtil.fade(0xFF96A4B8, cardAppear));
+                x + padX, subY, ColorUtil.fade(0xFFB8A4D0, cardAppear));
 
-        // На центральной карточке «Сетевая игра» рисуем капсульную кнопку «Играть ->»
+        // На центральной карточке «Сетевая игра» рисуем неоново-фиолетовую кнопку «Играть ->»
         if (heroCenter) {
             int btnW = 62;
             int btnH = 15;
             int btnX = x + padX;
             int btnY = y + h - 21;
-            int btnFill = ColorUtil.lerp(0x68243246, 0xB830588C, hv);
-            int btnBrd = ColorUtil.lerp(0x66FFFFFF, 0xFF88C8FF, hv);
+            int btnFill = ColorUtil.lerp(0x88421475, 0xC8641CA8, hv);
+            int btnBrd = ColorUtil.lerp(0x99BA68FF, 0xFFE2A8FF, hv);
             DrawUtil.fillRoundedPixelExact(graphics, btnX, btnY, btnW, btnH, 4,
                     ColorUtil.fade(btnFill, cardAppear));
             DrawUtil.drawThinRoundedOutline(graphics, btnX, btnY, btnW, btnH, 4,
@@ -412,7 +410,7 @@ public final class AuroraMenuScreen extends AuroraScreen {
             // Иконка глобуса / сети для «Сетевая игра»
             graphics.fill(cx - 3, cy - 4, cx + 3, cy + 4, color);
             graphics.fill(cx - 4, cy - 3, cx + 4, cy + 3, color);
-            int cut = ColorUtil.withAlpha(0xFF1A4280, ColorUtil.alpha(color));
+            int cut = ColorUtil.withAlpha(0xFF421272, ColorUtil.alpha(color));
             graphics.fill(cx - 3, cy - 2, cx - 1, cy, cut);
             graphics.fill(cx + 1, cy - 2, cx + 3, cy, cut);
             graphics.fill(cx - 3, cy + 1, cx - 1, cy + 3, cut);
@@ -467,10 +465,10 @@ public final class AuroraMenuScreen extends AuroraScreen {
             boolean isExit = (i == 2);
             int fillCol = isExit
                     ? ColorUtil.lerp(0xD4522226, 0xEC782C32, hv)
-                    : ColorUtil.lerp(0xCC131822, 0xE61D2636, hv);
+                    : ColorUtil.lerp(0xCC130E20, 0xE6221638, hv);
             int brdCol = isExit
                     ? ColorUtil.lerp(0x88A8444A, 0xFFFF6E76, hv)
-                    : ColorUtil.lerp(0x38FFFFFF, 0xAA78BCFF, hv);
+                    : ColorUtil.lerp(0x42B464FF, 0xEEAA3DFF, hv);
 
             DrawUtil.fillRoundedPixelExact(graphics, curX, drawY, w, pillH, 6,
                     ColorUtil.fade(fillCol, progress));
@@ -505,9 +503,9 @@ public final class AuroraMenuScreen extends AuroraScreen {
 
         DrawUtil.drawModernBold(graphics, this.font, "АККАУНТЫ", modalX + 12, modalY + 10,
                 ColorUtil.fade(0xFFFFFFFF, eased));
-        String sub = "Активен: " + activeNick + " (" + savedAccounts.size() + ")";
+        String sub = "Активен: " + activeNick + " · ПКМ по нику — удалить";
         DrawUtil.drawModernSmall(graphics, this.font, sub, modalX + 12, modalY + 21,
-                ColorUtil.fade(0xFF98A8C0, eased));
+                ColorUtil.fade(0xFFB4A0CC, eased));
 
         // Кнопка закрытия модального окна [×]
         int closeX = modalX + modalW - 24;
@@ -598,9 +596,9 @@ public final class AuroraMenuScreen extends AuroraScreen {
 
                 if (mouseY >= listTop && mouseY <= listBottom) {
                     this.hitBoxes.add(new HitBox(padX, curY, contentW - 16, rowH,
-                            () -> am.switchAccount(acc), null));
+                            () -> am.switchAccount(acc), () -> am.removeAccount(acc)));
                     this.hitBoxes.add(new HitBox(delX, delY, 12, 12,
-                            () -> am.removeAccount(acc), null));
+                            () -> am.removeAccount(acc), () -> am.removeAccount(acc)));
                 }
             }
             curY += rowH + rowGap;
