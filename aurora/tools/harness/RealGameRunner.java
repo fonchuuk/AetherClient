@@ -59,7 +59,7 @@ public final class RealGameRunner {
                 modsDir.resolve("aetherglass-1.21.11.jar"),
                 StandardCopyOption.REPLACE_EXISTING);
 
-        AuthSession offline = new AuthSession("AuroraPlayer", UUID.randomUUID().toString(),
+        AuthSession offline = new AuthSession("del1very", UUID.randomUUID().toString(),
                 "offline", "", "", System.currentTimeMillis() + 3_600_000L, "");
 
         GameLauncher launcher = new GameLauncher();

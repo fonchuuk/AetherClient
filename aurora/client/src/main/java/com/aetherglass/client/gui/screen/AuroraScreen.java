@@ -67,10 +67,12 @@ public abstract class AuroraScreen extends Screen {
             this.widgets.get(index).appearAfter(0.03F * index);
         }
         this.appear = 0.0F;
+        DrawUtil.triggerTextScramble(0.72F);
     }
 
     protected final void rebuild() {
         this.appear = 0.0F;
+        DrawUtil.triggerTextScramble(0.60F);
         rebuildWidgets();
     }
 

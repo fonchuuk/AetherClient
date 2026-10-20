@@ -334,4 +334,27 @@ final class ClientCoreTest {
         assertTrue(blendedSky >= 0);
         assertTrue(ColorUtil.alpha(blendedSunrise) > 0, "горизонт получает свечение сияния");
     }
+
+    @Test
+    @DisplayName("шифр-проявление текста (*!&#^!@^&#!@#(&! -> обычные буквы)")
+    void textCipherScrambleDecode() {
+        String original = "С возвращением, del1very";
+        try {
+            com.aetherglass.client.gui.render.DrawUtil.setScramblePhaseOverride(0.05F);
+            String scrambled = com.aetherglass.client.gui.render.DrawUtil.scrambleText(original);
+            assertEquals(original.length(), scrambled.length());
+            assertFalse(original.equals(scrambled));
+            assertEquals(' ', scrambled.charAt(1));
+
+            com.aetherglass.client.gui.render.DrawUtil.setScramblePhaseOverride(0.55F);
+            String mid = com.aetherglass.client.gui.render.DrawUtil.scrambleText(original);
+            assertEquals(original.charAt(0), mid.charAt(0));
+
+            com.aetherglass.client.gui.render.DrawUtil.setScramblePhaseOverride(1.0F);
+            String decoded = com.aetherglass.client.gui.render.DrawUtil.scrambleText(original);
+            assertEquals(original, decoded);
+        } finally {
+            com.aetherglass.client.gui.render.DrawUtil.setScramblePhaseOverride(-1.0F);
+        }
+    }
 }

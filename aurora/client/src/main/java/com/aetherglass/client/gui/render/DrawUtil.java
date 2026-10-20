@@ -44,7 +44,103 @@ public final class DrawUtil {
     private static final int NINE_CORNER_TEX = 64;
     private static final int NINE_CENTER_TEX = NINE_TEX_SIZE - NINE_CORNER_TEX * 2; // 128
 
+    /** Символы шифра при появлении текста (*!&#^!@^&#!@#(&!). */
+    private static final char[] CIPHER_CHARS = "*!&#^!@^&#!@#(&!$%?+=~".toCharArray();
+    private static final java.util.concurrent.ConcurrentHashMap<String, Long> SEEN_TEXT_NANOS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private static volatile long scrambleStartNanos = System.nanoTime();
+    private static volatile float scrambleDurationSec = 0.72F;
+    private static volatile float scramblePhaseOverride = -1.0F;
+
     private DrawUtil() {
+    }
+
+    /**
+     * Запускает глобальную анимацию расшифровки текста (*!&#^!@^&#!@#(&! -> обычные буквы)
+     * при открытии экрана, вкладки или модального окна.
+     */
+    public static void triggerTextScramble() {
+        triggerTextScramble(0.72F);
+    }
+
+    public static void triggerTextScramble(float durationSeconds) {
+        scrambleDurationSec = Math.max(0.18F, Math.min(2.5F, durationSeconds));
+        SEEN_TEXT_NANOS.clear();
+        scrambleStartNanos = System.nanoTime();
+    }
+
+    public static void setScramblePhaseOverride(float phase) {
+        scramblePhaseOverride = phase;
+    }
+
+    private static boolean isDynamicCounter(String text) {
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c >= '0' && c <= '9') {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Преобразует строку в процессе анимации открытия: сначала символы выглядят как
+     * {@code *!&#^!@^&#!@#(&!}, а затем слева направо проявляются в нормальные буквы.
+     */
+    public static String scrambleText(String text) {
+        if (text == null || text.isEmpty()) {
+            return "";
+        }
+        long now = System.nanoTime();
+        float progress;
+        if (scramblePhaseOverride >= 0.0F) {
+            progress = scramblePhaseOverride;
+        } else {
+            long start = scrambleStartNanos;
+            float globalElapsed = (now - start) * 1.0e-9F;
+            long stringStart = start;
+            if (!isDynamicCounter(text) && SEEN_TEXT_NANOS.size() < 1024) {
+                Long prev = SEEN_TEXT_NANOS.putIfAbsent(text, now);
+                if (prev == null) {
+                    stringStart = now;
+                } else {
+                    stringStart = Math.max(start, prev);
+                }
+            }
+            float elapsed = (now - stringStart) * 1.0e-9F;
+            float dur = (stringStart > start + 150_000_000L && globalElapsed > 0.15F)
+                    ? 0.48F
+                    : Math.max(0.18F, scrambleDurationSec);
+            progress = elapsed / dur;
+        }
+        if (progress >= 1.0F) {
+            return text;
+        }
+        progress = Math.max(0.0F, progress);
+        int len = text.length();
+        char[] out = new char[len];
+        int strHash = text.hashCode();
+        int tickStep = (int) ((now - scrambleStartNanos) / 38_000_000L);
+
+        for (int i = 0; i < len; i++) {
+            char c = text.charAt(i);
+            if (Character.isWhitespace(c)) {
+                out[i] = c;
+                continue;
+            }
+            float charOrder = len <= 1 ? 0.5F : (float) i / (float) (len - 1);
+            int charMix = (strHash * 31 + i * 17) & 0x7FFFFFFF;
+            float jitter = (charMix % 100) / 100.0F;
+            // Первые ~18% времени все символы зашифрованы (*!&#^!@^&#!@#(&!), затем плавно проявляются
+            float revealAt = 0.16F + charOrder * 0.62F + jitter * 0.20F;
+            if (progress >= revealAt) {
+                out[i] = c;
+            } else {
+                int glyphIdx = (charMix + tickStep * 7 + i * 13) & 0x7FFFFFFF;
+                out[i] = CIPHER_CHARS[glyphIdx % CIPHER_CHARS.length];
+            }
+        }
+        return new String(out);
     }
 
     /**
@@ -448,11 +544,12 @@ public final class DrawUtil {
         if (alpha <= 2) {
             return;
         }
+        String shown = scrambleText(text);
         int haloAlpha = Math.max(6, Math.round(alpha * 0.14F));
         int halo = ColorUtil.withAlpha(glowColor, haloAlpha);
-        graphics.drawString(font, text, x - 1, y, halo, false);
-        graphics.drawString(font, text, x + 1, y, halo, false);
-        graphics.drawString(font, text, x, y, color, true);
+        graphics.drawString(font, shown, x - 1, y, halo, false);
+        graphics.drawString(font, shown, x + 1, y, halo, false);
+        graphics.drawString(font, shown, x, y, color, true);
     }
 
     public static void drawGlowingText(GuiGraphics graphics, Font font, Component text, int x, int y,
@@ -464,11 +561,14 @@ public final class DrawUtil {
         if (alpha <= 2) {
             return;
         }
+        String raw = text.getString();
+        String shown = scrambleText(raw);
+        Component comp = shown.equals(raw) ? text : Component.literal(shown).withStyle(text.getStyle());
         int haloAlpha = Math.max(6, Math.round(alpha * 0.14F));
         int halo = ColorUtil.withAlpha(glowColor, haloAlpha);
-        graphics.drawString(font, text, x - 1, y, halo, false);
-        graphics.drawString(font, text, x + 1, y, halo, false);
-        graphics.drawString(font, text, x, y, color, true);
+        graphics.drawString(font, comp, x - 1, y, halo, false);
+        graphics.drawString(font, comp, x + 1, y, halo, false);
+        graphics.drawString(font, comp, x, y, color, true);
     }
 
     public static void drawGlowingText(GuiGraphics graphics, Font font, FormattedCharSequence text, int x, int y,
@@ -543,21 +643,21 @@ public final class DrawUtil {
         if (text == null || text.isEmpty() || ColorUtil.alpha(color) <= 0) {
             return;
         }
-        graphics.drawString(font, modernComponent(text, STYLE_MODERN), x, y, color, false);
+        graphics.drawString(font, modernComponent(scrambleText(text), STYLE_MODERN), x, y, color, false);
     }
 
     public static void drawModernBold(GuiGraphics graphics, Font font, String text, int x, int y, int color) {
         if (text == null || text.isEmpty() || ColorUtil.alpha(color) <= 0) {
             return;
         }
-        graphics.drawString(font, modernComponent(text, STYLE_MODERN_BOLD), x, y, color, false);
+        graphics.drawString(font, modernComponent(scrambleText(text), STYLE_MODERN_BOLD), x, y, color, false);
     }
 
     public static void drawModernSmall(GuiGraphics graphics, Font font, String text, int x, int y, int color) {
         if (text == null || text.isEmpty() || ColorUtil.alpha(color) <= 0) {
             return;
         }
-        graphics.drawString(font, modernComponent(text, STYLE_MODERN_SMALL), x, y, color, false);
+        graphics.drawString(font, modernComponent(scrambleText(text), STYLE_MODERN_SMALL), x, y, color, false);
     }
 
     public static void drawTextScaled(GuiGraphics graphics, Font font, String text, int x, int y,
@@ -566,7 +666,7 @@ public final class DrawUtil {
             return;
         }
         Style style = scale >= 0.88F ? STYLE_MODERN_BOLD : (scale <= 0.78F ? STYLE_MODERN_SMALL : STYLE_MODERN);
-        Component comp = modernComponent(text, style);
+        Component comp = modernComponent(scrambleText(text), style);
         graphics.drawString(font, comp, x, y, color, false);
     }
 
@@ -576,8 +676,8 @@ public final class DrawUtil {
             return;
         }
         Style style = scale >= 0.88F ? STYLE_MODERN_BOLD : (scale <= 0.78F ? STYLE_MODERN_SMALL : STYLE_MODERN);
-        Component comp = modernComponent(text, style);
-        int width = font.width(comp);
+        int width = font.width(modernComponent(text, style));
+        Component comp = modernComponent(scrambleText(text), style);
         graphics.drawString(font, comp, centerX - width / 2, y, color, false);
     }
 

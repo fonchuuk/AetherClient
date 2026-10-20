@@ -6,6 +6,7 @@ import com.aetherglass.client.modules.ModuleManager;
 import com.aetherglass.client.modules.impl.InterfaceModule;
 import com.aetherglass.client.utils.AuroraLog;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.AccessibilityOnboardingScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import org.spongepowered.asm.mixin.Mixin;
@@ -36,7 +37,8 @@ public final class MinecraftMixin {
         if (this.menuBroken) {
             return;
         }
-        if (!(screen instanceof TitleScreen) || screen instanceof AuroraMenuScreen) {
+        if ((!(screen instanceof TitleScreen) && !(screen instanceof AccessibilityOnboardingScreen))
+                || screen instanceof AuroraMenuScreen) {
             return;
         }
         InterfaceModule look = ModuleManager.get().typed("interface", InterfaceModule.class);
@@ -46,6 +48,9 @@ public final class MinecraftMixin {
         try {
             callback.cancel();
             Minecraft client = Minecraft.getInstance();
+            if (client.options != null) {
+                client.options.onboardAccessibility = false;
+            }
             client.setScreen(new AuroraMenuScreen());
             AetherGlassClient.noteMenuReplaced();
         } catch (Throwable throwable) {
