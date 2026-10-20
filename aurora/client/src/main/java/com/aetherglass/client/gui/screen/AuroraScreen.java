@@ -196,20 +196,9 @@ public abstract class AuroraScreen extends Screen {
             graphics.fill(0, 0, this.width, this.height, AuroraTheme.screenDim());
             return;
         }
-        float time = FrameClock.elapsedSeconds();
-        int accent = AuroraTheme.accent();
         graphics.fillGradient(0, 0, this.width, this.height,
-                ColorUtil.withAlpha(0xFF0A1220, 255),
-                ColorUtil.withAlpha(0xFF050912, 255));
-        if (!this.animated) {
-            return;
-        }
-        float drift = (float) Math.sin(time * 0.12D);
-        drawOrb(graphics, (int) (this.width * (0.22F + 0.05F * drift)), (int) (this.height * 0.28F),
-                Math.round(Math.min(this.width, this.height) * 0.55F), accent, 0.16F);
-        drawOrb(graphics, (int) (this.width * (0.82F - 0.04F * drift)), (int) (this.height * 0.78F),
-                Math.round(Math.min(this.width, this.height) * 0.48F),
-                ColorUtil.hsb(AuroraTheme.accentHue() + 0.28F, 0.7F, 1.0F), 0.13F);
+                ColorUtil.withAlpha(0xFF06070A, 255),
+                ColorUtil.withAlpha(0xFF090B10, 255));
     }
 
     protected void drawOrb(GuiGraphics graphics, int centerX, int centerY, int radius, int color, float alpha) {

@@ -143,18 +143,17 @@ public final class WinterNight {
         }
         resize(width, height);
 
-        // 1. Небо: сверху глубокий сапфир, снизу океаническая синева.
-        graphics.fillGradient(0, 0, width, height, 0xFF061024, 0xFF0A1D38);
+        // 1. Фон: глубокий матовый обсидиан без ярко-синей засветки.
+        graphics.fillGradient(0, 0, width, height, 0xFF050608, 0xFF080A0E);
 
-        // 1.1 Галерея: сочные фоны с северным сиянием и преломлением света в воде
-        // (без тёмных кругов и овалов).
+        // 1.1 Галерея с приглушённой матово-угольной тонировкой.
         this.gallery.draw(graphics, width, height);
 
-        // 2. Мягкое перетекание подводно-лазурных градиентов на фоне в реальном времени
+        // 2. Тонкое матовое затемнение по краям для идеальной читаемости карточек
         float time = com.aetherglass.client.render.util.FrameClock.elapsedSeconds();
         float wave = 0.5F + 0.5F * (float) Math.sin(time * 0.45D);
-        int horizon = Math.round(height * (0.48F + 0.08F * wave));
-        int glowBottom = ColorUtil.argb(Math.round(38 + 20 * wave), 32, 148, 225);
+        int horizon = Math.round(height * (0.58F + 0.06F * wave));
+        int glowBottom = ColorUtil.argb(Math.round(14 + 8 * wave), 0, 210, 230);
         graphics.fillGradient(0, horizon, width, height, 0x00000000, glowBottom);
 
         if (!animated) {
@@ -163,11 +162,11 @@ public final class WinterNight {
         // 3. Световая взвесь / снежинки: собственная текстура, размер и прозрачность задают глубину.
         for (int index = 0; index < this.flakes; index++) {
             int size = Math.max(1, Math.round(this.flakeSize[index]));
-            int alpha = Math.round(this.flakeAlpha[index] * 255.0F);
+            int alpha = Math.round(this.flakeAlpha[index] * 140.0F);
             if (alpha <= 1) {
                 continue;
             }
-            int color = ColorUtil.argb(alpha, 214, 238, 255);
+            int color = ColorUtil.argb(alpha, 160, 240, 255);
             graphics.blit(RenderPipelines.GUI_TEXTURED, FLAKE,
                     Math.round(this.flakeX[index]), Math.round(this.flakeY[index]),
                     0.0F, 0.0F, size, size, 64, 64, color);

@@ -158,7 +158,7 @@ public final class LauncherUi {
         JLabel title = new JLabel("AETHERGLASS");
         title.setFont(UiTheme.TITLE);
         title.setForeground(UiTheme.TEXT);
-        JLabel subtitle = UiKit.muted("Лаунчер клиента: установка игры, моды, запуск");
+        JLabel subtitle = UiKit.muted("Matte Black · Neon Launcher · 1.21.11");
         JPanel titles = new JPanel(new BorderLayout(0, 2));
         titles.setOpaque(false);
         titles.add(title, BorderLayout.NORTH);
@@ -166,9 +166,9 @@ public final class LauncherUi {
         header.add(titles, BorderLayout.WEST);
         header.add(this.accountLabel, BorderLayout.EAST);
 
-        this.tabs = new JTabbedPane();
+        this.tabs = new JTabbedPane(JTabbedPane.LEFT);
         UiKit.styleTabs(this.tabs);
-        this.tabs.addTab("Игра", gameTab());
+        this.tabs.addTab("Главная", gameTab());
         this.tabs.addTab("Сборки", modpacksTab());
         this.tabs.addTab("Моды", modsTab());
         this.tabs.addTab("Настройки", settingsTab());
@@ -389,12 +389,58 @@ public final class LauncherUi {
         bottom.add(this.progressBar, BorderLayout.CENTER);
         bottom.add(buttons, BorderLayout.SOUTH);
 
-        JPanel center = new JPanel(new BorderLayout(0, 12));
+        JPanel cardsGrid = new JPanel(new java.awt.GridLayout(2, 3, 9, 9));
+        cardsGrid.setOpaque(false);
+        boolean[] cardStates = {true, true, true, false, true, false};
+        cardsGrid.add(UiKit.matteNeonGridCard(
+                "AetherGlass Client",
+                "16 шейдеров, HUD и 3D-эффекты",
+                () -> this.aetherClientBox.isSelected(),
+                () -> {
+                    if (this.aetherClientBox.isEnabled()) {
+                        this.aetherClientBox.setSelected(!this.aetherClientBox.isSelected());
+                        this.config.installAetherGlassClient(this.aetherClientBox.isSelected());
+                    }
+                }));
+        cardsGrid.add(UiKit.matteNeonGridCard(
+                "Sodium + Iris",
+                "Ускорение рендера и шейдеры",
+                () -> this.installModsBox.isSelected(),
+                () -> {
+                    this.installModsBox.setSelected(!this.installModsBox.isSelected());
+                    this.config.installMods(this.installModsBox.isSelected());
+                }));
+        cardsGrid.add(UiKit.matteNeonGridCard(
+                "Lithium + Ferrite",
+                "Оптимизация тиков и ОЗУ",
+                () -> cardStates[2],
+                () -> cardStates[2] = !cardStates[2]));
+        cardsGrid.add(UiKit.matteNeonGridCard(
+                "EntityCulling",
+                "Отсечение невидимых сущностей",
+                () -> cardStates[3],
+                () -> cardStates[3] = !cardStates[3]));
+        cardsGrid.add(UiKit.matteNeonGridCard(
+                "ImmediatelyFast",
+                "Пакетный рендер GUI и HUD",
+                () -> cardStates[4],
+                () -> cardStates[4] = !cardStates[4]));
+        cardsGrid.add(UiKit.matteNeonGridCard(
+                "ModMenu + Reese",
+                "Удобный список модов в игре",
+                () -> cardStates[5],
+                () -> cardStates[5] = !cardStates[5]));
+
+        JPanel center = new JPanel(new BorderLayout(0, 10));
         center.setOpaque(false);
-        center.add(UiKit.card("Аккаунт", accountRow), BorderLayout.NORTH);
-        center.add(UiKit.card("Запуск", settings), BorderLayout.CENTER);
+        center.add(cardsGrid, BorderLayout.NORTH);
+        JPanel midStack = new JPanel(new BorderLayout(0, 10));
+        midStack.setOpaque(false);
+        midStack.add(UiKit.card("Аккаунт", accountRow), BorderLayout.NORTH);
+        midStack.add(UiKit.card("Параметры запуска", settings), BorderLayout.CENTER);
+        center.add(midStack, BorderLayout.CENTER);
         panel.add(center, BorderLayout.CENTER);
-        panel.add(UiKit.card(null, bottom), BorderLayout.SOUTH);
+        panel.add(UiKit.card(null, bottom, true), BorderLayout.SOUTH);
         return panel;
     }
 

@@ -28,7 +28,7 @@ public final class AuroraTheme {
     }
 
     private static Palette palette = Palette.DARK;
-    private static float accentHue = 0.54F;
+    private static float accentHue = 0.51F;
     private static float density = 0.55F;
     private static float blur = 0.68F;
     private static float radius = 11.0F;
@@ -120,25 +120,22 @@ public final class AuroraTheme {
     public static int backdrop() {
         return switch (palette) {
             case LIGHT -> ColorUtil.withAlpha(0xFFEEF4FC, Math.round(28 + 38 * density));
-            case NEON -> ColorUtil.withAlpha(0xFF09061A, Math.round(32 + 46 * density));
-            default -> ColorUtil.withAlpha(0xFF0A101C, Math.round(30 + 44 * density));
+            case NEON -> ColorUtil.withAlpha(0xFF06070B, Math.round(160 + 50 * density));
+            default -> ColorUtil.withAlpha(0xFF06070B, Math.round(165 + 48 * density));
         };
     }
 
     /**
-     * Дымчатая полупрозрачная подложка матового жидкого стекла (25–30% непрозрачности
-     * при стандартных настройках, без глухого чёрного цвета).
+     * Матовая чёрная подложка с лёгкой прозрачностью (чтобы текст идеально читался, без прозрачного синего).
      */
     public static int glassTint() {
-        int baseAlpha = Math.round(40 + 42 * density + 16 * blur);
+        int baseAlpha = Math.round(34 + 32 * density + 18 * blur);
         int base = switch (palette) {
             case LIGHT -> 0xFFF4F8FF;
-            case NEON -> 0xFF1E173C;
-            default -> 0xFF1E293D;
+            case NEON -> 0xFF0B0C10;
+            default -> 0xFF0B0C10;
         };
-        int hueTint = ColorUtil.hsb(accentHue, palette == Palette.LIGHT ? 0.18F : 0.42F,
-                palette == Palette.LIGHT ? 0.98F : 0.34F);
-        return ColorUtil.withAlpha(ColorUtil.lerp(base, hueTint, 0.24F), Math.min(128, baseAlpha));
+        return ColorUtil.withAlpha(base, Math.min(94, baseAlpha));
     }
 
     public static int screenDim() {
@@ -191,33 +188,33 @@ public final class AuroraTheme {
 
     public static int accent() {
         return switch (palette) {
-            case LIGHT -> ColorUtil.hsb(accentHue, 0.72F, 0.58F);
-            case NEON -> ColorUtil.hsb(accentHue, 0.88F, 1.0F);
-            default -> ColorUtil.hsb(accentHue, 0.62F, 0.96F);
+            case LIGHT -> ColorUtil.hsb(accentHue, 0.85F, 0.65F);
+            case NEON -> ColorUtil.hsb(accentHue, 0.96F, 1.0F);
+            default -> ColorUtil.hsb(accentHue, 0.96F, 1.0F);
         };
     }
 
     public static int textPrimary() {
         return switch (palette) {
             case LIGHT -> 0xFF101828;
-            case NEON -> 0xFFF5F3FF;
-            default -> 0xFFF0F5FC;
+            case NEON -> 0xFFFFFFFF;
+            default -> 0xFFFFFFFF;
         };
     }
 
     public static int textSecondary() {
         return switch (palette) {
             case LIGHT -> 0xFF47546A;
-            case NEON -> 0xFFC5BCEB;
-            default -> 0xFFB8C5DA;
+            case NEON -> 0xFF96A0B4;
+            default -> 0xFF949EB2;
         };
     }
 
     public static int textMuted() {
         return switch (palette) {
             case LIGHT -> 0xFF6B7789;
-            case NEON -> 0xFF948AC2;
-            default -> 0xFF8694AA;
+            case NEON -> 0xFF6C7588;
+            default -> 0xFF6A7385;
         };
     }
 

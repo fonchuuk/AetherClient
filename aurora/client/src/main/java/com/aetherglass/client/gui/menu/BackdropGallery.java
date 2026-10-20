@@ -90,7 +90,7 @@ public final class BackdropGallery {
         int drawHeight = Math.round(textureHeight * scale);
         int x = (width - drawWidth) / 2;
         int y = (height - drawHeight) / 2;
-        int tint = ColorUtil.argb(Math.round(alpha * 255.0F), 255, 255, 255);
+        int tint = ColorUtil.argb(Math.round(alpha * 52.0F), 28, 32, 42);
         graphics.blit(pipeline, texture, x, y, 0, 0,
                 drawWidth, drawHeight, textureWidth, textureHeight, textureWidth, textureHeight, tint);
     }

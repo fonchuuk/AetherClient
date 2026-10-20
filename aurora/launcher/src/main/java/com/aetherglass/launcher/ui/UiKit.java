@@ -21,44 +21,40 @@ import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Insets;
-import java.awt.RadialGradientPaint;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.Shape;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.awt.geom.Point2D;
+import java.awt.geom.Ellipse2D;
 import java.awt.geom.RoundRectangle2D;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 /**
- * Внешний вид лаунчера: «жидкое стекло» в яркой, молодёжной подаче.
- *
- * <p>Ничего не берётся из чужих библиотек и картинок: панели, кнопки, ползунки,
- * вкладки и индикатор загрузки рисуются кодом на {@link Graphics2D}. Цвета и
- * шрифты лежат в {@link UiTheme}, геометрия — здесь.</p>
- *
- * <p>Анимации считаются от времени, а не от количества кадров: один общий таймер
- * тикает 30 раз в секунду и перерисовывает только те компоненты, у которых есть
- * незавершённое движение. Когда движение закончилось, компонент из списка
- * убирается — процессор не тратится зря.</p>
+ * Оформление лаунчера в едином с клиентом стиле Matte Black + Neon Cyan:
+ * <ul>
+ *   <li>Прямоугольные карточки со скруглёнными углами (10–12px), матовый чёрный фон ({@code #0B0C10}) без перекрашивания;</li>
+ *   <li>Неоновая бирюзовая обводка ({@code #00F2FF}) с мягким внешним свечением (glow) только для активных/включённых карточек;</li>
+ *   <li>Тонкие ползунки с неоновым кружком и узкая панель навигации слева.</li>
+ * </ul>
  */
 public final class UiKit {
 
-    /** Радиус скругления карточек. */
-    public static final int CARD_RADIUS = 18;
+    /** Радиус скругления прямоугольных карточек (11px). */
+    public static final int CARD_RADIUS = 12;
 
-    /** Радиус скругления кнопок. */
-    public static final int BUTTON_RADIUS = 14;
+    /** Радиус скругления кнопок (10px, без капсул). */
+    public static final int BUTTON_RADIUS = 10;
 
-    /** Общий таймер анимаций: один на всё приложение. */
     private static final int TICK_MS = 33;
 
     private static final List<Animated> ANIMATED = new ArrayList<>();
@@ -68,11 +64,7 @@ public final class UiKit {
     private UiKit() {
     }
 
-    // ─────────────────────────── общий таймер ───────────────────────────
-
-    /** Компонент, умеющий двигаться: сам решает, закончил он или нет. */
     private interface Animated {
-        /** @return {@code true}, если компонент ещё движется */
         boolean tick();
 
         void repaint();
@@ -112,23 +104,16 @@ public final class UiKit {
         }
     }
 
-    /** Время анимаций в секундах: по нему считаются все плавные движения. */
     static float seconds() {
         return clock / 1000.0F;
     }
 
-    // ─────────────────────────── фон и карточки ───────────────────────────
+    // ─────────────────────────── Матовый чёрный фон и карточки ───────────────────────────
 
-    /**
-     * Фон окна: вертикальный градиент и три мягких световых пятна, которые
-     * медленно дрейфуют. Пятна считаются от времени, поэтому картинка живая,
-     * но почти ничего не стоит процессору.
-     */
     public static JPanel background() {
         return new Backdrop();
     }
 
-    /** Фон окна: градиент и дрейфующие пятна; сам себя ставит на общий таймер. */
     private static final class Backdrop extends JPanel implements Animated {
         Backdrop() {
             super(new BorderLayout());
@@ -160,52 +145,110 @@ public final class UiKit {
             g.setPaint(new java.awt.GradientPaint(0, 0, UiTheme.BACKGROUND_TOP, 0, height,
                     UiTheme.BACKGROUND_BOTTOM));
             g.fillRect(0, 0, width, height);
-
-            float time = seconds();
-            blob(g, width, height,
-                    width * (0.18F + 0.05F * (float) Math.sin(time * 0.13D)),
-                    height * (0.16F + 0.05F * (float) Math.cos(time * 0.11D)),
-                    Math.max(width, height) * 0.42F, UiTheme.BLOB_VIOLET, 0.40F);
-            blob(g, width, height,
-                    width * (0.84F + 0.04F * (float) Math.cos(time * 0.09D)),
-                    height * (0.28F + 0.06F * (float) Math.sin(time * 0.15D)),
-                    Math.max(width, height) * 0.36F, UiTheme.BLOB_CYAN, 0.32F);
-            blob(g, width, height,
-                    width * (0.52F + 0.06F * (float) Math.sin(time * 0.07D)),
-                    height * (0.92F + 0.03F * (float) Math.cos(time * 0.10D)),
-                    Math.max(width, height) * 0.40F, UiTheme.BLOB_PINK, 0.26F);
             g.dispose();
         }
     }
 
-    private static void blob(Graphics2D g, int width, int height, float cx, float cy, float radius, Color color,
-                             float alpha) {
-        RadialGradientPaint paint = new RadialGradientPaint(new Point2D.Float(cx, cy), radius,
-                new float[] {0.0F, 1.0F},
-                new Color[] {fade(color, alpha), fade(color, 0.0F)});
-        g.setPaint(paint);
-        g.fillRect(0, 0, width, height);
+    /**
+     * Рисует матовую чёрную карточку ({@code #0B0C10}) с неоновой обводкой и внешним свечением (glow),
+     * которое загорается ТОЛЬКО когда {@code glowStrength > 0.02f}.
+     */
+    public static void paintMatteNeonRect(Graphics2D g, int x, int y, int w, int h, int radius, float glowStrength) {
+        if (w <= 2 || h <= 2) {
+            return;
+        }
+        float glow = Math.max(0.0F, Math.min(1.0F, glowStrength));
+
+        // 1. Мягкое внешнее неоновое свечение (glow) — только при включении
+        if (glow > 0.02F) {
+            for (int layer = 4; layer >= 1; layer--) {
+                float alpha = (0.07F * (5 - layer)) * glow;
+                g.setColor(fade(UiTheme.ACCENT, alpha));
+                g.setStroke(new BasicStroke(layer * 1.4F));
+                g.draw(new RoundRectangle2D.Float(
+                        x + 4 - layer, y + 4 - layer,
+                        w - 8 + layer * 2, h - 8 + layer * 2,
+                        radius + layer, radius + layer));
+            }
+        }
+
+        // 2. Фон: всегда матовый чёрный (#0B0C10), без перекрашивания
+        Shape body = new RoundRectangle2D.Float(x + 4, y + 4, w - 8, h - 8, radius, radius);
+        g.setColor(UiTheme.CARD_TOP);
+        g.fill(body);
+
+        // 3. Обводка по периметру
+        if (glow > 0.02F) {
+            g.setColor(fade(UiTheme.ACCENT, 0.95F * glow));
+            g.setStroke(new BasicStroke(1.6F));
+            g.draw(body);
+        } else {
+            g.setColor(new Color(255, 255, 255, 18));
+            g.setStroke(new BasicStroke(1.0F));
+            g.draw(body);
+        }
     }
 
-    /** Карточка: полупрозрачное стекло со скруглением и мягкой подсветкой сверху. */
-    public static JPanel card(String title, JComponent content) {
-        JPanel card = new JPanel(new BorderLayout(0, 8)) {
+    /**
+     * Компактная прямоугольная карточка для 3-колоночной сетки (Matte Black + Neon).
+     * ЛКМ переключает/выбирает карточку и зажигает/гасит неоновую обводку.
+     */
+    public static JPanel matteNeonGridCard(String title, String description,
+                                           BooleanSupplier isEnabled, Runnable onLeftClick) {
+        JPanel card = new JPanel(new BorderLayout(0, 3)) {
             @Override
             protected void paintComponent(Graphics graphics) {
                 Graphics2D g = (Graphics2D) graphics.create();
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                Shape shape = new RoundRectangle2D.Float(1, 1, getWidth() - 2, getHeight() - 2, CARD_RADIUS,
-                        CARD_RADIUS);
-                g.setPaint(new java.awt.GradientPaint(0, 0, UiTheme.CARD_TOP, 0, getHeight(), UiTheme.CARD_BOTTOM));
-                g.fill(shape);
-                g.setColor(UiTheme.CARD_BORDER);
-                g.setStroke(new BasicStroke(1.2F));
-                g.draw(shape);
+                boolean active = isEnabled != null && isEnabled.getAsBoolean();
+                paintMatteNeonRect(g, 0, 0, getWidth(), getHeight(), CARD_RADIUS, active ? 1.0F : 0.0F);
                 g.dispose();
             }
         };
         card.setOpaque(false);
-        card.setBorder(BorderFactory.createEmptyBorder(14, 16, 14, 16));
+        card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        card.setBorder(BorderFactory.createEmptyBorder(10, 12, 10, 12));
+
+        JLabel titleLbl = new JLabel(title);
+        titleLbl.setFont(UiTheme.HEADING);
+        titleLbl.setForeground(UiTheme.TEXT);
+
+        JLabel descLbl = new JLabel(description);
+        descLbl.setFont(UiTheme.SMALL);
+        descLbl.setForeground(UiTheme.TEXT_MUTED);
+
+        card.add(titleLbl, BorderLayout.NORTH);
+        card.add(descLbl, BorderLayout.CENTER);
+
+        card.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (e.getButton() == MouseEvent.BUTTON1 && onLeftClick != null) {
+                    onLeftClick.run();
+                    card.repaint();
+                }
+            }
+        });
+        return card;
+    }
+
+    /** Карточка-контейнер: матовый чёрный прямоугольник со скруглением 12px. */
+    public static JPanel card(String title, JComponent content) {
+        return card(title, content, false);
+    }
+
+    public static JPanel card(String title, JComponent content, boolean neonOutline) {
+        JPanel card = new JPanel(new BorderLayout(0, 6)) {
+            @Override
+            protected void paintComponent(Graphics graphics) {
+                Graphics2D g = (Graphics2D) graphics.create();
+                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                paintMatteNeonRect(g, 0, 0, getWidth(), getHeight(), CARD_RADIUS, neonOutline ? 1.0F : 0.0F);
+                g.dispose();
+            }
+        };
+        card.setOpaque(false);
+        card.setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 14));
         if (title != null && !title.isBlank()) {
             card.add(heading(title), BorderLayout.NORTH);
         }
@@ -216,7 +259,7 @@ public final class UiKit {
         return wrapper;
     }
 
-    // ─────────────────────────── текст ───────────────────────────
+    // ─────────────────────────── Текст ───────────────────────────
 
     public static JLabel heading(String text) {
         JLabel label = new JLabel(text);
@@ -232,55 +275,47 @@ public final class UiKit {
         return label;
     }
 
-    /**
-     * Цветная «таблетка»: состояние аккаунта, версии, результат проверки.
-     *
-     * @param color цвет рамки и текста таблетки
-     */
     public static JLabel chip(String text, Color color) {
         JLabel label = new JLabel(text) {
             @Override
             protected void paintComponent(Graphics graphics) {
                 Graphics2D g = (Graphics2D) graphics.create();
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g.setColor(fade(color, 0.18F));
-                g.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), getHeight(), getHeight()));
-                g.setColor(fade(color, 0.55F));
-                g.setStroke(new BasicStroke(1.0F));
-                g.draw(new RoundRectangle2D.Float(0.5F, 0.5F, getWidth() - 1, getHeight() - 1, getHeight() - 1,
-                        getHeight() - 1));
+                g.setColor(UiTheme.CARD_TOP);
+                g.fill(new RoundRectangle2D.Float(1, 1, getWidth() - 2, getHeight() - 2, 10, 10));
+                g.setColor(fade(color, 0.85F));
+                g.setStroke(new BasicStroke(1.2F));
+                g.draw(new RoundRectangle2D.Float(1, 1, getWidth() - 2, getHeight() - 2, 10, 10));
                 g.dispose();
                 super.paintComponent(graphics);
             }
         };
         label.setFont(UiTheme.SMALL_BOLD);
-        label.setForeground(color);
+        label.setForeground(UiTheme.TEXT);
         label.setHorizontalAlignment(SwingConstants.CENTER);
-        label.setBorder(BorderFactory.createEmptyBorder(4, 12, 4, 12));
+        label.setBorder(BorderFactory.createEmptyBorder(4, 10, 4, 10));
         label.setOpaque(false);
         return label;
     }
 
-    // ─────────────────────────── кнопки ───────────────────────────
+    // ─────────────────────────── Кнопки (Matte Black + Neon) ───────────────────────────
 
     public static JButton button(String text) {
-        return new GlassButton(text, UiTheme.BUTTON, UiTheme.BUTTON_HOVER, UiTheme.TEXT);
+        return new GlassButton(text, false, false);
     }
 
-    /** Главная кнопка: градиентный акцент — «Играть». */
     public static JButton primaryButton(String text) {
-        GlassButton result = new GlassButton(text, UiTheme.ACCENT, UiTheme.ACCENT_2, UiTheme.ON_ACCENT);
+        GlassButton result = new GlassButton(text, true, false);
         result.setFont(UiTheme.BUTTON_BOLD);
         return result;
     }
 
     public static JButton dangerButton(String text) {
-        return new GlassButton(text, UiTheme.DANGER, UiTheme.DANGER.brighter(), UiTheme.ON_ACCENT);
+        return new GlassButton(text, false, true);
     }
 
-    // ─────────────────────────── прочие элементы ───────────────────────────
+    // ─────────────────────────── Прочие элементы ───────────────────────────
 
-    /** Индикатор загрузки: скруглённая дорожка и градиентное заполнение. */
     public static JProgressBar progress() {
         JProgressBar bar = new JProgressBar(0, 100) {
             @Override
@@ -288,23 +323,20 @@ public final class UiKit {
                 Graphics2D g = (Graphics2D) graphics.create();
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 int height = getHeight();
-                int radius = height;
+                int radius = 8;
                 g.setColor(UiTheme.TRACK);
                 g.fill(new RoundRectangle2D.Float(0, 0, getWidth(), height, radius, radius));
                 double percent = getPercentComplete() < 0 ? 0.0F : getPercentComplete();
                 int filled = Math.round((float) (getWidth() * percent));
                 if (filled > 2) {
-                    g.setPaint(new java.awt.GradientPaint(0, 0, UiTheme.ACCENT, filled, height, UiTheme.ACCENT_2));
+                    g.setColor(UiTheme.ACCENT);
                     g.fill(new RoundRectangle2D.Float(0, 0, filled, height, radius, radius));
-                    g.setColor(fade(Color.WHITE, 0.30F));
-                    g.fill(new RoundRectangle2D.Float(2, 2, Math.max(0, filled - 4), Math.max(1, height / 3),
-                            height / 3, height / 3));
                 }
                 if (isStringPainted()) {
                     String text = getString();
                     g.setFont(UiTheme.SMALL_BOLD);
                     FontMetrics metrics = g.getFontMetrics();
-                    g.setColor(filled > getWidth() / 2 ? UiTheme.ON_ACCENT : UiTheme.TEXT);
+                    g.setColor(UiTheme.TEXT);
                     g.drawString(text, (getWidth() - metrics.stringWidth(text)) / 2,
                             (height + metrics.getAscent() - metrics.getDescent()) / 2);
                 }
@@ -314,7 +346,7 @@ public final class UiKit {
         bar.setOpaque(false);
         bar.setStringPainted(true);
         bar.setString("");
-        bar.setPreferredSize(new Dimension(10, 18));
+        bar.setPreferredSize(new Dimension(10, 14));
         bar.setBorder(BorderFactory.createEmptyBorder());
         return bar;
     }
@@ -326,7 +358,7 @@ public final class UiKit {
         field.setCaretColor(UiTheme.ACCENT);
         field.setBorder(BorderFactory.createCompoundBorder(
                 new RoundedLineBorder(UiTheme.CARD_BORDER, BUTTON_RADIUS),
-                BorderFactory.createEmptyBorder(6, 12, 6, 12)));
+                BorderFactory.createEmptyBorder(5, 10, 5, 10)));
         return field;
     }
 
@@ -360,7 +392,6 @@ public final class UiKit {
         return box;
     }
 
-    /** Оформляет вкладки: «таблетки» вместо стандартных прямоугольников. */
     public static void styleTabs(javax.swing.JTabbedPane tabs) {
         tabs.setOpaque(false);
         tabs.setFont(UiTheme.TAB);
@@ -369,25 +400,24 @@ public final class UiKit {
         tabs.setUI(new PillTabs());
     }
 
-    /** Оформляет таблицу модов: мягкие строки и цветные состояния. */
     public static void styleTable(JTable table) {
         table.setOpaque(false);
-        table.setRowHeight(28);
+        table.setRowHeight(26);
         table.setShowGrid(false);
         table.setIntercellSpacing(new Dimension(0, 2));
         table.setFont(UiTheme.BASE);
         table.setForeground(UiTheme.TEXT);
         table.setBackground(UiTheme.CARD_BOTTOM);
-        table.setSelectionBackground(fade(UiTheme.ACCENT, 0.22F));
+        table.setSelectionBackground(fade(UiTheme.ACCENT, 0.18F));
         table.setSelectionForeground(UiTheme.TEXT);
         table.setDefaultRenderer(Object.class, new CellRenderer());
         JTableHeader header = table.getTableHeader();
         header.setOpaque(false);
         header.setFont(UiTheme.SMALL_BOLD);
-        header.setBackground(fade(UiTheme.CARD_BORDER, 0.55F));
+        header.setBackground(UiTheme.CARD_TOP);
         header.setForeground(UiTheme.TEXT_MUTED);
-        header.setBorder(BorderFactory.createEmptyBorder(6, 10, 6, 10));
-        header.setPreferredSize(new Dimension(header.getPreferredSize().width, 30));
+        header.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+        header.setPreferredSize(new Dimension(header.getPreferredSize().width, 28));
         header.setDefaultRenderer(new CellRenderer() {
             @Override
             public Component getTableCellRendererComponent(JTable table2, Object value, boolean selected,
@@ -399,7 +429,6 @@ public final class UiKit {
         });
     }
 
-    /** Прозрачная прокрутка: внутри карточки видно стекло, а не серый прямоугольник. */
     public static javax.swing.JScrollPane scroll(JComponent content) {
         javax.swing.JScrollPane pane = new javax.swing.JScrollPane(content);
         pane.setOpaque(false);
@@ -409,7 +438,7 @@ public final class UiKit {
         return pane;
     }
 
-    /** Ползунок: скруглённая дорожка и градиентный бегунок вместо системного вида. */
+    /** Тонкая полоска слайдера с неоновым кружком. */
     private static final class GlassSlider extends javax.swing.plaf.basic.BasicSliderUI {
         GlassSlider(JSlider slider) {
             super(slider);
@@ -417,21 +446,20 @@ public final class UiKit {
 
         @Override
         protected Dimension getThumbSize() {
-            return new Dimension(18, 18);
+            return new Dimension(14, 14);
         }
 
         @Override
         public void paintTrack(Graphics g) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            int height = 8;
+            int height = 4;
             int y = trackRect.y + (trackRect.height - height) / 2;
             g2.setColor(UiTheme.TRACK);
             g2.fill(new RoundRectangle2D.Float(trackRect.x, y, trackRect.width, height, height, height));
             int filled = thumbRect.x + thumbRect.width / 2 - trackRect.x;
             if (filled > 2) {
-                g2.setPaint(new java.awt.GradientPaint(trackRect.x, y, UiTheme.ACCENT_2, trackRect.x + filled, y,
-                        UiTheme.ACCENT));
+                g2.setColor(UiTheme.ACCENT);
                 g2.fill(new RoundRectangle2D.Float(trackRect.x, y, filled, height, height, height));
             }
             g2.dispose();
@@ -441,34 +469,29 @@ public final class UiKit {
         public void paintThumb(Graphics g) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            float size = 18.0F;
+            float size = 12.0F;
             float x = thumbRect.x + (thumbRect.width - size) / 2.0F;
             float y = thumbRect.y + (thumbRect.height - size) / 2.0F;
             g2.setColor(fade(UiTheme.ACCENT, 0.35F));
-            g2.fill(new java.awt.geom.Ellipse2D.Float(x - 3, y - 3, size + 6, size + 6));
-            g2.setPaint(new java.awt.GradientPaint(x, y, UiTheme.ACCENT, x, y + size, UiTheme.ACCENT_2));
-            g2.fill(new java.awt.geom.Ellipse2D.Float(x, y, size, size));
-            g2.setColor(fade(Color.WHITE, 0.85F));
-            g2.fill(new java.awt.geom.Ellipse2D.Float(x + size * 0.30F, y + size * 0.26F, size * 0.22F,
-                    size * 0.22F));
+            g2.fill(new Ellipse2D.Float(x - 3, y - 3, size + 6, size + 6));
+            g2.setColor(UiTheme.ACCENT);
+            g2.fill(new Ellipse2D.Float(x, y, size, size));
+            g2.setColor(Color.WHITE);
+            g2.fill(new Ellipse2D.Float(x + 3.5F, y + 3.5F, size - 7.0F, size - 7.0F));
             g2.dispose();
         }
 
         @Override
         public void paintFocus(Graphics g) {
-            // Рамка фокуса не нужна: бегунок и так светится.
         }
     }
 
-    // ─────────────────────────── вспомогательное ───────────────────────────
-
-    /** Цвет с заданной прозрачностью. */
-    public static Color fade(Color color, float alpha) {
-        return new Color(color.getRed(), color.getGreen(), color.getBlue(), Math.round(255 * alpha));
+    static Color fade(Color color, float alpha) {
+        int clamped = Math.max(0, Math.min(255, Math.round(alpha * 255.0F)));
+        return new Color(color.getRed(), color.getGreen(), color.getBlue(), clamped);
     }
 
-    /** Смешивает два цвета. */
-    public static Color mix(Color from, Color to, float amount) {
+    static Color mix(Color from, Color to, float amount) {
         float clamped = Math.max(0.0F, Math.min(1.0F, amount));
         return new Color(
                 Math.round(from.getRed() + (to.getRed() - from.getRed()) * clamped),
@@ -476,10 +499,6 @@ public final class UiKit {
                 Math.round(from.getBlue() + (to.getBlue() - from.getBlue()) * clamped));
     }
 
-    /**
-     * Упругая кривая: сначала перелёт за цель, потом возврат.
-     * Именно из-за неё кнопки «пружинят» при нажатии.
-     */
     static float overshoot(float t) {
         float clamped = Math.max(0.0F, Math.min(1.0F, t));
         float c = 1.9F;
@@ -487,25 +506,24 @@ public final class UiKit {
         return 1.0F + (c + 1.0F) * p * p * p + c * p * p;
     }
 
-    /** Кнопка из стекла: градиент, скругление, упругое нажатие. */
+    /** Матовая чёрная прямоугольная кнопка с неоновой обводкой (glow). */
     private static final class GlassButton extends JButton implements Animated {
-        private final Color base;
-        private final Color hover;
+        private final boolean primaryNeon;
+        private final boolean dangerNeon;
         private float hoverAmount;
-        private float pressTime = 1.0F;
 
-        GlassButton(String text, Color base, Color hover, Color foreground) {
+        GlassButton(String text, boolean primaryNeon, boolean dangerNeon) {
             super(text);
-            this.base = base;
-            this.hover = hover;
+            this.primaryNeon = primaryNeon;
+            this.dangerNeon = dangerNeon;
             setFont(UiTheme.BUTTON_FONT);
-            setForeground(foreground);
+            setForeground(UiTheme.TEXT);
             setOpaque(false);
             setContentAreaFilled(false);
             setBorderPainted(false);
             setFocusPainted(false);
-            setBorder(BorderFactory.createEmptyBorder(8, 18, 8, 18));
-            setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+            setBorder(BorderFactory.createEmptyBorder(7, 14, 7, 14));
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             addMouseListener(new MouseAdapter() {
                 @Override
                 public void mouseEntered(MouseEvent event) {
@@ -514,12 +532,6 @@ public final class UiKit {
 
                 @Override
                 public void mouseExited(MouseEvent event) {
-                    register(GlassButton.this);
-                }
-
-                @Override
-                public void mousePressed(MouseEvent event) {
-                    pressTime = 0.0F;
                     register(GlassButton.this);
                 }
             });
@@ -531,10 +543,7 @@ public final class UiKit {
             float step = TICK_MS / 120.0F;
             this.hoverAmount += (inside ? step : -step);
             this.hoverAmount = Math.max(0.0F, Math.min(1.0F, this.hoverAmount));
-            this.pressTime = Math.min(1.0F, this.pressTime + TICK_MS / 260.0F);
-            return (inside && this.hoverAmount < 1.0F)
-                    || (!inside && this.hoverAmount > 0.0F)
-                    || this.pressTime < 1.0F;
+            return (inside && this.hoverAmount < 1.0F) || (!inside && this.hoverAmount > 0.0F);
         }
 
         @Override
@@ -548,37 +557,40 @@ public final class UiKit {
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
-            // Нажатие: кнопка сжимается, а отпускание догоняет цель с перелётом.
-            float press = 1.0F - 0.10F * (1.0F - overshoot(this.pressTime));
-            float inset = (1.0F - press) * getHeight() * 0.5F;
-            float radius = Math.min(BUTTON_RADIUS, (getHeight() - inset * 2) / 2.0F);
-            float x = inset;
-            float y = inset;
-            float width = getWidth() - inset * 2;
-            float height = getHeight() - inset * 2;
+            int w = getWidth();
+            int h = getHeight();
+            Color neonCol = this.dangerNeon ? UiTheme.DANGER : UiTheme.ACCENT;
+            float glow = this.primaryNeon ? 1.0F : (this.dangerNeon ? 0.85F : this.hoverAmount * 0.90F);
 
-            Color top = mix(this.base, this.hover, this.hoverAmount);
-            Color bottom = mix(this.base, this.hover, this.hoverAmount * 0.65F);
-            // Свечение под кнопкой: заметно при наведении.
-            if (this.hoverAmount > 0.01F) {
-                g.setColor(fade(this.hover, 0.22F * this.hoverAmount));
-                g.fill(new RoundRectangle2D.Float(x - 3, y - 2, width + 6, height + 5, radius + 4, radius + 4));
+            if (glow > 0.02F) {
+                for (int layer = 3; layer >= 1; layer--) {
+                    g.setColor(fade(neonCol, 0.08F * (4 - layer) * glow));
+                    g.setStroke(new BasicStroke(layer * 1.3F));
+                    g.draw(new RoundRectangle2D.Float(3 - layer, 3 - layer,
+                            w - 6 + layer * 2, h - 6 + layer * 2,
+                            BUTTON_RADIUS + layer, BUTTON_RADIUS + layer));
+                }
             }
-            g.setPaint(new java.awt.GradientPaint(x, y, top, x, y + height, bottom));
-            g.fill(new RoundRectangle2D.Float(x, y, width, height, radius, radius));
-            g.setColor(fade(Color.WHITE, 0.16F + 0.12F * this.hoverAmount));
-            g.fill(new RoundRectangle2D.Float(x + 2, y + 2, width - 4, Math.max(2, height * 0.32F),
-                    radius - 3, radius - 3));
-            if (!isEnabled()) {
-                g.setColor(fade(UiTheme.BACKGROUND_BOTTOM, 0.55F));
-                g.fill(new RoundRectangle2D.Float(x, y, width, height, radius, radius));
+
+            Shape body = new RoundRectangle2D.Float(3, 3, w - 6, h - 6, BUTTON_RADIUS, BUTTON_RADIUS);
+            g.setColor(UiTheme.CARD_TOP);
+            g.fill(body);
+
+            if (glow > 0.02F) {
+                g.setColor(fade(neonCol, 0.95F * glow));
+                g.setStroke(new BasicStroke(1.5F));
+                g.draw(body);
+            } else {
+                g.setColor(new Color(255, 255, 255, 24));
+                g.setStroke(new BasicStroke(1.0F));
+                g.draw(body);
             }
+
             g.dispose();
             super.paintComponent(graphics);
         }
     }
 
-    /** Ячейка таблицы: мягкий фон строки, состояние — своим цветом. */
     private static class CellRenderer extends DefaultTableCellRenderer {
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value, boolean selected, boolean focus,
@@ -587,12 +599,12 @@ public final class UiKit {
             result.setFont(UiTheme.BASE);
             result.setForeground(UiTheme.TEXT);
             if (!selected) {
-                result.setBackground(row % 2 == 0 ? fade(UiTheme.CARD_BOTTOM, 0.85F) : UiTheme.CARD_BOTTOM);
+                result.setBackground(row % 2 == 0 ? new Color(0x0E, 0x10, 0x16) : UiTheme.CARD_BOTTOM);
             }
-            setBorder(BorderFactory.createEmptyBorder(0, 12, 0, 12));
+            setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 10));
             String text = String.valueOf(value);
-            if ("установлен".equals(text) || "готов".equals(text)) {
-                result.setForeground(UiTheme.SUCCESS);
+            if ("установлен".equals(text) || "готов".equals(text) || text.startsWith("Включён")) {
+                result.setForeground(UiTheme.ACCENT);
             } else if ("отсутствует".equals(text) || "ошибка".equals(text)) {
                 result.setForeground(UiTheme.DANGER);
             } else if ("устарел".equals(text)) {
@@ -602,25 +614,28 @@ public final class UiKit {
         }
     }
 
-    /** Вкладки-«таблетки»: выбранная подсвечена градиентом. */
+    /** Вкладки узкой левой панели навигации в стиле Matte Black + Neon. */
     private static final class PillTabs extends BasicTabbedPaneUI {
         @Override
         protected void installDefaults() {
             super.installDefaults();
-            this.contentBorderInsets = new Insets(0, 0, 0, 0);
-            this.tabAreaInsets = new Insets(6, 6, 6, 6);
+            this.contentBorderInsets = new Insets(0, 8, 0, 0);
+            this.tabAreaInsets = new Insets(6, 10, 6, 4);
             this.selectedTabPadInsets = new Insets(0, 0, 0, 0);
-            this.tabInsets = new Insets(8, 18, 8, 18);
+            this.tabInsets = new Insets(8, 16, 8, 16);
         }
 
         @Override
         protected int calculateTabHeight(int tabPlacement, int tabIndex, int fontHeight) {
-            return 38;
+            return 36;
         }
 
         @Override
         protected int calculateTabWidth(int tabPlacement, int tabIndex, FontMetrics metrics) {
-            return super.calculateTabWidth(tabPlacement, tabIndex, metrics) + 26;
+            if (tabPlacement == SwingConstants.LEFT) {
+                return 134;
+            }
+            return super.calculateTabWidth(tabPlacement, tabIndex, metrics) + 22;
         }
 
         @Override
@@ -628,31 +643,22 @@ public final class UiKit {
                                           int height, boolean isSelected) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            if (isSelected) {
-                g2.setPaint(new java.awt.GradientPaint(x, y, UiTheme.ACCENT, x + width, y + height,
-                        UiTheme.ACCENT_2));
-            } else {
-                g2.setColor(fade(UiTheme.CARD_TOP, 0.85F));
-            }
-            g2.fill(new RoundRectangle2D.Float(x + 2, y + 3, width - 4, height - 6, height - 6, height - 6));
+            paintMatteNeonRect(g2, x, y, width, height, 10, isSelected ? 1.0F : 0.0F);
             g2.dispose();
         }
 
         @Override
         protected void paintTabBorder(Graphics g, int tabPlacement, int tabIndex, int x, int y, int width, int height,
                                       boolean isSelected) {
-            // Рамка не нужна: форму задаёт заливка.
         }
 
         @Override
         protected void paintContentBorder(Graphics g, int tabPlacement, int selectedIndex) {
-            // Содержимое лежит на общем фоне, без рамки.
         }
 
         @Override
         protected void paintFocusIndicator(Graphics g, int tabPlacement, Rectangle[] rects, int tabIndex,
                                            Rectangle iconRect, Rectangle textRect, boolean isSelected) {
-            // Рамка фокуса портит «стекло».
         }
 
         @Override
@@ -661,16 +667,15 @@ public final class UiKit {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             g2.setFont(isSelected ? UiTheme.TAB_BOLD : UiTheme.TAB);
-            g2.setColor(isSelected ? UiTheme.ON_ACCENT : UiTheme.TEXT_MUTED);
+            g2.setColor(isSelected ? UiTheme.TEXT : UiTheme.TEXT_MUTED);
             FontMetrics own = g2.getFontMetrics();
-            int x = textRect.x + (textRect.width - own.stringWidth(title)) / 2;
+            int x = textRect.x + 6;
             int baseline = textRect.y + (textRect.height + own.getAscent() - own.getDescent()) / 2;
             g2.drawString(title, x, baseline);
             g2.dispose();
         }
     }
 
-    /** Скруглённая рамка-линия: обычная {@code LineBorder} не умеет углы. */
     public static final class RoundedLineBorder implements Border {
         private final Color color;
         private final int radius;
@@ -685,7 +690,7 @@ public final class UiKit {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g2.setColor(this.color);
-            g2.setStroke(new BasicStroke(1.2F));
+            g2.setStroke(new BasicStroke(1.1F));
             g2.draw(new RoundRectangle2D.Float(x + 0.5F, y + 0.5F, width - 1, height - 1, this.radius, this.radius));
             g2.dispose();
         }

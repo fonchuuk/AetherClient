@@ -207,45 +207,67 @@ public final class DrawUtil {
     }
 
     /**
-     * Выпуклая матовая стеклянная капсула/кнопка (9-Slice SDF Frosted Pill):
-     * идеально гладкие углы, диагональная тень, матовое тело, выпуклый купол и солнечный блик.
+     * Матовая чёрная прямоугольная карточка со скруглёнными углами (10–12px) и неоновой обводкой с эффектом свечения (glow).
+     *
+     * <ul>
+     *   <li>Фон карточки всегда матовый чёрный ({@code #0B0C10}) с лёгкой прозрачностью — никаких перекрашиваний самой карточки.</li>
+     *   <li>Когда модуль ВЫКЛЮЧЕН ({@code neonGlow <= 0.015F}): обводки нет вообще (или еле заметная серая без свечения).</li>
+     *   <li>Когда модуль ВКЛЮЧЕН ({@code neonGlow > 0.015F}): вокруг периметра загорается неоновая обводка с мягким внешним свечением (glow).</li>
+     * </ul>
+     */
+    public static void drawMatteNeonCard(GuiGraphics graphics, int x, int y, int width, int height,
+                                         int radius, float alpha, float neonGlow, int neonColor) {
+        if (graphics == null || width <= 0 || height <= 0 || alpha <= 0.01F) {
+            return;
+        }
+        float a = Math.max(0.0F, Math.min(1.0F, alpha));
+        float glow = Math.max(0.0F, Math.min(1.0F, neonGlow));
+        int r = limit(Math.max(8, Math.min(12, radius)), width, height);
+
+        // 1. Внешнее неоновое свечение (glow) по периметру — ТОЛЬКО когда включено
+        if (glow > 0.015F) {
+            int outerGlow = ColorUtil.withAlpha(neonColor, Math.round(145 * a * glow));
+            int midGlow = ColorUtil.withAlpha(neonColor, Math.round(220 * a * glow));
+            drawNineSlice(graphics, TEX_NINE_SHADOW, x - 6, y - 6, width + 12, height + 12,
+                    Math.min(28, r + 6), NINE_CORNER_TEX, NINE_TEX_SIZE, outerGlow);
+            drawNineSlice(graphics, TEX_NINE_SHADOW, x - 3, y - 3, width + 6, height + 6,
+                    Math.min(24, r + 3), NINE_CORNER_TEX, NINE_TEX_SIZE, midGlow);
+        } else {
+            drawSoftShadow(graphics, x, y, width, height, r, a * 0.85F);
+        }
+
+        // 2. Фон: Матовый чёрный (#0B0C10) с лёгкой прозрачностью — НИКОГДА не перекрашивается
+        int matteBlack = ColorUtil.withAlpha(0xFF0B0C10, Math.round(238 * a));
+        drawNineSlice(graphics, TEX_NINE_FILL, x, y, width, height, r, NINE_CORNER_TEX, NINE_TEX_SIZE, matteBlack);
+
+        // 3. Обводка по периметру: неоновая при включении, еле заметная серая без свечения при выключении
+        if (glow > 0.015F) {
+            int neonBorder = ColorUtil.withAlpha(neonColor, Math.round(255 * a * glow));
+            int neonCore = ColorUtil.withAlpha(ColorUtil.lerp(neonColor, 0xFFFFFFFF, 0.45F), Math.round(190 * a * glow));
+            drawNineSlice(graphics, TEX_NINE_BORDER, x - 1, y - 1, width + 2, height + 2,
+                    r + 1, NINE_CORNER_TEX, NINE_TEX_SIZE, neonBorder);
+            drawNineSlice(graphics, TEX_NINE_BORDER, x, y, width, height,
+                    r, NINE_CORNER_TEX, NINE_TEX_SIZE, neonCore);
+        } else {
+            int subtleGrey = ColorUtil.withAlpha(0xFFFFFFFF, Math.round(14 * a));
+            drawNineSlice(graphics, TEX_NINE_BORDER, x, y, width, height,
+                    r, NINE_CORNER_TEX, NINE_TEX_SIZE, subtleGrey);
+        }
+    }
+
+    /**
+     * Прямоугольная матовая чёрная плашка/кнопка с неоновым контуром при наведении или активности.
      */
     public static void drawFrostedPill(GuiGraphics graphics, int x, int y, int width, int height,
                                        int radius, float alpha, float hoverAmount, float activeAmount) {
         if (graphics == null || width <= 0 || height <= 0 || alpha <= 0.01F) {
             return;
         }
-        int r = limit(radius, width, height);
+        int r = limit(Math.min(11, radius), width, height);
         float hover = Math.max(0.0F, Math.min(1.0F, hoverAmount));
         float active = Math.max(0.0F, Math.min(1.0F, activeAmount));
-
-        // 1. Мягкая SDF-тень
-        drawSoftShadow(graphics, x, y, width, height, r, alpha * 0.72F);
-
-        // 2. Выпуклое матовое стеклянное тело через 9-slice SDF
-        int accent = AuroraTheme.accent();
-        int baseTint = AuroraTheme.glassTint();
-        int tintAlpha = Math.min(132, Math.round((ColorUtil.alpha(baseTint) + 14 * hover + 22 * active) * alpha));
-        int topRgb = ColorUtil.lerp(0xFF2B3B56, accent, 0.18F + 0.20F * hover + 0.32F * active);
-        int botRgb = ColorUtil.lerp(0xFF152034, accent, 0.10F + 0.12F * hover + 0.22F * active);
-        fillRoundedGradient(graphics, x, y, width, height, r,
-                ColorUtil.withAlpha(topRgb, tintAlpha),
-                ColorUtil.withAlpha(botRgb, Math.max(16, tintAlpha - 12)));
-
-        // 3. Композитный стеклянный 9-slice слой преломления
-        int panelOverlayAlpha = Math.round((68 + 24 * hover + 28 * active) * alpha);
-        int panelTint = ColorUtil.lerp(0xFFFFFFFF, accent, 0.15F * hover + 0.30F * active);
-        drawNineSlice(graphics, TEX_NINE_GLASS_PANEL, x, y, width, height, r,
-                NINE_CORNER_TEX, NINE_TEX_SIZE, ColorUtil.withAlpha(panelTint, panelOverlayAlpha));
-
-        // 4. Скользящий солнечный блик по граням
-        drawSurfaceSolarSheen(graphics, x, y, width, height, r, alpha * (0.80F + 0.35F * hover));
-
-        // 5. Идеально гладкая SDF 9-slice световая фаска
-        int rimAlpha = Math.round((46 + 32 * hover + 48 * active) * alpha);
-        int rimColor = ColorUtil.lerp(0xFFE6F6FF, accent, 0.25F * hover + 0.55F * active);
-        drawNineSlice(graphics, TEX_NINE_BORDER, x, y, width, height, r,
-                NINE_CORNER_TEX, NINE_TEX_SIZE, ColorUtil.withAlpha(rimColor, rimAlpha));
+        float glow = Math.max(active, hover * 0.72F);
+        drawMatteNeonCard(graphics, x, y, width, height, r, alpha, glow, AuroraTheme.accent());
     }
 
     public static void fillGlass(GuiGraphics graphics, int x, int y, int width, int height, int radius,
@@ -260,82 +282,31 @@ public final class DrawUtil {
     }
 
     /**
-     * Единое выпуклое матовое стеклянное окно (9-Slice SDF Frosted Window).
+     * Матовое чёрное окно контейнера (Matte Black + тонкая грань, без синей заливки).
      */
     public static void drawLiquidGlassPanel(GuiGraphics graphics, int x, int y, int width, int height,
                                             int radius, float alpha) {
         if (graphics == null || width <= 0 || height <= 0 || alpha <= 0.01F) {
             return;
         }
-        int r = limit(radius, width, height);
-
-        // 1. Мягкая SDF-тень
+        int r = limit(Math.min(12, radius), width, height);
         drawSoftShadow(graphics, x, y, width, height, r, alpha);
-
-        // 2. Дымчатое матовое тело окна через 9-slice SDF
-        int baseTint = AuroraTheme.glassTint();
-        int topAlpha = Math.min(126, Math.round((ColorUtil.alpha(baseTint) + 12) * alpha));
-        int botAlpha = Math.min(114, Math.round(ColorUtil.alpha(baseTint) * alpha));
-        int accent = AuroraTheme.accent();
-        int topBg = ColorUtil.withAlpha(ColorUtil.lerp(0xFF263650, accent, 0.16F), topAlpha);
-        int botBg = ColorUtil.withAlpha(ColorUtil.lerp(0xFF141E30, accent, 0.09F), botAlpha);
-        fillRoundedGradient(graphics, x, y, width, height, r, topBg, botBg);
-
-        // 3. 9-slice текстура выпуклого стекла с куполом и преломлением
-        drawNineSlice(graphics, TEX_NINE_GLASS_PANEL, x, y, width, height, r,
-                NINE_CORNER_TEX, NINE_TEX_SIZE, ColorUtil.withAlpha(0xFFFFFFFF, Math.round(92 * alpha)));
-
-        // 4. Скользящий солнечный блик по верхней/нижней грани
-        drawSurfaceSolarSheen(graphics, x, y, width, height, r, alpha);
-
-        // 5. Гладкая SDF 9-slice фаска
-        int rim = ColorUtil.withAlpha(0xFFE6F6FF, Math.round(54 * alpha));
-        drawNineSlice(graphics, TEX_NINE_BORDER, x, y, width, height, r,
-                NINE_CORNER_TEX, NINE_TEX_SIZE, rim);
+        int panelFill = ColorUtil.withAlpha(0xFF07080B, Math.round(244 * alpha));
+        drawNineSlice(graphics, TEX_NINE_FILL, x, y, width, height, r, NINE_CORNER_TEX, NINE_TEX_SIZE, panelFill);
+        int rim = ColorUtil.withAlpha(0xFFFFFFFF, Math.round(22 * alpha));
+        drawNineSlice(graphics, TEX_NINE_BORDER, x, y, width, height, r, NINE_CORNER_TEX, NINE_TEX_SIZE, rim);
     }
 
     /**
-     * Выпуклая матовая стеклянная карточка модуля, уведомления или плашка HUD (9-Slice SDF).
+     * Матовая чёрная карточка с неоновой обводкой при активности.
      */
     public static void drawLiquidGlassCard(GuiGraphics graphics, int x, int y, int width, int height,
                                            int radius, float alpha, boolean hoveredOrActive) {
         if (graphics == null || width <= 0 || height <= 0 || alpha <= 0.01F) {
             return;
         }
-        int r = limit(radius, width, height);
-
-        // 1. Мягкая SDF-тень
-        drawSoftShadow(graphics, x, y, width, height, r, alpha * 0.80F);
-
-        // 2. Дымчатая полупрозрачная подложка
-        int baseTint = AuroraTheme.glassTint();
-        int accent = AuroraTheme.accent();
-        int baseAlpha = ColorUtil.alpha(baseTint);
-        int topA = Math.min(124, Math.round((baseAlpha + (hoveredOrActive ? 18 : 8)) * alpha));
-        int botA = Math.min(112, Math.round((baseAlpha + (hoveredOrActive ? 8 : -2)) * alpha));
-
-        int topRgb = ColorUtil.lerp(0xFF283852, accent, hoveredOrActive ? 0.25F : 0.13F);
-        int botRgb = ColorUtil.lerp(0xFF152032, accent, hoveredOrActive ? 0.15F : 0.07F);
-        fillRoundedGradient(graphics, x, y, width, height, r,
-                ColorUtil.withAlpha(topRgb, topA),
-                ColorUtil.withAlpha(botRgb, Math.max(14, botA)));
-
-        // 3. 9-slice текстура выпуклого стекла
-        int glassAlpha = Math.round((hoveredOrActive ? 105 : 78) * alpha);
-        int glassTint = hoveredOrActive ? ColorUtil.lerp(0xFFFFFFFF, accent, 0.22F) : 0xFFFFFFFF;
-        drawNineSlice(graphics, TEX_NINE_GLASS_PANEL, x, y, width, height, r,
-                NINE_CORNER_TEX, NINE_TEX_SIZE, ColorUtil.withAlpha(glassTint, glassAlpha));
-
-        // 4. Скользящий солнечный блик
-        drawSurfaceSolarSheen(graphics, x, y, width, height, r, alpha * (hoveredOrActive ? 1.05F : 0.82F));
-
-        // 5. Гладкая SDF 9-slice фаска
-        int rimCol = hoveredOrActive
-                ? ColorUtil.lerp(0xFFE8F7FF, accent, 0.45F)
-                : 0xFFE0F2FF;
-        int rimAlpha = Math.round((hoveredOrActive ? 68 : 46) * alpha);
-        drawNineSlice(graphics, TEX_NINE_BORDER, x, y, width, height, r,
-                NINE_CORNER_TEX, NINE_TEX_SIZE, ColorUtil.withAlpha(rimCol, rimAlpha));
+        int r = limit(Math.min(11, radius), width, height);
+        drawMatteNeonCard(graphics, x, y, width, height, r, alpha, hoveredOrActive ? 0.90F : 0.0F, AuroraTheme.accent());
     }
 
     private static void drawSurfaceSolarSheen(GuiGraphics graphics, int x, int y, int width, int height,
@@ -451,6 +422,32 @@ public final class DrawUtil {
             return;
         }
         graphics.fill(x, y, x + width, y + 1, color);
+    }
+
+    public static void drawTextScaled(GuiGraphics graphics, Font font, String text, int x, int y,
+                                      int color, float scale, boolean shadow) {
+        if (text == null || text.isEmpty() || ColorUtil.alpha(color) <= 0) {
+            return;
+        }
+        if (Math.abs(scale - 1.0F) < 0.001F) {
+            graphics.drawString(font, text, x, y, color, shadow);
+            return;
+        }
+        var pose = graphics.pose();
+        pose.pushMatrix();
+        pose.translate((float) x, (float) y);
+        pose.scale(scale, scale);
+        graphics.drawString(font, text, 0, 0, color, shadow);
+        pose.popMatrix();
+    }
+
+    public static void drawCenteredTextScaled(GuiGraphics graphics, Font font, String text, int centerX, int y,
+                                              int color, float scale, boolean shadow) {
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        int width = Math.round(font.width(text) * scale);
+        drawTextScaled(graphics, font, text, centerX - width / 2, y, color, scale, shadow);
     }
 
     public static int rowInset(int row, int height, int radius) {

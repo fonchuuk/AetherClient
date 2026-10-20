@@ -7,62 +7,62 @@ import java.awt.Color;
 import java.awt.Font;
 
 /**
- * Цвета и шрифты лаунчера: тёмный фон, неоновые акценты, крупные заголовки.
- *
- * <p>Палитра намеренно яркая — лаунчер должен выглядеть живым, а не
- * казённым. При этом она собрана из тех же оттенков, что и оформление клиента
- * (холодный синий, фиолетовый, циан), поэтому меню игры и окно лаунчера
- * выглядят одним продуктом.</p>
+ * Цвета и шрифты лаунчера в едином с клиентом стиле Matte Black + Neon Cyan:
+ * <ul>
+ *   <li>Глубокий матовый чёрный фон карточек ({@code #0B0C10}) без перекрашивания;</li>
+ *   <li>Яркая неоновая бирюзовая обводка ({@code #00F2FF}) с внешним свечением (glow) для активных карточек и элементов;</li>
+ *   <li>Белый жирный текст заголовков и спокойный серый текст описаний.</li>
+ * </ul>
  */
 public final class UiTheme {
 
-    // ── фон ──
-    public static final Color BACKGROUND_TOP = new Color(0x0B, 0x10, 0x26);
-    public static final Color BACKGROUND_BOTTOM = new Color(0x14, 0x0A, 0x26);
+    // ── Матовый чёрный фон ──
+    public static final Color BACKGROUND_TOP = new Color(0x06, 0x07, 0x0A);
+    public static final Color BACKGROUND_BOTTOM = new Color(0x08, 0x09, 0x0D);
     public static final Color BACKGROUND = BACKGROUND_TOP;
-    public static final Color PANEL = new Color(0x1A, 0x1F, 0x3D);
-    public static final Color PANEL_LIGHT = new Color(0x23, 0x2A, 0x4D);
+    public static final Color PANEL = new Color(0x0B, 0x0C, 0x10);
+    public static final Color PANEL_LIGHT = new Color(0x10, 0x12, 0x18);
 
-    /** Световые пятна на фоне. */
-    public static final Color BLOB_VIOLET = new Color(0x7C, 0x3A, 0xED);
-    public static final Color BLOB_CYAN = new Color(0x22, 0xD3, 0xEE);
-    public static final Color BLOB_PINK = new Color(0xF4, 0x72, 0xB6);
+    /** Деликатное фоновое свечение без цветных пятен. */
+    public static final Color BLOB_VIOLET = new Color(0x00, 0xF2, 0xFF);
+    public static final Color BLOB_CYAN = new Color(0x00, 0xD8, 0xFF);
+    public static final Color BLOB_PINK = new Color(0x00, 0xB8, 0xE6);
 
-    // ── стекло ──
-    public static final Color CARD_TOP = new Color(0x1C, 0x22, 0x44);
-    public static final Color CARD_BOTTOM = new Color(0x15, 0x18, 0x34);
-    public static final Color CARD_BORDER = new Color(0x2E, 0x36, 0x5C);
-    public static final Color TRACK = new Color(0x17, 0x1C, 0x33);
-    public static final Color FIELD = new Color(0x15, 0x1A, 0x33);
+    // ── Матовые чёрные карточки (#0B0C10) ──
+    public static final Color CARD_TOP = new Color(0x0B, 0x0C, 0x10);
+    public static final Color CARD_BOTTOM = new Color(0x0B, 0x0C, 0x10);
+    public static final Color CARD_BORDER = new Color(0x1E, 0x22, 0x2C);
+    public static final Color TRACK = new Color(0x1A, 0x1E, 0x28);
+    public static final Color FIELD = new Color(0x0E, 0x10, 0x16);
 
-    // ── акценты ──
-    public static final Color ACCENT = new Color(0x22, 0xD3, 0xEE);
-    public static final Color ACCENT_2 = new Color(0xA8, 0x55, 0xF7);
-    public static final Color ACCENT_3 = new Color(0xF4, 0x72, 0xB6);
-    public static final Color ON_ACCENT = new Color(0x0A, 0x10, 0x22);
-    public static final Color BUTTON = new Color(0x23, 0x2A, 0x4D);
-    public static final Color BUTTON_HOVER = new Color(0x33, 0x3D, 0x70);
+    // ── Неоновый циан (#00F2FF) ──
+    public static final Color ACCENT = new Color(0x00, 0xF2, 0xFF);
+    public static final Color ACCENT_2 = new Color(0x00, 0xC8, 0xFF);
+    public static final Color ACCENT_3 = new Color(0x4D, 0xF7, 0xFF);
+    public static final Color ON_ACCENT = new Color(0xFFFFFF);
+    public static final Color BUTTON = new Color(0x0B, 0x0C, 0x10);
+    public static final Color BUTTON_HOVER = new Color(0x12, 0x15, 0x1E);
 
-    // ── текст и состояния ──
-    public static final Color TEXT = new Color(0xEA, 0xF0, 0xFF);
-    public static final Color TEXT_MUTED = new Color(0x9A, 0xA6, 0xC8);
-    public static final Color SUCCESS = new Color(0x34, 0xD3, 0x99);
-    public static final Color WARNING = new Color(0xFB, 0xBF, 0x24);
-    public static final Color DANGER = new Color(0xFB, 0x71, 0x85);
+    // ── Текст и состояния ──
+    public static final Color TEXT = new Color(0xFF, 0xFF, 0xFF);
+    public static final Color TEXT_MUTED = new Color(0x8C, 0x94, 0xA6);
+    public static final Color SUCCESS = new Color(0x00, 0xF5, 0xA0);
+    public static final Color WARNING = new Color(0xFF, 0xB8, 0x4D);
+    public static final Color DANGER = new Color(0xFF, 0x4D, 0x6D);
     public static final Color BORDER = CARD_BORDER;
-    public static final Color CONSOLE = new Color(0x0A, 0x0D, 0x1A);
+    public static final Color CONSOLE = new Color(0x07, 0x08, 0x0B);
 
-    // ── шрифты ──
-    public static final Font BASE = new Font(Font.SANS_SERIF, Font.PLAIN, 14);
-    public static final Font SMALL = new Font(Font.SANS_SERIF, Font.PLAIN, 12);
+    // ── Шрифты ──
+    public static final Font BASE = new Font(Font.SANS_SERIF, Font.PLAIN, 13);
+    public static final Font SMALL = new Font(Font.SANS_SERIF, Font.PLAIN, 11);
     public static final Font SMALL_BOLD = new Font(Font.SANS_SERIF, Font.BOLD, 12);
-    public static final Font HEADING = new Font(Font.SANS_SERIF, Font.BOLD, 15);
-    public static final Font TITLE = new Font(Font.SANS_SERIF, Font.BOLD, 26);
-    public static final Font SUBTITLE = new Font(Font.SANS_SERIF, Font.PLAIN, 13);
-    public static final Font TAB = new Font(Font.SANS_SERIF, Font.PLAIN, 14);
-    public static final Font TAB_BOLD = new Font(Font.SANS_SERIF, Font.BOLD, 14);
-    public static final Font BUTTON_FONT = new Font(Font.SANS_SERIF, Font.BOLD, 14);
-    public static final Font BUTTON_BOLD = new Font(Font.SANS_SERIF, Font.BOLD, 16);
+    public static final Font HEADING = new Font(Font.SANS_SERIF, Font.BOLD, 14);
+    public static final Font TITLE = new Font(Font.SANS_SERIF, Font.BOLD, 22);
+    public static final Font SUBTITLE = new Font(Font.SANS_SERIF, Font.PLAIN, 12);
+    public static final Font TAB = new Font(Font.SANS_SERIF, Font.PLAIN, 13);
+    public static final Font TAB_BOLD = new Font(Font.SANS_SERIF, Font.BOLD, 13);
+    public static final Font BUTTON_FONT = new Font(Font.SANS_SERIF, Font.BOLD, 13);
+    public static final Font BUTTON_BOLD = new Font(Font.SANS_SERIF, Font.BOLD, 15);
     public static final Font MONO = new Font(Font.MONOSPACED, Font.PLAIN, 12);
 
     private UiTheme() {
@@ -117,6 +117,6 @@ public final class UiTheme {
     public static Border roundedBorder() {
         return BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(CARD_BORDER, 1),
-                BorderFactory.createEmptyBorder(10, 12, 10, 12));
+                BorderFactory.createEmptyBorder(8, 10, 8, 10));
     }
 }
