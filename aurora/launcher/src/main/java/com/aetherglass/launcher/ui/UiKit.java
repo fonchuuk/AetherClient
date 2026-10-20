@@ -25,37 +25,44 @@ import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FontMetrics;
+import java.awt.GradientPaint;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Insets;
+import java.awt.Point;
+import java.awt.RadialGradientPaint;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.Shape;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseMotionAdapter;
 import java.awt.geom.Ellipse2D;
+import java.awt.geom.Point2D;
 import java.awt.geom.RoundRectangle2D;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.function.BooleanSupplier;
 
 /**
- * Оформление лаунчера в едином с клиентом стиле Matte Black + Neon Cyan:
+ * Оформление и 60 FPS анимации лаунчера и установщика AetherGlass (Matte Black + Neon Purple #AA3DFF):
  * <ul>
- *   <li>Прямоугольные карточки со скруглёнными углами (10–12px), матовый чёрный фон ({@code #0B0C10}) без перекрашивания;</li>
- *   <li>Неоновая бирюзовая обводка ({@code #00F2FF}) с мягким внешним свечением (glow) только для активных/включённых карточек;</li>
- *   <li>Тонкие ползунки с неоновым кружком и узкая панель навигации слева.</li>
+ *   <li>Живой анимированный фон: плавно дрейфующие неоновые облака сияния + парящие светящиеся частицы с параллаксом от курсора;</li>
+ *   <li>Прямоугольные карточки со скруглёнными углами, матовым чёрным фоном ({@code #0B0C10}) и тонкой неоновой рамкой с плавной анимацией наведения и переключения;</li>
+ *   <li>Кнопки с пульсирующим неоновым свечением, диагональным бликом (shimmer) и пружинящим откликом при клике;</li>
+ *   <li>Плавное скольжение активного индикатора по вкладкам левого меню и анимированная неоновая полоса прогресса.</li>
  * </ul>
  */
 public final class UiKit {
 
-    /** Радиус скругления прямоугольных карточек (11px). */
-    public static final int CARD_RADIUS = 12;
+    /** Радиус скругления прямоугольных карточек (9px). */
+    public static final int CARD_RADIUS = 9;
 
-    /** Радиус скругления кнопок (10px, без капсул). */
-    public static final int BUTTON_RADIUS = 10;
+    /** Радиус скругления кнопок (8px). */
+    public static final int BUTTON_RADIUS = 8;
 
-    private static final int TICK_MS = 33;
+    private static final int TICK_MS = 16; // ~60 FPS
 
     private static final List<Animated> ANIMATED = new ArrayList<>();
     private static Timer timer;
@@ -108,16 +115,56 @@ public final class UiKit {
         return clock / 1000.0F;
     }
 
-    // ─────────────────────────── Матовый чёрный фон и карточки ───────────────────────────
+    // ─────────────────────────── 60 FPS Анимированный фон (Aurora + Частицы) ───────────────────────────
 
     public static JPanel background() {
         return new Backdrop();
     }
 
     private static final class Backdrop extends JPanel implements Animated {
+        private static final int NUM_PARTICLES = 42;
+        private final float[] px = new float[NUM_PARTICLES];
+        private final float[] py = new float[NUM_PARTICLES];
+        private final float[] pSpeedY = new float[NUM_PARTICLES];
+        private final float[] pPhase = new float[NUM_PARTICLES];
+        private final float[] pSize = new float[NUM_PARTICLES];
+        private final int[] pColorType = new int[NUM_PARTICLES];
+        private float mouseX = -1f;
+        private float mouseY = -1f;
+        private float smoothMouseX = 0.5f;
+        private float smoothMouseY = 0.5f;
+
         Backdrop() {
             super(new BorderLayout());
             setOpaque(true);
+            Random rng = new Random(0xAE74E2L);
+            for (int i = 0; i < NUM_PARTICLES; i++) {
+                this.px[i] = rng.nextFloat();
+                this.py[i] = rng.nextFloat();
+                this.pSpeedY[i] = 0.012F + rng.nextFloat() * 0.026F;
+                this.pPhase[i] = rng.nextFloat() * 6.28318F;
+                this.pSize[i] = 1.6F + rng.nextFloat() * 2.8F;
+                this.pColorType[i] = i % 3;
+            }
+            MouseMotionAdapter motion = new MouseMotionAdapter() {
+                @Override
+                public void mouseMoved(MouseEvent e) {
+                    updateMouse(e);
+                }
+
+                @Override
+                public void mouseDragged(MouseEvent e) {
+                    updateMouse(e);
+                }
+
+                private void updateMouse(MouseEvent e) {
+                    if (getWidth() > 0 && getHeight() > 0) {
+                        mouseX = e.getX() / (float) getWidth();
+                        mouseY = e.getY() / (float) getHeight();
+                    }
+                }
+            };
+            addMouseMotionListener(motion);
         }
 
         @Override
@@ -128,6 +175,17 @@ public final class UiKit {
 
         @Override
         public boolean tick() {
+            float dt = TICK_MS / 1000.0F;
+            for (int i = 0; i < NUM_PARTICLES; i++) {
+                this.py[i] -= this.pSpeedY[i] * dt;
+                if (this.py[i] < -0.04F) {
+                    this.py[i] = 1.04F;
+                }
+            }
+            float targetMx = this.mouseX >= 0f ? this.mouseX : 0.5f;
+            float targetMy = this.mouseY >= 0f ? this.mouseY : 0.5f;
+            this.smoothMouseX += (targetMx - this.smoothMouseX) * 0.08f;
+            this.smoothMouseY += (targetMy - this.smoothMouseY) * 0.08f;
             return isShowing();
         }
 
@@ -140,125 +198,323 @@ public final class UiKit {
         protected void paintComponent(Graphics graphics) {
             Graphics2D g = (Graphics2D) graphics.create();
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            int width = getWidth();
-            int height = getHeight();
-            g.setPaint(new java.awt.GradientPaint(0, 0, UiTheme.BACKGROUND_TOP, 0, height,
-                    UiTheme.BACKGROUND_BOTTOM));
+            int width = Math.max(1, getWidth());
+            int height = Math.max(1, getHeight());
+            float t = seconds();
+
+            // 1. Глубокий матовый чёрный базовый градиент
+            g.setPaint(new GradientPaint(0, 0, UiTheme.BACKGROUND_TOP, 0, height, UiTheme.BACKGROUND_BOTTOM));
             g.fillRect(0, 0, width, height);
+
+            // 2. Плавно дрейфующие неоновые облака сияния (Aurora Orbs)
+            paintAuroraOrb(g,
+                    width * (0.22F + 0.14F * (float) Math.sin(t * 0.45F)),
+                    height * (0.28F + 0.12F * (float) Math.cos(t * 0.35F)),
+                    Math.max(width, height) * 0.42F,
+                    new Color(0xAA, 0x3D, 0xFF, 28));
+
+            paintAuroraOrb(g,
+                    width * (0.78F + 0.12F * (float) Math.cos(t * 0.38F + 1.4F)),
+                    height * (0.72F + 0.14F * (float) Math.sin(t * 0.48F + 0.8F)),
+                    Math.max(width, height) * 0.38F,
+                    new Color(0x93, 0x33, 0xEA, 24));
+
+            // 3. Мягкий интерактивный ореол за курсором мыши
+            paintAuroraOrb(g,
+                    width * this.smoothMouseX,
+                    height * this.smoothMouseY,
+                    Math.max(width, height) * 0.28F,
+                    new Color(0xC0, 0x84, 0xFC, 20));
+
+            // 4. Парящие светящиеся неоновые частицы с мягким параллаксом
+            float parallaxX = (this.smoothMouseX - 0.5F) * -18.0F;
+            float parallaxY = (this.smoothMouseY - 0.5F) * -12.0F;
+            for (int i = 0; i < NUM_PARTICLES; i++) {
+                float sway = (float) Math.sin(t * 1.3F + this.pPhase[i]) * 12.0F;
+                float cx = this.px[i] * width + sway + parallaxX * (0.4F + 0.6F * (this.pSize[i] / 4.4F));
+                float cy = this.py[i] * height + parallaxY * (0.4F + 0.6F * (this.pSize[i] / 4.4F));
+                float pulse = 0.45F + 0.55F * (0.5F + 0.5F * (float) Math.sin(t * 2.4F + this.pPhase[i] * 1.7F));
+                float sz = this.pSize[i];
+
+                Color baseCol = switch (this.pColorType[i]) {
+                    case 0 -> UiTheme.ACCENT;
+                    case 1 -> UiTheme.ACCENT_3;
+                    default -> Color.WHITE;
+                };
+
+                // Внешний мягкий ореол частицы
+                g.setColor(fade(baseCol, 0.16F * pulse));
+                float haloSz = sz * 2.8F;
+                g.fill(new Ellipse2D.Float(cx - haloSz * 0.5F, cy - haloSz * 0.5F, haloSz, haloSz));
+
+                // Яркое ядро частицы
+                g.setColor(fade(baseCol, 0.68F * pulse));
+                g.fill(new Ellipse2D.Float(cx - sz * 0.5F, cy - sz * 0.5F, sz, sz));
+            }
+
             g.dispose();
+        }
+
+        private static void paintAuroraOrb(Graphics2D g, float cx, float cy, float radius, Color centerColor) {
+            if (radius <= 4.0F) {
+                return;
+            }
+            RadialGradientPaint rgp = new RadialGradientPaint(
+                    new Point2D.Float(cx, cy),
+                    radius,
+                    new float[]{0.0F, 0.55F, 1.0F},
+                    new Color[]{
+                            centerColor,
+                            new Color(centerColor.getRed(), centerColor.getGreen(), centerColor.getBlue(),
+                                    Math.max(0, centerColor.getAlpha() / 3)),
+                            new Color(centerColor.getRed(), centerColor.getGreen(), centerColor.getBlue(), 0)
+                    });
+            g.setPaint(rgp);
+            int r = Math.round(radius);
+            g.fillOval(Math.round(cx) - r, Math.round(cy) - r, r * 2, r * 2);
         }
     }
 
     /**
-     * Рисует матовую чёрную карточку ({@code #0B0C10}) с неоновой обводкой и внешним свечением (glow),
-     * которое загорается ТОЛЬКО когда {@code glowStrength > 0.02f}.
+     * Рисует матовую чёрную прямоугольную карточку ({@code #0B0C10}) со скруглёнными углами
+     * и тонкой неоновой рамкой ({@code 1.1px}) + мягким внешним свечением.
      */
     public static void paintMatteNeonRect(Graphics2D g, int x, int y, int w, int h, int radius, float glowStrength) {
-        if (w <= 2 || h <= 2) {
+        if (w <= 4 || h <= 4) {
             return;
         }
         float glow = Math.max(0.0F, Math.min(1.0F, glowStrength));
 
-        // 1. Мягкое внешнее неоновое свечение (glow) — только при включении
-        if (glow > 0.02F) {
-            for (int layer = 4; layer >= 1; layer--) {
-                float alpha = (0.07F * (5 - layer)) * glow;
+        // 1. Деликатное внешнее неоновое свечение (glow) по периметру
+        if (glow > 0.015F) {
+            for (int layer = 3; layer >= 1; layer--) {
+                float alpha = (0.048F * (4 - layer)) * glow;
                 g.setColor(fade(UiTheme.ACCENT, alpha));
-                g.setStroke(new BasicStroke(layer * 1.4F));
+                g.setStroke(new BasicStroke(layer * 1.15F));
                 g.draw(new RoundRectangle2D.Float(
-                        x + 4 - layer, y + 4 - layer,
-                        w - 8 + layer * 2, h - 8 + layer * 2,
+                        x + 3 - layer, y + 3 - layer,
+                        w - 6 + layer * 2, h - 6 + layer * 2,
                         radius + layer, radius + layer));
             }
         }
 
-        // 2. Фон: всегда матовый чёрный (#0B0C10), без перекрашивания
-        Shape body = new RoundRectangle2D.Float(x + 4, y + 4, w - 8, h - 8, radius, radius);
-        g.setColor(UiTheme.CARD_TOP);
+        // 2. Фон: матовый чёрный прямоугольник (#0B0C10) с едва заметным фиолетовым отливом при активности
+        Shape body = new RoundRectangle2D.Float(x + 3, y + 3, w - 6, h - 6, radius, radius);
+        if (glow > 0.05F) {
+            Color topTint = mix(UiTheme.CARD_TOP, UiTheme.ACCENT, 0.06F * glow);
+            g.setPaint(new GradientPaint(x, y + 3, topTint, x, y + h - 3, UiTheme.CARD_BOTTOM));
+        } else {
+            g.setColor(UiTheme.CARD_TOP);
+        }
         g.fill(body);
 
-        // 3. Обводка по периметру
-        if (glow > 0.02F) {
-            g.setColor(fade(UiTheme.ACCENT, 0.95F * glow));
-            g.setStroke(new BasicStroke(1.6F));
+        // 3. Тонкая чёткая рамка по периметру (1.1px)
+        if (glow > 0.015F) {
+            Color borderCol = mix(new Color(255, 255, 255, 40), UiTheme.ACCENT, Math.min(1.0F, 0.35F + 0.65F * glow));
+            g.setColor(fade(borderCol, 0.30F + 0.68F * glow));
+            g.setStroke(new BasicStroke(1.15F));
             g.draw(body);
         } else {
-            g.setColor(new Color(255, 255, 255, 18));
+            g.setColor(new Color(255, 255, 255, 24));
             g.setStroke(new BasicStroke(1.0F));
             g.draw(body);
         }
     }
 
     /**
-     * Компактная прямоугольная карточка для 3-колоночной сетки (Matte Black + Neon).
-     * ЛКМ переключает/выбирает карточку и зажигает/гасит неоновую обводку.
+     * Компактная прямоугольная карточка с плавной 60 FPS анимацией наведения и переключения.
      */
     public static JPanel matteNeonGridCard(String title, String description,
                                            BooleanSupplier isEnabled, Runnable onLeftClick) {
-        JPanel card = new JPanel(new BorderLayout(0, 1)) {
-            @Override
-            protected void paintComponent(Graphics graphics) {
-                Graphics2D g = (Graphics2D) graphics.create();
-                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                boolean active = isEnabled != null && isEnabled.getAsBoolean();
-                paintMatteNeonRect(g, 0, 0, getWidth(), getHeight(), 9, active ? 1.0F : 0.0F);
-                g.setColor(active ? UiTheme.ACCENT : new Color(0x3E, 0x46, 0x58));
-                g.fillOval(11, 12, 6, 6);
-                g.dispose();
-            }
-        };
-        card.setOpaque(false);
-        card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        card.setBorder(BorderFactory.createEmptyBorder(7, 22, 7, 10));
-
-        JLabel titleLbl = new JLabel(title);
-        titleLbl.setFont(UiTheme.SMALL_BOLD);
-        titleLbl.setForeground(UiTheme.TEXT);
-
-        JLabel descLbl = new JLabel(description);
-        descLbl.setFont(UiTheme.SMALL);
-        descLbl.setForeground(UiTheme.TEXT_MUTED);
-
-        card.add(titleLbl, BorderLayout.NORTH);
-        card.add(descLbl, BorderLayout.CENTER);
-
-        card.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mousePressed(MouseEvent e) {
-                if (e.getButton() == MouseEvent.BUTTON1 && onLeftClick != null) {
-                    onLeftClick.run();
-                    card.repaint();
-                }
-            }
-        });
-        return card;
+        return new AnimatedGridCard(title, description, isEnabled, onLeftClick);
     }
 
-    /** Карточка-контейнер: матовый чёрный прямоугольник со скруглением 10px. */
+    private static final class AnimatedGridCard extends JPanel implements Animated {
+        private final BooleanSupplier isEnabled;
+        private float hoverAnim;
+        private float activeAnim;
+        private float pressAnim;
+        private boolean hovered;
+
+        AnimatedGridCard(String title, String description, BooleanSupplier isEnabled, Runnable onLeftClick) {
+            super(new BorderLayout(0, 1));
+            this.isEnabled = isEnabled;
+            boolean initial = isEnabled != null && isEnabled.getAsBoolean();
+            this.activeAnim = initial ? 1.0F : 0.0F;
+
+            setOpaque(false);
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            setBorder(BorderFactory.createEmptyBorder(7, 22, 7, 10));
+
+            JLabel titleLbl = new JLabel(title);
+            titleLbl.setFont(UiTheme.SMALL_BOLD);
+            titleLbl.setForeground(UiTheme.TEXT);
+
+            JLabel descLbl = new JLabel(description);
+            descLbl.setFont(UiTheme.SMALL);
+            descLbl.setForeground(UiTheme.TEXT_MUTED);
+
+            add(titleLbl, BorderLayout.NORTH);
+            add(descLbl, BorderLayout.CENTER);
+
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent e) {
+                    hovered = true;
+                    register(AnimatedGridCard.this);
+                }
+
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    hovered = false;
+                    register(AnimatedGridCard.this);
+                }
+
+                @Override
+                public void mousePressed(MouseEvent e) {
+                    if (e.getButton() == MouseEvent.BUTTON1) {
+                        pressAnim = 1.0F;
+                        if (onLeftClick != null) {
+                            onLeftClick.run();
+                        }
+                        register(AnimatedGridCard.this);
+                    }
+                }
+            });
+        }
+
+        @Override
+        public void addNotify() {
+            super.addNotify();
+            register(this);
+        }
+
+        @Override
+        public boolean tick() {
+            boolean active = this.isEnabled != null && this.isEnabled.getAsBoolean();
+            float targetHover = this.hovered ? 1.0F : 0.0F;
+            float targetActive = active ? 1.0F : 0.0F;
+
+            this.hoverAnim += (targetHover - this.hoverAnim) * 0.22F;
+            this.activeAnim += (targetActive - this.activeAnim) * 0.20F;
+            this.pressAnim *= 0.78F;
+
+            if (Math.abs(targetHover - this.hoverAnim) < 0.008F) {
+                this.hoverAnim = targetHover;
+            }
+            if (Math.abs(targetActive - this.activeAnim) < 0.008F) {
+                this.activeAnim = targetActive;
+            }
+            if (this.pressAnim < 0.01F) {
+                this.pressAnim = 0.0F;
+            }
+            return this.hoverAnim != targetHover || this.activeAnim != targetActive || this.pressAnim > 0.0F;
+        }
+
+        @Override
+        public void repaint() {
+            repaint(0, 0, getWidth(), getHeight());
+        }
+
+        @Override
+        protected void paintComponent(Graphics graphics) {
+            Graphics2D g = (Graphics2D) graphics.create();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            boolean active = this.isEnabled != null && this.isEnabled.getAsBoolean();
+            if (active && this.activeAnim < 0.05F) {
+                register(this);
+            }
+            float glow = Math.max(this.activeAnim, this.hoverAnim * 0.65F);
+            paintMatteNeonRect(g, 0, 0, getWidth(), getHeight(), 8, glow);
+
+            // Плавный неоновый индикатор слева
+            Color dotCol = mix(new Color(0x3E, 0x46, 0x58), UiTheme.ACCENT, Math.max(this.activeAnim, this.hoverAnim * 0.5F));
+            if (this.activeAnim > 0.05F) {
+                g.setColor(fade(UiTheme.ACCENT, 0.32F * this.activeAnim));
+                g.fill(new Ellipse2D.Float(9.0F, 10.0F, 10.0F, 10.0F));
+            }
+            g.setColor(dotCol);
+            g.fill(new Ellipse2D.Float(11.0F, 12.0F, 6.0F, 6.0F));
+            g.dispose();
+        }
+    }
+
+    /** Карточка-контейнер: матовый чёрный прямоугольник со скруглением 9px и плавной подсветкой при наведении. */
     public static JPanel card(String title, JComponent content) {
         return card(title, content, false);
     }
 
     public static JPanel card(String title, JComponent content, boolean neonOutline) {
-        JPanel card = new JPanel(new BorderLayout(0, 5)) {
-            @Override
-            protected void paintComponent(Graphics graphics) {
-                Graphics2D g = (Graphics2D) graphics.create();
-                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                paintMatteNeonRect(g, 0, 0, getWidth(), getHeight(), 10, neonOutline ? 1.0F : 0.0F);
-                g.dispose();
+        return new AnimatedContainerCard(title, content, neonOutline);
+    }
+
+    private static final class AnimatedContainerCard extends JPanel implements Animated {
+        private final boolean neonOutline;
+        private float hoverAnim;
+        private boolean hovered;
+
+        AnimatedContainerCard(String title, JComponent content, boolean neonOutline) {
+            super(new BorderLayout(0, 5));
+            this.neonOutline = neonOutline;
+            setOpaque(false);
+            setBorder(BorderFactory.createEmptyBorder(9, 11, 9, 11));
+            if (title != null && !title.isBlank()) {
+                add(heading(title), BorderLayout.NORTH);
             }
-        };
-        card.setOpaque(false);
-        card.setBorder(BorderFactory.createEmptyBorder(9, 11, 9, 11));
-        if (title != null && !title.isBlank()) {
-            card.add(heading(title), BorderLayout.NORTH);
+            add(content, BorderLayout.CENTER);
+
+            MouseAdapter hoverTracker = new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent e) {
+                    hovered = true;
+                    register(AnimatedContainerCard.this);
+                }
+
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    Point p = e.getPoint();
+                    if (p.x <= 0 || p.y <= 0 || p.x >= getWidth() || p.y >= getHeight()) {
+                        hovered = false;
+                        register(AnimatedContainerCard.this);
+                    }
+                }
+            };
+            addMouseListener(hoverTracker);
         }
-        card.add(content, BorderLayout.CENTER);
-        JPanel wrapper = new JPanel(new BorderLayout());
-        wrapper.setOpaque(false);
-        wrapper.add(card, BorderLayout.CENTER);
-        return wrapper;
+
+        @Override
+        public void addNotify() {
+            super.addNotify();
+            if (this.neonOutline) {
+                register(this);
+            }
+        }
+
+        @Override
+        public boolean tick() {
+            float target = this.hovered ? 1.0F : 0.0F;
+            this.hoverAnim += (target - this.hoverAnim) * 0.18F;
+            if (Math.abs(target - this.hoverAnim) < 0.008F) {
+                this.hoverAnim = target;
+            }
+            return this.neonOutline ? isShowing() : (this.hoverAnim != target);
+        }
+
+        @Override
+        public void repaint() {
+            repaint(0, 0, getWidth(), getHeight());
+        }
+
+        @Override
+        protected void paintComponent(Graphics graphics) {
+            Graphics2D g = (Graphics2D) graphics.create();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            float pulse = this.neonOutline
+                    ? (0.78F + 0.22F * (0.5F + 0.5F * (float) Math.sin(seconds() * 2.6F)))
+                    : (0.18F + 0.52F * this.hoverAnim);
+            paintMatteNeonRect(g, 0, 0, getWidth(), getHeight(), CARD_RADIUS, pulse);
+            g.dispose();
+        }
     }
 
     // ─────────────────────────── Текст ───────────────────────────
@@ -269,8 +525,11 @@ public final class UiKit {
             protected void paintComponent(Graphics graphics) {
                 Graphics2D g = (Graphics2D) graphics.create();
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                int cy = (getHeight() - 5) / 2;
+                g.setColor(fade(UiTheme.ACCENT, 0.32F));
+                g.fillOval(-2, cy - 2, 9, 9);
                 g.setColor(UiTheme.ACCENT);
-                g.fillOval(0, (getHeight() - 5) / 2, 5, 5);
+                g.fillOval(0, cy, 5, 5);
                 g.dispose();
                 super.paintComponent(graphics);
             }
@@ -295,10 +554,10 @@ public final class UiKit {
                 Graphics2D g = (Graphics2D) graphics.create();
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 g.setColor(UiTheme.CARD_TOP);
-                g.fill(new RoundRectangle2D.Float(1, 1, getWidth() - 2, getHeight() - 2, 10, 10));
+                g.fill(new RoundRectangle2D.Float(1, 1, getWidth() - 2, getHeight() - 2, 8, 8));
                 g.setColor(fade(color, 0.85F));
-                g.setStroke(new BasicStroke(1.2F));
-                g.draw(new RoundRectangle2D.Float(1, 1, getWidth() - 2, getHeight() - 2, 10, 10));
+                g.setStroke(new BasicStroke(1.1F));
+                g.draw(new RoundRectangle2D.Float(1, 1, getWidth() - 2, getHeight() - 2, 8, 8));
                 g.dispose();
                 super.paintComponent(graphics);
             }
@@ -311,7 +570,7 @@ public final class UiKit {
         return label;
     }
 
-    // ─────────────────────────── Кнопки (Matte Black + Neon) ───────────────────────────
+    // ─────────────────────────── Кнопки (Matte Black + Neon + Shimmer) ───────────────────────────
 
     public static JButton button(String text) {
         return new GlassButton(text, false, false);
@@ -327,41 +586,97 @@ public final class UiKit {
         return new GlassButton(text, false, true);
     }
 
-    // ─────────────────────────── Прочие элементы ───────────────────────────
+    // ─────────────────────────── Анимированная полоса прогресса и элементы ───────────────────────────
 
     public static JProgressBar progress() {
-        JProgressBar bar = new JProgressBar(0, 100) {
-            @Override
-            protected void paintComponent(Graphics graphics) {
-                Graphics2D g = (Graphics2D) graphics.create();
-                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                int height = getHeight();
-                int radius = 8;
-                g.setColor(UiTheme.TRACK);
-                g.fill(new RoundRectangle2D.Float(0, 0, getWidth(), height, radius, radius));
-                double percent = getPercentComplete() < 0 ? 0.0F : getPercentComplete();
-                int filled = Math.round((float) (getWidth() * percent));
+        return new AnimatedProgressBar();
+    }
+
+    private static final class AnimatedProgressBar extends JProgressBar implements Animated {
+        private float smoothRatio;
+
+        AnimatedProgressBar() {
+            super(0, 100);
+            setOpaque(false);
+            setStringPainted(true);
+            setString("");
+            setPreferredSize(new Dimension(10, 14));
+            setBorder(BorderFactory.createEmptyBorder());
+        }
+
+        @Override
+        public void addNotify() {
+            super.addNotify();
+            register(this);
+        }
+
+        @Override
+        public boolean tick() {
+            float target = isIndeterminate() ? 1.0F : (float) Math.max(0.0, Math.min(1.0, getPercentComplete()));
+            this.smoothRatio += (target - this.smoothRatio) * 0.18F;
+            return isShowing();
+        }
+
+        @Override
+        public void repaint() {
+            repaint(0, 0, getWidth(), getHeight());
+        }
+
+        @Override
+        protected void paintComponent(Graphics graphics) {
+            Graphics2D g = (Graphics2D) graphics.create();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            int w = getWidth();
+            int h = getHeight();
+            int radius = 7;
+
+            g.setColor(UiTheme.TRACK);
+            g.fill(new RoundRectangle2D.Float(0, 0, w, h, radius, radius));
+            g.setColor(new Color(255, 255, 255, 20));
+            g.setStroke(new BasicStroke(1.0F));
+            g.draw(new RoundRectangle2D.Float(0.5F, 0.5F, w - 1, h - 1, radius, radius));
+
+            float t = seconds();
+            if (isIndeterminate()) {
+                int barW = Math.max(48, w / 3);
+                float wave = (t * 0.85F) % 1.0F;
+                int bx = Math.round((w + barW) * wave) - barW;
+                Shape clip = g.getClip();
+                g.clip(new RoundRectangle2D.Float(0, 0, w, h, radius, radius));
+                g.setPaint(new GradientPaint(bx, 0, fade(UiTheme.ACCENT, 0.15F),
+                        bx + barW * 0.5F, 0, UiTheme.ACCENT_3, true));
+                g.fill(new RoundRectangle2D.Float(bx, 0, barW, h, radius, radius));
+                g.setClip(clip);
+            } else {
+                int filled = Math.round(w * this.smoothRatio);
                 if (filled > 2) {
-                    g.setColor(UiTheme.ACCENT);
-                    g.fill(new RoundRectangle2D.Float(0, 0, filled, height, radius, radius));
+                    Shape fillShape = new RoundRectangle2D.Float(0, 0, filled, h, radius, radius);
+                    g.setPaint(new GradientPaint(0, 0, UiTheme.ACCENT_2, filled, 0, UiTheme.ACCENT));
+                    g.fill(fillShape);
+
+                    // Бегущий неоновый блик по заполненной части
+                    Shape oldClip = g.getClip();
+                    g.clip(fillShape);
+                    float shimmerX = ((t * 0.75F) % 1.0F) * (filled + 80) - 40;
+                    g.setPaint(new GradientPaint(shimmerX - 24, 0, new Color(255, 255, 255, 0),
+                            shimmerX, 0, new Color(255, 255, 255, 90), true));
+                    g.fillRect(Math.round(shimmerX - 24), 0, 48, h);
+                    g.setClip(oldClip);
                 }
-                if (isStringPainted()) {
-                    String text = getString();
+            }
+
+            if (isStringPainted()) {
+                String text = getString();
+                if (text != null && !text.isEmpty()) {
                     g.setFont(UiTheme.SMALL_BOLD);
                     FontMetrics metrics = g.getFontMetrics();
                     g.setColor(UiTheme.TEXT);
-                    g.drawString(text, (getWidth() - metrics.stringWidth(text)) / 2,
-                            (height + metrics.getAscent() - metrics.getDescent()) / 2);
+                    g.drawString(text, (w - metrics.stringWidth(text)) / 2,
+                            (h + metrics.getAscent() - metrics.getDescent()) / 2);
                 }
-                g.dispose();
             }
-        };
-        bar.setOpaque(false);
-        bar.setStringPainted(true);
-        bar.setString("");
-        bar.setPreferredSize(new Dimension(10, 14));
-        bar.setBorder(BorderFactory.createEmptyBorder());
-        return bar;
+            g.dispose();
+        }
     }
 
     public static JTextField field(JTextField field) {
@@ -402,6 +717,7 @@ public final class UiKit {
         box.setFont(UiTheme.BASE);
         box.setForeground(UiTheme.TEXT);
         box.setBackground(UiTheme.CARD_TOP);
+        box.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         return box;
     }
 
@@ -410,7 +726,7 @@ public final class UiKit {
         tabs.setFont(UiTheme.TAB);
         tabs.setForeground(UiTheme.TEXT_MUTED);
         tabs.setBackground(UiTheme.BACKGROUND_TOP);
-        tabs.setUI(new PillTabs());
+        tabs.setUI(new PillTabs(tabs));
     }
 
     public static void styleTable(JTable table) {
@@ -421,7 +737,7 @@ public final class UiKit {
         table.setFont(UiTheme.BASE);
         table.setForeground(UiTheme.TEXT);
         table.setBackground(UiTheme.CARD_BOTTOM);
-        table.setSelectionBackground(fade(UiTheme.ACCENT, 0.18F));
+        table.setSelectionBackground(fade(UiTheme.ACCENT, 0.22F));
         table.setSelectionForeground(UiTheme.TEXT);
         table.setDefaultRenderer(Object.class, new CellRenderer());
         JTableHeader header = table.getTableHeader();
@@ -472,7 +788,7 @@ public final class UiKit {
             g2.fill(new RoundRectangle2D.Float(trackRect.x, y, trackRect.width, height, height, height));
             int filled = thumbRect.x + thumbRect.width / 2 - trackRect.x;
             if (filled > 2) {
-                g2.setColor(UiTheme.ACCENT);
+                g2.setPaint(new GradientPaint(trackRect.x, y, UiTheme.ACCENT_2, trackRect.x + filled, y, UiTheme.ACCENT));
                 g2.fill(new RoundRectangle2D.Float(trackRect.x, y, filled, height, height, height));
             }
             g2.dispose();
@@ -519,11 +835,12 @@ public final class UiKit {
         return 1.0F + (c + 1.0F) * p * p * p + c * p * p;
     }
 
-    /** Матовая чёрная прямоугольная кнопка с неоновой обводкой (glow). */
+    /** Матовая чёрная прямоугольная кнопка с неоновой обводкой, дыханием свечения и бегущим бликом (shimmer). */
     private static final class GlassButton extends JButton implements Animated {
         private final boolean primaryNeon;
         private final boolean dangerNeon;
         private float hoverAmount;
+        private float pressAmount;
 
         GlassButton(String text, boolean primaryNeon, boolean dangerNeon) {
             super(text);
@@ -547,16 +864,38 @@ public final class UiKit {
                 public void mouseExited(MouseEvent event) {
                     register(GlassButton.this);
                 }
+
+                @Override
+                public void mousePressed(MouseEvent event) {
+                    if (event.getButton() == MouseEvent.BUTTON1) {
+                        pressAmount = 1.0F;
+                        register(GlassButton.this);
+                    }
+                }
             });
+        }
+
+        @Override
+        public void addNotify() {
+            super.addNotify();
+            if (this.primaryNeon) {
+                register(this);
+            }
         }
 
         @Override
         public boolean tick() {
             boolean inside = getModel().isRollover();
-            float step = TICK_MS / 120.0F;
-            this.hoverAmount += (inside ? step : -step);
-            this.hoverAmount = Math.max(0.0F, Math.min(1.0F, this.hoverAmount));
-            return (inside && this.hoverAmount < 1.0F) || (!inside && this.hoverAmount > 0.0F);
+            float target = inside ? 1.0F : 0.0F;
+            this.hoverAmount += (target - this.hoverAmount) * 0.22F;
+            if (Math.abs(target - this.hoverAmount) < 0.008F) {
+                this.hoverAmount = target;
+            }
+            this.pressAmount *= 0.76F;
+            if (this.pressAmount < 0.01F) {
+                this.pressAmount = 0.0F;
+            }
+            return this.primaryNeon ? isShowing() : (this.hoverAmount != target || this.pressAmount > 0.0F);
         }
 
         @Override
@@ -572,32 +911,58 @@ public final class UiKit {
 
             int w = getWidth();
             int h = getHeight();
+            float t = seconds();
             Color neonCol = this.dangerNeon ? UiTheme.DANGER : UiTheme.ACCENT;
-            float glow = this.primaryNeon ? 1.0F : (this.dangerNeon ? 0.85F : this.hoverAmount * 0.90F);
+
+            float pulse = 0.80F + 0.20F * (0.5F + 0.5F * (float) Math.sin(t * 3.2F));
+            float glow = this.primaryNeon
+                    ? Math.min(1.0F, pulse + this.hoverAmount * 0.25F)
+                    : (this.dangerNeon ? (0.65F + 0.35F * this.hoverAmount) : (0.15F + 0.85F * this.hoverAmount));
+
+            int inset = Math.round(3 + this.pressAmount * 1.4F);
+            int bw = w - inset * 2;
+            int bh = h - inset * 2;
 
             if (glow > 0.02F) {
                 for (int layer = 3; layer >= 1; layer--) {
-                    g.setColor(fade(neonCol, 0.08F * (4 - layer) * glow));
-                    g.setStroke(new BasicStroke(layer * 1.3F));
-                    g.draw(new RoundRectangle2D.Float(3 - layer, 3 - layer,
-                            w - 6 + layer * 2, h - 6 + layer * 2,
+                    g.setColor(fade(neonCol, 0.075F * (4 - layer) * glow));
+                    g.setStroke(new BasicStroke(layer * 1.25F));
+                    g.draw(new RoundRectangle2D.Float(inset - layer, inset - layer,
+                            bw + layer * 2, bh + layer * 2,
                             BUTTON_RADIUS + layer, BUTTON_RADIUS + layer));
                 }
             }
 
-            Shape body = new RoundRectangle2D.Float(3, 3, w - 6, h - 6, BUTTON_RADIUS, BUTTON_RADIUS);
-            g.setColor(UiTheme.CARD_TOP);
+            Shape body = new RoundRectangle2D.Float(inset, inset, bw, bh, BUTTON_RADIUS, BUTTON_RADIUS);
+            if (this.primaryNeon || this.hoverAmount > 0.02F) {
+                float fillTint = this.primaryNeon ? (0.18F + 0.14F * this.hoverAmount) : (0.12F * this.hoverAmount);
+                Color topC = mix(UiTheme.CARD_TOP, neonCol, fillTint);
+                Color botC = mix(UiTheme.CARD_BOTTOM, neonCol, fillTint * 0.4F);
+                g.setPaint(new GradientPaint(0, inset, topC, 0, inset + bh, botC));
+            } else {
+                g.setColor(UiTheme.CARD_TOP);
+            }
             g.fill(body);
 
-            if (glow > 0.02F) {
-                g.setColor(fade(neonCol, 0.95F * glow));
-                g.setStroke(new BasicStroke(1.5F));
-                g.draw(body);
-            } else {
-                g.setColor(new Color(255, 255, 255, 24));
-                g.setStroke(new BasicStroke(1.0F));
-                g.draw(body);
+            // Диагональный бегущий блик (shimmer) на главных кнопках и при наведении
+            if (this.primaryNeon || this.hoverAmount > 0.1F) {
+                Shape oldClip = g.getClip();
+                g.clip(body);
+                float cycle = (t * 0.55F) % 1.6F;
+                if (cycle <= 1.0F) {
+                    float sx = -40 + cycle * (bw + 80);
+                    int alpha = Math.round((this.primaryNeon ? 46 : 32) * (0.5F + 0.5F * this.hoverAmount));
+                    g.setPaint(new GradientPaint(sx - 22, inset, new Color(255, 255, 255, 0),
+                            sx, inset + bh * 0.5F, new Color(255, 255, 255, alpha), true));
+                    g.fillRect(Math.round(sx - 22), inset, 44, bh);
+                }
+                g.setClip(oldClip);
             }
+
+            // Тонкая неоновая рамка (1.2px)
+            g.setColor(fade(neonCol, 0.35F + 0.65F * glow));
+            g.setStroke(new BasicStroke(1.2F));
+            g.draw(body);
 
             g.dispose();
             super.paintComponent(graphics);
@@ -627,8 +992,71 @@ public final class UiKit {
         }
     }
 
-    /** Вкладки узкой левой панели навигации в стиле Matte Black + Neon. */
-    private static final class PillTabs extends BasicTabbedPaneUI {
+    /** Анимированные вкладки узкой левой панели навигации со скользящим неоновым индикатором. */
+    private static final class PillTabs extends BasicTabbedPaneUI implements Animated {
+        private final javax.swing.JTabbedPane host;
+        private final float[] tabHover = new float[12];
+        private int hoveredTab = -1;
+        private float animIndicatorY = -1f;
+
+        PillTabs(javax.swing.JTabbedPane host) {
+            this.host = host;
+            register(this);
+            host.addMouseMotionListener(new MouseMotionAdapter() {
+                @Override
+                public void mouseMoved(MouseEvent e) {
+                    int idx = tabForCoordinate(host, e.getX(), e.getY());
+                    if (idx != hoveredTab) {
+                        hoveredTab = idx;
+                        register(PillTabs.this);
+                    }
+                }
+            });
+            host.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    hoveredTab = -1;
+                    register(PillTabs.this);
+                }
+            });
+            host.addChangeListener(e -> register(this));
+        }
+
+        @Override
+        public boolean tick() {
+            boolean moving = false;
+            int count = Math.min(this.tabHover.length, this.host.getTabCount());
+            for (int i = 0; i < count; i++) {
+                float target = (i == this.hoveredTab) ? 1.0F : 0.0F;
+                this.tabHover[i] += (target - this.tabHover[i]) * 0.22F;
+                if (Math.abs(target - this.tabHover[i]) > 0.008F) {
+                    moving = true;
+                } else {
+                    this.tabHover[i] = target;
+                }
+            }
+            int sel = this.host.getSelectedIndex();
+            if (sel >= 0 && sel < this.rects.length && this.rects[sel] != null) {
+                float targetY = this.rects[sel].y;
+                if (this.animIndicatorY < 0f) {
+                    this.animIndicatorY = targetY;
+                } else {
+                    this.animIndicatorY += (targetY - this.animIndicatorY) * 0.25F;
+                    if (Math.abs(targetY - this.animIndicatorY) > 0.4F) {
+                        moving = true;
+                    } else {
+                        this.animIndicatorY = targetY;
+                    }
+                }
+            }
+            return moving;
+        }
+
+        @Override
+        public void repaint() {
+            this.host.repaint();
+        }
+
         @Override
         protected void installDefaults() {
             super.installDefaults();
@@ -656,7 +1084,16 @@ public final class UiKit {
                                           int height, boolean isSelected) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            paintMatteNeonRect(g2, x, y, width, height, 10, isSelected ? 1.0F : 0.0F);
+            float hov = (tabIndex >= 0 && tabIndex < this.tabHover.length) ? this.tabHover[tabIndex] : 0.0F;
+            float glow = isSelected ? 1.0F : (hov * 0.55F);
+            paintMatteNeonRect(g2, x, y, width, height, 8, glow);
+
+            // Вертикальная неоновая полоска-акцент слева у выбранной вкладки (плавно скользящая)
+            if (isSelected) {
+                int pillY = (this.animIndicatorY >= 0f) ? Math.round(this.animIndicatorY) + 9 : y + 9;
+                g2.setColor(UiTheme.ACCENT);
+                g2.fill(new RoundRectangle2D.Float(x + 6, pillY, 3, height - 18, 3, 3));
+            }
             g2.dispose();
         }
 
@@ -679,10 +1116,11 @@ public final class UiKit {
                                  String title, Rectangle textRect, boolean isSelected) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            float hov = (tabIndex >= 0 && tabIndex < this.tabHover.length) ? this.tabHover[tabIndex] : 0.0F;
             g2.setFont(isSelected ? UiTheme.TAB_BOLD : UiTheme.TAB);
-            g2.setColor(isSelected ? UiTheme.TEXT : UiTheme.TEXT_MUTED);
+            g2.setColor(isSelected ? UiTheme.TEXT : mix(UiTheme.TEXT_MUTED, UiTheme.TEXT, hov * 0.75F));
             FontMetrics own = g2.getFontMetrics();
-            int x = textRect.x + 6;
+            int x = textRect.x + 8 + Math.round(hov * 2.0F);
             int baseline = textRect.y + (textRect.height + own.getAscent() - own.getDescent()) / 2;
             g2.drawString(title, x, baseline);
             g2.dispose();

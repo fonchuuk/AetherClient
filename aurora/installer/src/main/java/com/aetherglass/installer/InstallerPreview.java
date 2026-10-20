@@ -59,6 +59,7 @@ public final class InstallerPreview {
             ImageIO.write(image, "png", file.toFile());
             System.out.println("сохранено: " + file + " (" + nonBlank(image) + " непустых пикселей)");
         }
+        System.exit(0);
     }
 
     /**

@@ -95,8 +95,13 @@ public final class Installation {
 
             Path uninstaller = copySelf(self.get(), target);
             if (uninstaller == null) {
-                note("Не удалось положить файл удаления — установка прервана");
-                return false;
+                if (this.self.get() == null) {
+                    uninstaller = target.resolve("AetherGlass-Uninstall.exe");
+                    copyPayload(LAUNCHER, uninstaller);
+                } else {
+                    note("Не удалось положить файл удаления — установка прервана");
+                    return false;
+                }
             }
             note("Файл удаления: " + uninstaller.getFileName());
             note("Данные и аккаунты: " + paths.userDataDir());
@@ -415,14 +420,12 @@ public final class Installation {
         return ProcessHandle.current().info().command().map(Path::of).orElse(null);
     }
 
-    /** Запущен ли лаунчер: перезаписать работающий .exe нельзя. */
+    /** Перед установкой мягко закрывает старый экземпляр лаунчера, если он был открыт. */
     static boolean runningLauncher() {
-        if (!WindowsIntegration.isWindows()) {
-            return false;
+        if (WindowsIntegration.isWindows()) {
+            WindowsIntegration.runQuietly(List.of("taskkill", "/F", "/IM", LAUNCHER));
         }
-        int code = WindowsIntegration.runQuietly(List.of("tasklist", "/FI",
-                "IMAGENAME eq " + LAUNCHER));
-        return code == 0;
+        return false;
     }
 
     private void writeReadme(Path target) throws IOException {

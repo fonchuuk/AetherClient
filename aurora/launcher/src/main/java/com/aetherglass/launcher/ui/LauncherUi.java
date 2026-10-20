@@ -294,8 +294,11 @@ public final class LauncherUi {
 
         JPanel settings = new JPanel(new GridBagLayout());
         settings.setOpaque(false);
+        this.modpackBox.setPreferredSize(new java.awt.Dimension(250, 26));
+        this.versionBox.setPreferredSize(new java.awt.Dimension(92, 26));
+        this.loaderBox.setPreferredSize(new java.awt.Dimension(92, 26));
         GridBagConstraints constraints = new GridBagConstraints();
-        constraints.insets = new Insets(6, 4, 6, 4);
+        constraints.insets = new Insets(3, 4, 3, 4);
         constraints.anchor = GridBagConstraints.LINE_START;
         constraints.gridx = 0;
         constraints.gridy = 0;

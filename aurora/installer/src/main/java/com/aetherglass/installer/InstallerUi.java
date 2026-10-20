@@ -155,26 +155,13 @@ public final class InstallerUi {
 
     private JPanel welcomePage() {
         InstallManifest existing = InstallManifest.read(paths.defaultInstallDir().resolve("install.json"));
-        Path java = JavaFinder.find();
         JPanel body = new JPanel();
         body.setOpaque(false);
         body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
         body.add(paragraph(existing.isEmpty()
-                ? "Будет установлен лаунчер AetherGlass: запуск клиента, версии, моды, аккаунты."
+                ? "Установка лаунчера и клиента AetherGlass 1.21.11 в один клик."
                 : "Найдена установленная версия " + existing.version() + ". Она будет обновлена, "
                 + "настройки и аккаунты сохранятся."));
-        body.add(paragraph(java == null
-                ? "Отдельная установка Java не требуется: лаунчер автоматически использует "
-                        + "имеющуюся на ПК Java или сам скачает официальный портативный рантайм Java 21."
-                : "Найдена Java: " + JavaFinder.describe(java)));
-        body.add(paragraph("Удаление программы доступно в «Программы и компоненты» Windows."));
-        return UiKit.card("Что будет сделано", body);
-    }
-
-    private JPanel folderPage() {
-        JPanel body = new JPanel();
-        body.setOpaque(false);
-        body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
 
         folderField.setText(paths.defaultInstallDir().toString());
         folderField.setMaximumSize(new Dimension(520, 34));
@@ -190,17 +177,28 @@ public final class InstallerUi {
 
         JPanel row = new JPanel(new BorderLayout(10, 0));
         row.setOpaque(false);
+        row.setAlignmentX(0f);
         row.setMaximumSize(new Dimension(620, 34));
         row.add(folderField, BorderLayout.CENTER);
         row.add(choose, BorderLayout.EAST);
 
-        body.add(paragraph("Куда установить:"));
+        body.add(Box.createVerticalStrut(8));
+        body.add(paragraph("Папка установки:"));
         body.add(row);
-        body.add(Box.createVerticalStrut(12));
+        body.add(Box.createVerticalStrut(10));
         body.add(checkbox(desktopBox));
         body.add(checkbox(startMenuBox));
+        body.add(checkbox(runBox));
         body.add(Box.createVerticalStrut(6));
-        body.add(paragraph("Настройки и аккаунты лежат отдельно и при удалении сохраняются."));
+        body.add(paragraph("Нажмите «Установить» — все файлы и ярлыки будут созданы автоматически."));
+        return UiKit.card("Быстрая установка AetherGlass", body, true);
+    }
+
+    private JPanel folderPage() {
+        JPanel body = new JPanel();
+        body.setOpaque(false);
+        body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
+        body.add(paragraph("Выбор каталога установки и ярлыков доступен на главном экране."));
         return UiKit.card("Каталог и ярлыки", body);
     }
 
@@ -281,10 +279,20 @@ public final class InstallerUi {
         resultArea.append(success ? "\nУстановка завершена.\n" : "\nУстановка не удалась.\n");
         resultArea.setCaretPosition(0);
         nextButton.setEnabled(true);
-        nextButton.setText(success ? "Готово" : "Закрыть");
+        nextButton.setText(success ? "Запустить и закрыть" : "Закрыть");
         cancelButton.setVisible(false);
         runBox.setVisible(success && WindowsIntegration.isWindows());
         cards.show(pages, DONE);
+        if (success && runBox.isSelected() && WindowsIntegration.isWindows()
+                && installedLauncher != null && Files.isRegularFile(installedLauncher)) {
+            try {
+                new ProcessBuilder(installedLauncher.toString())
+                        .directory(installedLauncher.getParent().toFile())
+                        .start();
+                runBox.setSelected(false);
+            } catch (IOException ignored) {
+            }
+        }
     }
 
     // ─────────────────────────── оформление ───────────────────────────
