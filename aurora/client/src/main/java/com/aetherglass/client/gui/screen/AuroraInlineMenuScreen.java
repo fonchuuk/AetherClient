@@ -51,20 +51,20 @@ import java.util.function.IntConsumer;
  */
 public final class AuroraInlineMenuScreen extends Screen {
     public static final int NUM_COLS = 4;
-    public static final int COL_GAP = 8;
-    public static final int CARD_GAP = 4;
-    public static final int CARD_RADIUS = 6;
-    public static final int CARD_HEADER_H = 26;
-    public static final int COL_HEADER_H = 20;
+    public static final int COL_GAP = 7;
+    public static final int CARD_GAP = 3;
+    public static final int CARD_RADIUS = 5;
+    public static final int CARD_HEADER_H = 21;
+    public static final int COL_HEADER_H = 17;
 
-    private static final int SETTING_ROW_H = 15;
-    private static final int SETTING_SLIDER_H = 19;
-    private static final int COLOR_EXPANDED_H = 26;
-    private static final int PARTICLE_SHAPES_H = 15;
+    private static final int SETTING_ROW_H = 13;
+    private static final int SETTING_SLIDER_H = 16;
+    private static final int COLOR_EXPANDED_H = 22;
+    private static final int PARTICLE_SHAPES_H = 13;
 
     private static final int[] QUICK_SWATCHES = {
-            0xFF00F2FF, 0xFF38B6FF, 0xFF9D6BFF, 0xFFFF5CE1,
-            0xFFFF9A3C, 0xFF00F5A0, 0xFFFF4D6D, 0xFFFFFFFF
+            0xFFAA3DFF, 0xFFC084FC, 0xFF00F2FF, 0xFF38B6FF,
+            0xFFFF5CE1, 0xFFFF9A3C, 0xFF00F5A0, 0xFFFFFFFF
     };
 
     private final Screen parent;
@@ -166,14 +166,11 @@ public final class AuroraInlineMenuScreen extends Screen {
 
     @Override
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-        float dt = FrameClock.deltaSeconds();
         if (this.minecraft != null && this.minecraft.level == null) {
-            this.backdrop.update(dt);
-            this.backdrop.draw(graphics, this.width, this.height);
-        }
-        try {
-            this.renderBlurredBackground(graphics);
-        } catch (Throwable ignored) {
+            try {
+                this.renderPanorama(graphics, delta);
+            } catch (Throwable ignored) {
+            }
         }
     }
 
@@ -213,15 +210,15 @@ public final class AuroraInlineMenuScreen extends Screen {
             graphics.fill(0, 0, screenW, screenH, dimColor);
         }
 
-        int totalW = Math.min(516, screenW - 36);
+        int totalW = Math.min(444, screenW - 56);
         int startX = (screenW - totalW) / 2;
         int slideY = Math.round((1.0F - progress) * 8.0F);
 
-        int topBarY = 12 + slideY;
-        int topBarH = 20;
+        int topBarY = 10 + slideY;
+        int topBarH = 18;
         renderTopBar(graphics, startX, topBarY, totalW, topBarH, mouseX, mouseY, progress, titleScreenMode);
 
-        int colsTopY = topBarY + topBarH + 7;
+        int colsTopY = topBarY + topBarH + 6;
         int maxColH = screenH - colsTopY - 12;
         int colW = (totalW - COL_GAP * (NUM_COLS - 1)) / NUM_COLS;
 
@@ -252,30 +249,30 @@ public final class AuroraInlineMenuScreen extends Screen {
 
     private void renderTopBar(GuiGraphics graphics, int x, int y, int width, int height,
                               int mouseX, int mouseY, float alpha, boolean titleScreenMode) {
-        DrawUtil.drawLiquidGlassPanel(graphics, x, y, width, height, 8, alpha);
+        DrawUtil.drawLiquidGlassPanel(graphics, x, y, width, height, 7, alpha);
 
         // Неоновая точка-индикатор бренда + современный логотип Montserrat Bold
-        DrawUtil.drawSliderKnob(graphics, x + 7, y + 7, 5, ColorUtil.fade(AuroraTheme.accent(), alpha));
-        DrawUtil.drawModernBold(graphics, this.font, "AETHERGLASS", x + 15, y + 6,
+        DrawUtil.drawSliderKnob(graphics, x + 6, y + 7, 4, ColorUtil.fade(AuroraTheme.accent(), alpha));
+        DrawUtil.drawModernBold(graphics, this.font, "AETHERGLASS", x + 13, y + 5,
                 ColorUtil.fade(0xFFFFFFFF, alpha));
         int logoW = DrawUtil.modernBoldWidth(this.font, "AETHERGLASS");
-        DrawUtil.drawModernSmall(graphics, this.font, "v1.0.8", x + 18 + logoW, y + 7,
+        DrawUtil.drawModernSmall(graphics, this.font, "v1.0.8", x + 16 + logoW, y + 6,
                 ColorUtil.fade(AuroraTheme.accent(), alpha));
 
         // Компактное поле поиска
-        int searchX = x + 46 + logoW;
-        int searchW = 112;
+        int searchX = x + 42 + logoW;
+        int searchW = 94;
         int searchY = y + 3;
         int searchH = height - 6;
         boolean searchHov = inside(mouseX, mouseY, searchX, searchY, searchW, searchH);
-        DrawUtil.drawMatteNeonCard(graphics, searchX, searchY, searchW, searchH, 5, alpha,
+        DrawUtil.drawMatteNeonCard(graphics, searchX, searchY, searchW, searchH, 4, alpha,
                 this.searchFocused ? 0.85F : (searchHov ? 0.35F : 0.0F), AuroraTheme.accent());
         String shown = this.searchQuery.isEmpty()
                 ? (this.searchFocused ? "Поиск...|" : "Поиск модулей...")
                 : (this.searchQuery + (this.searchFocused ? "|" : ""));
         int searchCol = (this.searchQuery.isEmpty() && !this.searchFocused) ? 0xFF727C90 : 0xFFFFFFFF;
-        DrawUtil.drawModernSmall(graphics, this.font, trimStyle(shown, searchW - 10, DrawUtil.STYLE_MODERN_SMALL),
-                searchX + 6, searchY + 3, ColorUtil.fade(searchCol, alpha));
+        DrawUtil.drawModernSmall(graphics, this.font, trimStyle(shown, searchW - 8, DrawUtil.STYLE_MODERN_SMALL),
+                searchX + 5, searchY + 2, ColorUtil.fade(searchCol, alpha));
         this.hitZones.add(new HitZone(searchX, searchY, searchW, searchH,
                 () -> this.searchFocused = true,
                 () -> {
@@ -290,29 +287,29 @@ public final class AuroraInlineMenuScreen extends Screen {
             int btnY = y + 3;
             int rightX = x + width - 4;
 
-            rightX = renderTopBarButton(graphics, rightX, btnY, 40, btnH, "Выход", false, true, mouseX, mouseY, alpha,
-                    () -> this.minecraft.stop()) - 4;
-            rightX = renderTopBarButton(graphics, rightX, btnY, 44, btnH, "Опции", false, false, mouseX, mouseY, alpha,
-                    () -> this.minecraft.setScreen(new OptionsScreen(host, this.minecraft.options))) - 4;
-            rightX = renderTopBarButton(graphics, rightX, btnY, 48, btnH, "Сетевая", false, false, mouseX, mouseY, alpha,
-                    () -> this.minecraft.setScreen(new JoinMultiplayerScreen(host))) - 4;
-            renderTopBarButton(graphics, rightX, btnY, 56, btnH, "Одиночная", true, false, mouseX, mouseY, alpha,
+            rightX = renderTopBarButton(graphics, rightX, btnY, 34, btnH, "Выход", false, true, mouseX, mouseY, alpha,
+                    () -> this.minecraft.stop()) - 3;
+            rightX = renderTopBarButton(graphics, rightX, btnY, 38, btnH, "Опции", false, false, mouseX, mouseY, alpha,
+                    () -> this.minecraft.setScreen(new OptionsScreen(host, this.minecraft.options))) - 3;
+            rightX = renderTopBarButton(graphics, rightX, btnY, 42, btnH, "Сетевая", false, false, mouseX, mouseY, alpha,
+                    () -> this.minecraft.setScreen(new JoinMultiplayerScreen(host))) - 3;
+            renderTopBarButton(graphics, rightX, btnY, 48, btnH, "Одиночная", true, false, mouseX, mouseY, alpha,
                     () -> this.minecraft.setScreen(new SelectWorldScreen(host)));
         } else {
             String hint = "ЛКМ: Вкл · ПКМ: Настройки · СКМ: Бинд";
             int hintW = DrawUtil.modernSmallWidth(this.font, hint);
-            int closeX = x + width - 17;
+            int closeX = x + width - 15;
             int closeY = y + 3;
-            if (closeX - hintW - 8 > searchX + searchW + 6) {
-                DrawUtil.drawModernSmall(graphics, this.font, hint, closeX - hintW - 8, y + 7,
+            if (closeX - hintW - 6 > searchX + searchW + 5) {
+                DrawUtil.drawModernSmall(graphics, this.font, hint, closeX - hintW - 6, y + 6,
                         ColorUtil.fade(0xFF7A8396, alpha));
             }
-            boolean closeHov = inside(mouseX, mouseY, closeX, closeY, 14, height - 6);
-            DrawUtil.drawMatteNeonCard(graphics, closeX, closeY, 14, height - 6, 5, alpha,
+            boolean closeHov = inside(mouseX, mouseY, closeX, closeY, 12, height - 6);
+            DrawUtil.drawMatteNeonCard(graphics, closeX, closeY, 12, height - 6, 4, alpha,
                     closeHov ? 0.90F : 0.0F, AuroraTheme.danger());
-            DrawUtil.drawCenteredTextScaled(graphics, this.font, "×", closeX + 7, closeY + 3,
+            DrawUtil.drawCenteredTextScaled(graphics, this.font, "×", closeX + 6, closeY + 2,
                     ColorUtil.fade(closeHov ? AuroraTheme.danger() : 0xFF9AA4B8, alpha), 0.72F, false);
-            this.hitZones.add(new HitZone(closeX, closeY, 14, height - 6, this::onClose, null, null));
+            this.hitZones.add(new HitZone(closeX, closeY, 12, height - 6, this::onClose, null, null));
         }
     }
 
@@ -322,9 +319,9 @@ public final class AuroraInlineMenuScreen extends Screen {
         boolean hov = inside(mouseX, mouseY, bx, y, w, h);
         int neonCol = danger ? AuroraTheme.danger() : AuroraTheme.accent();
         float glow = primary ? (hov ? 1.0F : 0.75F) : (hov ? 0.85F : 0.0F);
-        DrawUtil.drawMatteNeonCard(graphics, bx, y, w, h, 5, alpha, glow, neonCol);
+        DrawUtil.drawMatteNeonCard(graphics, bx, y, w, h, 4, alpha, glow, neonCol);
         int tw = DrawUtil.modernSmallWidth(this.font, label);
-        DrawUtil.drawModernSmall(graphics, this.font, label, bx + (w - tw) / 2, y + 3,
+        DrawUtil.drawModernSmall(graphics, this.font, label, bx + (w - tw) / 2, y + 2,
                 ColorUtil.fade(0xFFFFFFFF, alpha));
         this.hitZones.add(new HitZone(bx, y, w, h, action, null, null));
         return bx;
@@ -393,20 +390,20 @@ public final class AuroraInlineMenuScreen extends Screen {
     private void renderColumnHeader(GuiGraphics graphics, int colX, int colY, int colW,
                                     String title, int count, float alpha) {
         // Маленький неоновый индикатор категории слева от заголовка
-        DrawUtil.drawSliderKnob(graphics, colX + 6, colY + 7, 4, ColorUtil.fade(AuroraTheme.accent(), alpha));
-        DrawUtil.drawModernBold(graphics, this.font, title, colX + 13, colY + 6,
+        DrawUtil.drawSliderKnob(graphics, colX + 5, colY + 6, 4, ColorUtil.fade(AuroraTheme.accent(), alpha));
+        DrawUtil.drawModernBold(graphics, this.font, title, colX + 11, colY + 5,
                 ColorUtil.fade(0xFFFFFFFF, alpha));
 
         String cntStr = Integer.toString(count);
-        int cntW = Math.max(12, DrawUtil.modernSmallWidth(this.font, cntStr) + 6);
-        int cntX = colX + colW - cntW - 5;
-        int cntY = colY + 5;
-        DrawUtil.drawMatteNeonCard(graphics, cntX, cntY, cntW, 10, 4, alpha, 0.45F, AuroraTheme.accent());
+        int cntW = Math.max(11, DrawUtil.modernSmallWidth(this.font, cntStr) + 5);
+        int cntX = colX + colW - cntW - 4;
+        int cntY = colY + 4;
+        DrawUtil.drawMatteNeonCard(graphics, cntX, cntY, cntW, 9, 4, alpha, 0.45F, AuroraTheme.accent());
         int tw = DrawUtil.modernSmallWidth(this.font, cntStr);
         DrawUtil.drawModernSmall(graphics, this.font, cntStr, cntX + (cntW - tw) / 2, cntY + 1,
                 ColorUtil.fade(AuroraTheme.accent(), alpha));
 
-        graphics.fill(colX + 5, colY + COL_HEADER_H - 1, colX + colW - 5, colY + COL_HEADER_H,
+        graphics.fill(colX + 4, colY + COL_HEADER_H - 1, colX + colW - 4, colY + COL_HEADER_H,
                 ColorUtil.withAlpha(AuroraTheme.accent(), Math.round(125 * alpha)));
     }
 
@@ -420,11 +417,11 @@ public final class AuroraInlineMenuScreen extends Screen {
                     && mouseY >= clipTop && mouseY <= clipBottom;
             DrawUtil.drawMatteNeonCard(graphics, x, curY, width, CARD_HEADER_H, CARD_RADIUS, alpha,
                     hov ? 0.85F : 0.0F, AuroraTheme.accent());
-            DrawUtil.drawSliderKnob(graphics, x + 5, curY + 7, 3,
+            DrawUtil.drawSliderKnob(graphics, x + 4, curY + 5, 3,
                     ColorUtil.fade(hov ? AuroraTheme.accent() : 0xFF424A5C, alpha));
-            DrawUtil.drawModernBold(graphics, this.font, "Редактор HUD", x + 11, curY + 5,
+            DrawUtil.drawModernBold(graphics, this.font, "Редактор HUD", x + 9, curY + 3,
                     ColorUtil.fade(0xFFFFFFFF, alpha));
-            DrawUtil.drawModernSmall(graphics, this.font, "Перетаскивание панелей", x + 11, curY + 15,
+            DrawUtil.drawModernSmall(graphics, this.font, "Перетаскивание панелей", x + 9, curY + 12,
                     ColorUtil.fade(0xFF7D8699, alpha));
             if (mouseY >= clipTop && mouseY <= clipBottom) {
                 Screen host = this.parent != null ? this.parent : this;
@@ -446,14 +443,14 @@ public final class AuroraInlineMenuScreen extends Screen {
                     cleanOn ? 1.0F : 0.0F, AuroraTheme.accent());
 
             String keyStr = KeybindManager.formatKey(km.cleanScreenKeybind());
-            int badgeW = cleanListening ? 24 : Math.max(14, DrawUtil.modernSmallWidth(this.font, keyStr) + 6);
-            int bx = x + width - 4 - badgeW;
-            int by = curY + 4;
-            DrawUtil.drawMatteNeonCard(graphics, bx, by, badgeW, 10, 4, alpha,
+            int badgeW = cleanListening ? 22 : Math.max(12, DrawUtil.modernSmallWidth(this.font, keyStr) + 5);
+            int bx = x + width - 3 - badgeW;
+            int by = curY + 3;
+            DrawUtil.drawMatteNeonCard(graphics, bx, by, badgeW, 9, 3, alpha,
                     cleanListening ? 1.0F : 0.35F, AuroraTheme.accent());
             if (cleanListening) {
-                drawKeyboardIcon(graphics, bx + 3, by + 2, ColorUtil.fade(AuroraTheme.accent(), alpha));
-                DrawUtil.drawModernSmall(graphics, this.font, "..", bx + 13, by + 1,
+                drawKeyboardIcon(graphics, bx + 2, by + 2, ColorUtil.fade(AuroraTheme.accent(), alpha));
+                DrawUtil.drawModernSmall(graphics, this.font, "..", bx + 12, by + 1,
                         ColorUtil.fade(AuroraTheme.accent(), alpha));
             } else {
                 int kw = DrawUtil.modernSmallWidth(this.font, keyStr);
@@ -461,11 +458,11 @@ public final class AuroraInlineMenuScreen extends Screen {
                         ColorUtil.fade(0xFFE8F0FF, alpha));
             }
 
-            DrawUtil.drawSliderKnob(graphics, x + 5, curY + 7, 3,
+            DrawUtil.drawSliderKnob(graphics, x + 4, curY + 5, 3,
                     ColorUtil.fade(cleanOn ? AuroraTheme.accent() : 0xFF424A5C, alpha));
-            DrawUtil.drawModernBold(graphics, this.font, "Чистый экран", x + 11, curY + 5,
+            DrawUtil.drawModernBold(graphics, this.font, "Чистый экран", x + 9, curY + 3,
                     ColorUtil.fade(0xFFFFFFFF, alpha));
-            DrawUtil.drawModernSmall(graphics, this.font, "Скрытие HUD по клавише", x + 11, curY + 15,
+            DrawUtil.drawModernSmall(graphics, this.font, "Скрытие HUD по клавише", x + 9, curY + 12,
                     ColorUtil.fade(0xFF7D8699, alpha));
 
             if (mouseY >= clipTop && mouseY <= clipBottom) {
@@ -510,20 +507,20 @@ public final class AuroraInlineMenuScreen extends Screen {
                     module.setKeybind(key);
                     NotificationManager.get().pushKeybindChanged(module.name(), KeybindManager.formatKey(key));
                 },
-                x + width - 4, y + 4, mouseX, mouseY, clipTop, clipBottom, alpha, dt);
+                x + width - 3, y + 3, mouseX, mouseY, clipTop, clipBottom, alpha, dt);
 
         // 3. Точка-индикатор статуса + гладкий шрифт Montserrat (название + микро-описание)
         int dotCol = ColorUtil.lerp(0xFF3E4658, AuroraTheme.accent(), toggleCurr);
-        DrawUtil.drawSliderKnob(graphics, x + 5, y + 7, 3, ColorUtil.fade(dotCol, alpha));
+        DrawUtil.drawSliderKnob(graphics, x + 4, y + 5, 3, ColorUtil.fade(dotCol, alpha));
 
-        int availTitlePx = Math.max(28, width - 16 - (bindBadgeW > 0 ? bindBadgeW + 4 : 0));
+        int availTitlePx = Math.max(24, width - 13 - (bindBadgeW > 0 ? bindBadgeW + 3 : 0));
         String titleStr = trimStyle(module.name(), availTitlePx, DrawUtil.STYLE_MODERN_BOLD);
-        DrawUtil.drawModernBold(graphics, this.font, titleStr, x + 11, y + 5,
+        DrawUtil.drawModernBold(graphics, this.font, titleStr, x + 9, y + 3,
                 ColorUtil.fade(0xFFFFFFFF, alpha));
 
-        int availDescPx = Math.max(32, width - 15);
+        int availDescPx = Math.max(28, width - 12);
         String descStr = trimStyle(module.description(), availDescPx, DrawUtil.STYLE_MODERN_SMALL);
-        DrawUtil.drawModernSmall(graphics, this.font, descStr, x + 11, y + 15,
+        DrawUtil.drawModernSmall(graphics, this.font, descStr, x + 9, y + 12,
                 ColorUtil.fade(0xFF7D8699, alpha));
 
         // 4. Управление (ЛКМ / ПКМ / СКМ)
@@ -579,20 +576,20 @@ public final class AuroraInlineMenuScreen extends Screen {
         }
 
         String keyLetter = hasKey ? KeybindManager.formatKey(currentKey) : "";
-        int baseW = Math.max(12, DrawUtil.modernSmallWidth(this.font, keyLetter.isEmpty() ? "K" : keyLetter) + 6);
-        int listenW = 24;
+        int baseW = Math.max(11, DrawUtil.modernSmallWidth(this.font, keyLetter.isEmpty() ? "K" : keyLetter) + 5);
+        int listenW = 22;
         int badgeW = Math.round(baseW + (listenW - baseW) * Easing.easeOutCubic(anim));
-        int badgeH = 10;
+        int badgeH = 9;
         int bx = rightX - badgeW;
 
         boolean hov = inside(mouseX, mouseY, bx, topY, badgeW, badgeH) && mouseY >= clipTop && mouseY <= clipBottom;
-        DrawUtil.drawMatteNeonCard(graphics, bx, topY, badgeW, badgeH, 4, alpha,
+        DrawUtil.drawMatteNeonCard(graphics, bx, topY, badgeW, badgeH, 3, alpha,
                 listening ? 1.0F : (hov ? 0.65F : 0.35F), AuroraTheme.accent());
 
         int textCol = listening ? AuroraTheme.accent() : 0xFFE8F0FF;
         if (listening || anim > 0.35F) {
-            drawKeyboardIcon(graphics, bx + 3, topY + 2, ColorUtil.fade(AuroraTheme.accent(), alpha));
-            DrawUtil.drawModernSmall(graphics, this.font, "..", bx + 13, topY + 1,
+            drawKeyboardIcon(graphics, bx + 2, topY + 2, ColorUtil.fade(AuroraTheme.accent(), alpha));
+            DrawUtil.drawModernSmall(graphics, this.font, "..", bx + 12, topY + 1,
                     ColorUtil.fade(textCol, alpha));
         } else {
             int kw = DrawUtil.modernSmallWidth(this.font, keyLetter);
@@ -713,22 +710,22 @@ public final class AuroraInlineMenuScreen extends Screen {
 
         if (setting instanceof BooleanSetting boolSetting) {
             if (visible) {
-                int swW = 16;
-                int swH = 8;
+                int swW = 14;
+                int swH = 7;
                 int swX = x + width - swW;
                 int swY = y + (SETTING_ROW_H - swH) / 2;
 
                 int maxLabelW = swX - x - 4;
                 DrawUtil.drawModernSmall(graphics, this.font,
                         trimStyle(boolSetting.name(), maxLabelW, DrawUtil.STYLE_MODERN_SMALL),
-                        x, y + 4, ColorUtil.fade(0xFFB4BECE, alpha));
+                        x, y + 3, ColorUtil.fade(0xFFB4BECE, alpha));
 
                 boolean on = boolSetting.isEnabled();
-                DrawUtil.drawMatteNeonCard(graphics, swX, swY, swW, swH, 4, alpha,
+                DrawUtil.drawMatteNeonCard(graphics, swX, swY, swW, swH, 3, alpha,
                         on ? 0.90F : 0.0F, AuroraTheme.accent());
-                int knobX = swX + (on ? swW - 6 : 2);
+                int knobX = swX + (on ? swW - 5 : 2);
                 int knobCol = on ? AuroraTheme.accent() : 0xFF727C90;
-                DrawUtil.drawSliderKnob(graphics, knobX, swY + 2, 4, ColorUtil.fade(knobCol, alpha));
+                DrawUtil.drawSliderKnob(graphics, knobX, swY + 2, 3, ColorUtil.fade(knobCol, alpha));
 
                 if (mouseY >= clipTop && mouseY <= clipBottom) {
                     this.hitZones.add(new HitZone(x, y, width, SETTING_ROW_H,
@@ -743,17 +740,17 @@ public final class AuroraInlineMenuScreen extends Screen {
         if (setting instanceof EnumSetting enumSetting) {
             if (visible) {
                 String valText = "‹ " + enumSetting.get().toString() + " ›";
-                int pillW = Math.min(width * 54 / 100, DrawUtil.modernSmallWidth(this.font, valText) + 6);
+                int pillW = Math.min(width * 54 / 100, DrawUtil.modernSmallWidth(this.font, valText) + 5);
                 int pillX = x + width - pillW;
-                int pillY = y + 2;
+                int pillY = y + 1;
 
                 int maxLabelW = pillX - x - 4;
                 DrawUtil.drawModernSmall(graphics, this.font,
                         trimStyle(enumSetting.name(), maxLabelW, DrawUtil.STYLE_MODERN_SMALL),
-                        x, y + 4, ColorUtil.fade(0xFFB4BECE, alpha));
+                        x, y + 3, ColorUtil.fade(0xFFB4BECE, alpha));
 
-                boolean pillHov = inside(mouseX, mouseY, pillX, pillY, pillW, 11);
-                DrawUtil.drawMatteNeonCard(graphics, pillX, pillY, pillW, 11, 4, alpha,
+                boolean pillHov = inside(mouseX, mouseY, pillX, pillY, pillW, 10);
+                DrawUtil.drawMatteNeonCard(graphics, pillX, pillY, pillW, 10, 4, alpha,
                         pillHov ? 0.80F : 0.30F, AuroraTheme.accent());
                 String trimmedVal = trimStyle(valText, pillW - 4, DrawUtil.STYLE_MODERN_SMALL);
                 int vw = DrawUtil.modernSmallWidth(this.font, trimmedVal);
@@ -786,14 +783,14 @@ public final class AuroraInlineMenuScreen extends Screen {
             boolean expanded = this.expandedColors.contains(colorSetting);
             if (visible) {
                 int color = colorSetting.rgb();
-                int circleSize = 8;
+                int circleSize = 7;
                 int circleX = x + width - circleSize - 1;
                 int circleY = y + (SETTING_ROW_H - circleSize) / 2;
 
                 int maxLabelW = circleX - x - 4;
                 DrawUtil.drawModernSmall(graphics, this.font,
                         trimStyle(colorSetting.name(), maxLabelW, DrawUtil.STYLE_MODERN_SMALL),
-                        x, y + 4, ColorUtil.fade(0xFFB4BECE, alpha));
+                        x, y + 3, ColorUtil.fade(0xFFB4BECE, alpha));
 
                 DrawUtil.drawSliderKnob(graphics, circleX - 1, circleY - 1, circleSize + 2,
                         ColorUtil.fade(expanded ? AuroraTheme.accent() : 0xFF3E4656, alpha));
@@ -834,13 +831,13 @@ public final class AuroraInlineMenuScreen extends Screen {
         int maxLabelW = width - valW - 4;
         DrawUtil.drawModernSmall(graphics, this.font,
                 trimStyle(setting.name(), maxLabelW, DrawUtil.STYLE_MODERN_SMALL),
-                x, y + 2, ColorUtil.fade(0xFFB4BECE, alpha));
+                x, y + 1, ColorUtil.fade(0xFFB4BECE, alpha));
         DrawUtil.drawModernSmall(graphics, this.font, valueText,
-                x + width - valW, y + 2, ColorUtil.fade(AuroraTheme.accent(), alpha));
+                x + width - valW, y + 1, ColorUtil.fade(AuroraTheme.accent(), alpha));
 
         int trackX = x + 1;
         int trackW = width - 2;
-        int trackY = y + 12;
+        int trackY = y + 10;
         int trackH = 2;
 
         graphics.fill(trackX, trackY, trackX + trackW, trackY + trackH,
@@ -849,9 +846,9 @@ public final class AuroraInlineMenuScreen extends Screen {
         graphics.fill(trackX, trackY, trackX + fillW, trackY + trackH,
                 ColorUtil.fade(AuroraTheme.accent(), alpha));
 
-        int knobSize = 5;
+        int knobSize = 4;
         int knobX = trackX + Math.round((trackW - knobSize) * clamped);
-        int knobY = trackY - 2;
+        int knobY = trackY - 1;
         DrawUtil.drawSliderKnob(graphics, knobX - 1, knobY - 1, knobSize + 2,
                 ColorUtil.withAlpha(AuroraTheme.accent(), Math.round(85 * alpha)));
         DrawUtil.drawSliderKnob(graphics, knobX, knobY, knobSize,
@@ -889,12 +886,12 @@ public final class AuroraInlineMenuScreen extends Screen {
     private void renderCompactColorPalettePopover(GuiGraphics graphics, ColorSetting setting,
                                                   int x, int y, int width, int clipTop, int clipBottom,
                                                   int mouseX, int mouseY, float alpha) {
-        DrawUtil.drawMatteNeonCard(graphics, x, y, width, COLOR_EXPANDED_H - 2, 5, alpha, 0.35F, AuroraTheme.accent());
+        DrawUtil.drawMatteNeonCard(graphics, x, y, width, COLOR_EXPANDED_H - 2, 4, alpha, 0.35F, AuroraTheme.accent());
 
-        int dotSize = 7;
+        int dotSize = 6;
         int totalDotsW = QUICK_SWATCHES.length * dotSize;
         int gap = Math.max(2, (width - 8 - totalDotsW) / (QUICK_SWATCHES.length - 1));
-        int dotY = y + 4;
+        int dotY = y + 3;
         for (int i = 0; i < QUICK_SWATCHES.length; i++) {
             int presetCol = QUICK_SWATCHES[i];
             int dx = x + 4 + i * (dotSize + gap);
@@ -914,7 +911,7 @@ public final class AuroraInlineMenuScreen extends Screen {
         float sat = ColorUtil.saturationOf(color);
         float bri = ColorUtil.brightnessOf(color);
 
-        int barY = y + 16;
+        int barY = y + 13;
         int halfW = (width - 14) / 2;
         int hueX = x + 4;
         int briX = hueX + halfW + 6;
@@ -989,11 +986,11 @@ public final class AuroraInlineMenuScreen extends Screen {
         boolean rndHov = inside(mouseX, mouseY, cardX, curY, cardW, CARD_HEADER_H);
         DrawUtil.drawMatteNeonCard(graphics, cardX, curY, cardW, CARD_HEADER_H, CARD_RADIUS, alpha,
                 rndHov ? 0.85F : 0.0F, AuroraTheme.accent());
-        DrawUtil.drawSliderKnob(graphics, cardX + 5, curY + 7, 3,
+        DrawUtil.drawSliderKnob(graphics, cardX + 4, curY + 5, 3,
                 ColorUtil.fade(rndHov ? AuroraTheme.accent() : 0xFF424A5C, alpha));
-        DrawUtil.drawModernBold(graphics, this.font, "Случайный ник", cardX + 11, curY + 5,
+        DrawUtil.drawModernBold(graphics, this.font, "Случайный ник", cardX + 9, curY + 3,
                 ColorUtil.fade(0xFFFFFFFF, alpha));
-        DrawUtil.drawModernSmall(graphics, this.font, "Сгенерировать в 1 клик", cardX + 11, curY + 15,
+        DrawUtil.drawModernSmall(graphics, this.font, "Сгенерировать в 1 клик", cardX + 9, curY + 12,
                 ColorUtil.fade(0xFF7D8699, alpha));
         this.hitZones.add(new HitZone(cardX, curY, cardW, CARD_HEADER_H, () -> {
             this.accountInput = am.switchRandomAccount();
@@ -1004,16 +1001,16 @@ public final class AuroraInlineMenuScreen extends Screen {
         boolean boxHov = inside(mouseX, mouseY, cardX, curY, cardW, CARD_HEADER_H);
         DrawUtil.drawMatteNeonCard(graphics, cardX, curY, cardW, CARD_HEADER_H, CARD_RADIUS, alpha,
                 this.accountInputFocused ? 0.95F : (boxHov ? 0.45F : 0.0F), AuroraTheme.accent());
-        DrawUtil.drawSliderKnob(graphics, cardX + 5, curY + 7, 3,
+        DrawUtil.drawSliderKnob(graphics, cardX + 4, curY + 5, 3,
                 ColorUtil.fade(this.accountInputFocused ? AuroraTheme.accent() : 0xFF424A5C, alpha));
-        DrawUtil.drawModernBold(graphics, this.font, "Новый аккаунт", cardX + 11, curY + 5,
+        DrawUtil.drawModernBold(graphics, this.font, "Новый аккаунт", cardX + 9, curY + 3,
                 ColorUtil.fade(0xFFFFFFFF, alpha));
         String shownInput = this.accountInput.isEmpty()
                 ? (this.accountInputFocused ? "Введите ник...|" : "Нажмите для ввода ника")
                 : (this.accountInput + (this.accountInputFocused ? "|" : ""));
         DrawUtil.drawModernSmall(graphics, this.font,
-                trimStyle(shownInput, cardW - 14, DrawUtil.STYLE_MODERN_SMALL),
-                cardX + 11, curY + 15,
+                trimStyle(shownInput, cardW - 12, DrawUtil.STYLE_MODERN_SMALL),
+                cardX + 9, curY + 12,
                 ColorUtil.fade(this.accountInput.isEmpty() ? 0xFF7D8699 : AuroraTheme.accent(), alpha));
         this.hitZones.add(new HitZone(cardX, curY, cardW, CARD_HEADER_H, () -> {
             this.accountInputFocused = true;
@@ -1027,16 +1024,16 @@ public final class AuroraInlineMenuScreen extends Screen {
             DrawUtil.drawMatteNeonCard(graphics, cardX, curY, cardW, CARD_HEADER_H, CARD_RADIUS, alpha,
                     isCurrent ? 1.0F : 0.0F, AuroraTheme.accent());
 
-            DrawUtil.drawSliderKnob(graphics, cardX + 5, curY + 7, 3,
+            DrawUtil.drawSliderKnob(graphics, cardX + 4, curY + 5, 3,
                     ColorUtil.fade(isCurrent ? AuroraTheme.accent() : 0xFF424A5C, alpha));
             DrawUtil.drawModernBold(graphics, this.font,
-                    trimStyle(acc, cardW - 24, DrawUtil.STYLE_MODERN_BOLD),
-                    cardX + 11, curY + 5, ColorUtil.fade(0xFFFFFFFF, alpha));
+                    trimStyle(acc, cardW - 22, DrawUtil.STYLE_MODERN_BOLD),
+                    cardX + 9, curY + 3, ColorUtil.fade(0xFFFFFFFF, alpha));
             DrawUtil.drawModernSmall(graphics, this.font, isCurrent ? "Активен в сессии" : "ЛКМ — выбрать ник",
-                    cardX + 11, curY + 15, ColorUtil.fade(isCurrent ? AuroraTheme.accent() : 0xFF7D8699, alpha));
+                    cardX + 9, curY + 12, ColorUtil.fade(isCurrent ? AuroraTheme.accent() : 0xFF7D8699, alpha));
 
-            int delX = cardX + cardW - 13;
-            int delY = curY + 5;
+            int delX = cardX + cardW - 12;
+            int delY = curY + 3;
             DrawUtil.drawModernSmall(graphics, this.font, "×", delX + 3, delY + 1,
                     ColorUtil.fade(0xFF727B8E, alpha));
 

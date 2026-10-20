@@ -3,14 +3,14 @@
         {
             "type": "space",
             "advances": {
-                " ": 2.0,
+                " ": 1.9,
                 "\u200c": 0.0
             }
         },
         {
             "type": "ttf",
             "file": "aetherglass:montserrat_medium.ttf",
-            "size": 6.0,
+            "size": 5.2,
             "oversample": 2.0,
             "shift": [0.0, 0.0]
         },

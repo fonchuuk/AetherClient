@@ -90,6 +90,10 @@ public final class AuroraMenuScreen extends AuroraScreen {
     @Override
     protected void drawBackdrop(GuiGraphics graphics) {
         float delta = FrameClock.deltaSeconds();
+        try {
+            this.renderPanorama(graphics, delta);
+        } catch (Throwable ignored) {
+        }
         this.winterNight.update(delta);
         this.winterNight.draw(graphics, this.width, this.height, this.animated);
     }

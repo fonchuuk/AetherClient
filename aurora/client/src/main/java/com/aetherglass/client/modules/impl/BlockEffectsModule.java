@@ -81,7 +81,7 @@ public final class BlockEffectsModule extends Module {
     private final ColorSetting shaderColor = register(new ColorSetting("shaderColor",
             "Цвет шейдера и обводки",
             "Основной цвет выбранного шейдер-эффекта и контура блока",
-            ShaderEffect.LIQUID_GLASS.defaultColor(), setting -> {
+            0xFFAA3DFF, setting -> {
                 syncCustomColorFromShader();
                 settingChanged(setting);
             }));

@@ -28,7 +28,7 @@ public final class AuroraTheme {
     }
 
     private static Palette palette = Palette.DARK;
-    private static float accentHue = 0.51F;
+    private static float accentHue = 0.76F;
     private static float density = 0.55F;
     private static float blur = 0.68F;
     private static float radius = 11.0F;
@@ -116,12 +116,12 @@ public final class AuroraTheme {
 
     // ─────────────────────────────── цвета матового жидкого стекла ───────────────────────────────
 
-    /** Лёгкая дымчатая вуаль поверх размытого мира при открытом меню. */
+    /** Лёгкая дымчатая вуаль поверх мира при открытом меню (мир Minecraft отчётливо виден сзади). */
     public static int backdrop() {
         return switch (palette) {
-            case LIGHT -> ColorUtil.withAlpha(0xFFEEF4FC, Math.round(28 + 38 * density));
-            case NEON -> ColorUtil.withAlpha(0xFF06070B, Math.round(160 + 50 * density));
-            default -> ColorUtil.withAlpha(0xFF06070B, Math.round(165 + 48 * density));
+            case LIGHT -> ColorUtil.withAlpha(0xFFEEF4FC, Math.round(18 + 20 * density));
+            case NEON -> ColorUtil.withAlpha(0xFF080510, Math.round(28 + 22 * density));
+            default -> ColorUtil.withAlpha(0xFF080510, Math.round(30 + 22 * density));
         };
     }
 
@@ -188,9 +188,9 @@ public final class AuroraTheme {
 
     public static int accent() {
         return switch (palette) {
-            case LIGHT -> ColorUtil.hsb(accentHue, 0.85F, 0.65F);
-            case NEON -> ColorUtil.hsb(accentHue, 0.96F, 1.0F);
-            default -> ColorUtil.hsb(accentHue, 0.96F, 1.0F);
+            case LIGHT -> ColorUtil.hsb(accentHue, 0.82F, 0.72F);
+            case NEON -> ColorUtil.hsb(accentHue, 0.76F, 1.0F);
+            default -> ColorUtil.hsb(accentHue, 0.76F, 1.0F);
         };
     }
 

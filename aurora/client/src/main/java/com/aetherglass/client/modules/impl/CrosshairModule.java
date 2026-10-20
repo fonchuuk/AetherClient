@@ -54,7 +54,7 @@ public final class CrosshairModule extends Module {
             "Лёгкое расширение при ударе и подсветка при наведении на сущность",
             true, setting -> settingChanged(setting)));
     private final ColorSetting color = register(new ColorSetting("color", "Цвет прицела",
-            "Основной цвет прицела", 0xFFEAF8FF, setting -> settingChanged(setting)));
+            "Основной цвет прицела", 0xFFAA3DFF, setting -> settingChanged(setting)));
 
     private boolean installed;
     private float targetSpread;

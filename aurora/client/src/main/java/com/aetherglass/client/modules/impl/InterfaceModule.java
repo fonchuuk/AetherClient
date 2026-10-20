@@ -41,7 +41,7 @@ public final class InterfaceModule extends Module {
             "Тёмная, светлая или неоновая", AuroraTheme.Palette.DARK, AuroraTheme.Palette.values(),
             setting -> apply()));
     private final FloatSetting accentHue = register(new FloatSetting("hue", "Оттенок стекла (Hue)",
-            "Цвет подсветки и тонировки стекла интерфейса", 0.52F, 0.0F, 1.0F, 0.01F, setting -> apply()));
+            "Цвет подсветки и тонировки стекла интерфейса", 0.76F, 0.0F, 1.0F, 0.01F, setting -> apply()));
     private final FloatSetting blur = register(new FloatSetting("blur", "Сила размытия (Blur)",
             "Интенсивность матового размытия стеклянных подложек меню и HUD", 0.72F, 0.0F, 1.0F, 0.05F, setting -> apply()));
     private final FloatSetting density = register(new FloatSetting("density", "Плотность стекла",
