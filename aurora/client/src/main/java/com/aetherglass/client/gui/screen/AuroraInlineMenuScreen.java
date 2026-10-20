@@ -45,20 +45,26 @@ import java.util.Set;
 import java.util.function.IntConsumer;
 
 /**
- * Меню модулей AetherGlass в стиле Matte Black + Neon (сетка карточек в 3 колонки):
+ * Классический ClickGUI по вертикальным столбикам категорий (Matte Black + Neon):
  * <ul>
- *   <li>Компактные прямоугольные карточки со скруглёнными углами (10–12px), матовый чёрный фон (#0B0C10);</li>
- *   <li>Когда модуль выключен — обводки и свечения нет; когда включён — загорается неоновая обводка (#00F2FF) с мягким внешним glow;</li>
- *   <li>ЛКМ включает/выключает модуль, ПКМ плавно раскрывает настройки внутри карточки (аккордеон), СКМ вызывает окошко бинда с иконкой клавиатуры;</li>
- *   <li>Слева — узкая панель навигации (Главная, Визуал, Интерфейс, HUD, Аккаунты), справа — аккуратная сетка карточек в 3 колонки с отступами 9px.</li>
+ *   <li>На экране стоят 4 отдельных вертикальных столбика по категориям:
+ *       <b>1. Визуал</b>, <b>2. Интерфейс</b>, <b>3. Экран / HUD</b>, <b>4. Аккаунты</b>;</li>
+ *   <li>У каждого столбика сверху своя шапка с неоновым акцентом, а внутри карточки модулей
+ *       идут строго сверху вниз одна под другой;</li>
+ *   <li>Карточки — матовый чёрный прямоугольник ({@code #0B0C10}, скругление 10–12px):
+ *       когда модуль выключен — обводки нет; когда включён — вокруг карточки загорается
+ *       неоновая бирюзовая обводка ({@code #00F2FF}) с мягким внешним свечением (glow);</li>
+ *   <li>ЛКМ включает/выключает модуль, ПКМ плавно раскрывает настройки вниз внутри карточки,
+ *       СКМ открывает компактное окошко бинда с иконкой клавиатуры.</li>
  * </ul>
  */
 public final class AuroraInlineMenuScreen extends Screen {
-    public static final int COLS = 3;
+    public static final int NUM_COLS = 4;
     public static final int COL_GAP = 9;
-    public static final int ROW_GAP = 9;
-    public static final int CARD_RADIUS = 11;
-    public static final int CARD_HEADER_H = 44;
+    public static final int CARD_GAP = 6;
+    public static final int CARD_RADIUS = 10;
+    public static final int CARD_HEADER_H = 38;
+    public static final int COL_HEADER_H = 24;
 
     private static final int SETTING_ROW_H = 19;
     private static final int SETTING_SLIDER_H = 24;
@@ -79,6 +85,11 @@ public final class AuroraInlineMenuScreen extends Screen {
     private final Set<ColorSetting> expandedColors = new HashSet<>();
     private final Map<Object, Float> bindPopupAnims = new HashMap<>();
 
+    private final float[] colScroll = new float[NUM_COLS];
+    private final float[] colMaxScroll = new float[NUM_COLS];
+    private final int[] colLeftX = new int[NUM_COLS];
+    private final int[] colRightX = new int[NUM_COLS];
+
     private ModuleCategory selectedCategory;
     private boolean accountsTabActive;
     private boolean closing;
@@ -86,8 +97,6 @@ public final class AuroraInlineMenuScreen extends Screen {
     private boolean searchFocused;
     private String accountInput = "";
     private boolean accountInputFocused;
-    private float scrollOffset;
-    private float maxScroll;
 
     private Setting<?> draggingSlider;
     private int activeSliderX;
@@ -113,7 +122,7 @@ public final class AuroraInlineMenuScreen extends Screen {
     }
 
     public AuroraInlineMenuScreen(Screen parent, Module initialExpanded, ModuleCategory initialCategory) {
-        super(Component.literal("Модули AetherGlass"));
+        super(Component.literal("ClickGUI AetherGlass"));
         this.parent = parent;
         this.selectedCategory = initialCategory;
         this.openAnimation.setTarget(1.0F);
@@ -139,14 +148,11 @@ public final class AuroraInlineMenuScreen extends Screen {
     }
 
     public void setCategoryFilter(ModuleCategory category) {
-        this.accountsTabActive = false;
         this.selectedCategory = category;
-        this.scrollOffset = 0.0F;
     }
 
     public void setAccountsTab(boolean active) {
         this.accountsTabActive = active;
-        this.scrollOffset = 0.0F;
     }
 
     public void expandOnly(Module module) {
@@ -204,8 +210,8 @@ public final class AuroraInlineMenuScreen extends Screen {
     }
 
     /**
-     * Позволяет рендерить всю сетку карточек и узкую панель навигации как внутри {@code AuroraInlineMenuScreen},
-     * так и напрямую внутри {@code AuroraMenuScreen}.
+     * Отрисовывает 4 отдельных вертикальных столбика по категориям (ClickGUI)
+     * и компактную верхнюю полосу управления.
      */
     public void renderEmbedded(GuiGraphics graphics, int mouseX, int mouseY, float progress, float dt,
                                int screenW, int screenH, boolean titleScreenMode) {
@@ -216,62 +222,68 @@ public final class AuroraInlineMenuScreen extends Screen {
             graphics.fill(0, 0, screenW, screenH, dimColor);
         }
 
-        int panelW = Math.min(620, screenW - 20);
-        int panelH = Math.min(344, screenH - 16);
+        int totalW = Math.min(616, screenW - 16);
+        int startX = (screenW - totalW) / 2;
         int slideY = Math.round((1.0F - progress) * 10.0F);
-        int panelX = (screenW - panelW) / 2;
-        int panelY = (screenH - panelH) / 2 + slideY;
 
-        // Внешний матовый чёрный корпус окна (#07080B)
-        DrawUtil.drawLiquidGlassPanel(graphics, panelX, panelY, panelW, panelH, 12, progress);
+        // Компактная верхняя плашка (бренд, поиск, а в главном меню — быстрые кнопки запуска мира)
+        int topBarY = 7 + slideY;
+        int topBarH = 22;
+        renderTopBar(graphics, startX, topBarY, totalW, topBarH, mouseX, mouseY, progress, titleScreenMode);
 
-        // Слева — узкая панель навигации (116px)
-        int sidebarW = 116;
-        int sidebarX = panelX + 7;
-        int sidebarY = panelY + 7;
-        int sidebarH = panelH - 14;
-        renderSidebar(graphics, sidebarX, sidebarY, sidebarW, sidebarH, mouseX, mouseY, progress, titleScreenMode);
+        // 4 отдельных вертикальных столбика по категориям (Визуал, Интерфейс, Экран/HUD, Аккаунты)
+        int colsTopY = topBarY + topBarH + 7;
+        int maxColH = screenH - colsTopY - 8;
+        int colW = (totalW - COL_GAP * (NUM_COLS - 1)) / NUM_COLS;
 
-        // Справа — сетка карточек в 3 колонки
-        int bodyX = sidebarX + sidebarW + 9;
-        int bodyY = panelY + 7;
-        int bodyW = panelW - sidebarW - 23;
-        int bodyH = panelH - 14;
+        String[] colTitles = {"✦ ВИЗУАЛ", "◎ ИНТЕРФЕЙС", "◈ ЭКРАН / HUD", "👤 АККАУНТЫ"};
+        ModuleCategory[] colCats = {
+                ModuleCategory.VISUAL,
+                ModuleCategory.INTERFACE,
+                ModuleCategory.HUD,
+                null
+        };
 
-        renderHeaderBar(graphics, bodyX, bodyY, bodyW, mouseX, mouseY, progress, titleScreenMode);
-        if (this.accountsTabActive) {
-            renderAccountsTab(graphics, bodyX, bodyY + 25, bodyW, bodyH - 25, mouseX, mouseY, progress);
-        } else {
-            renderModuleColumns(graphics, bodyX, bodyY + 25, bodyW, bodyH - 25, mouseX, mouseY, progress, dt);
+        for (int col = 0; col < NUM_COLS; col++) {
+            int cx = startX + col * (colW + COL_GAP);
+            this.colLeftX[col] = cx;
+            this.colRightX[col] = cx + colW;
+
+            if (col < 3) {
+                renderCategoryColumn(graphics, col, cx, colsTopY, colW, maxColH,
+                        colTitles[col], colCats[col], mouseX, mouseY, progress, dt);
+            } else {
+                renderAccountsColumn(graphics, col, cx, colsTopY, colW, maxColH,
+                        colTitles[col], mouseX, mouseY, progress);
+            }
         }
     }
 
-    // ─────────────────── Узкая левая панель навигации (Matte Black + Neon) ───────────────────
+    // ─────────────────── Верхняя компактная панель ClickGUI ───────────────────
 
-    private void renderSidebar(GuiGraphics graphics, int sx, int sy, int sw, int sh,
-                               int mouseX, int mouseY, float alpha, boolean titleScreenMode) {
-        DrawUtil.drawMatteNeonCard(graphics, sx, sy, sw, sh, 11, alpha, 0.0F, AuroraTheme.accent());
+    private void renderTopBar(GuiGraphics graphics, int x, int y, int width, int height,
+                              int mouseX, int mouseY, float alpha, boolean titleScreenMode) {
+        DrawUtil.drawLiquidGlassPanel(graphics, x, y, width, height, 10, alpha);
 
-        // Заголовок клиента
-        DrawUtil.drawTextScaled(graphics, this.font, "§lAETHERGLASS", sx + 8, sy + 8,
-                ColorUtil.fade(0xFFFFFFFF, alpha), 0.88F, false);
-        DrawUtil.drawTextScaled(graphics, this.font, "Matte · Neon 1.0.8", sx + 8, sy + 18,
-                ColorUtil.fade(0xFF00F2FF, 0.88F * alpha), 0.72F, false);
+        DrawUtil.drawTextScaled(graphics, this.font, "§lAETHERGLASS", x + 9, y + 7,
+                ColorUtil.fade(0xFFFFFFFF, alpha), 0.86F, false);
+        DrawUtil.drawTextScaled(graphics, this.font, "1.0.8", x + 78, y + 8,
+                ColorUtil.fade(AuroraTheme.accent(), alpha), 0.72F, false);
 
-        // Компактный поиск
-        int searchX = sx + 6;
-        int searchY = sy + 29;
-        int searchW = sw - 12;
-        int searchH = 16;
+        // Поле быстрого поиска модулей
+        int searchX = x + 106;
+        int searchW = 128;
+        int searchY = y + 3;
+        int searchH = height - 6;
         boolean searchHov = inside(mouseX, mouseY, searchX, searchY, searchW, searchH);
-        DrawUtil.drawMatteNeonCard(graphics, searchX, searchY, searchW, searchH, 8, alpha,
-                this.searchFocused ? 0.85F : (searchHov ? 0.35F : 0.0F), AuroraTheme.accent());
+        DrawUtil.drawMatteNeonCard(graphics, searchX, searchY, searchW, searchH, 7, alpha,
+                this.searchFocused ? 0.90F : (searchHov ? 0.35F : 0.0F), AuroraTheme.accent());
         String shown = this.searchQuery.isEmpty()
-                ? (this.searchFocused ? "🔍 Поиск...|" : "🔍 Поиск...")
+                ? (this.searchFocused ? "🔍 Поиск...|" : "🔍 Поиск модулей...")
                 : ("🔍 " + this.searchQuery + (this.searchFocused ? "|" : ""));
         int searchCol = (this.searchQuery.isEmpty() && !this.searchFocused) ? 0xFF727B8E : 0xFFFFFFFF;
-        DrawUtil.drawTextScaled(graphics, this.font, trimToWidth(shown, Math.round((searchW - 10) / 0.78F)),
-                searchX + 5, searchY + 5, ColorUtil.fade(searchCol, alpha), 0.78F, false);
+        DrawUtil.drawTextScaled(graphics, this.font, trimToWidth(shown, Math.round((searchW - 10) / 0.75F)),
+                searchX + 6, searchY + 5, ColorUtil.fade(searchCol, alpha), 0.75F, false);
         this.hitZones.add(new HitZone(searchX, searchY, searchW, searchH,
                 () -> this.searchFocused = true,
                 () -> {
@@ -280,198 +292,201 @@ public final class AuroraInlineMenuScreen extends Screen {
                 },
                 null));
 
-        graphics.fill(sx + 8, sy + 49, sx + sw - 8, sy + 50, ColorUtil.withAlpha(0xFFFFFFFF, Math.round(16 * alpha)));
-
-        // Разделы навигации: Главная, Визуал, Интерфейс, HUD, Аккаунты
-        int navY = sy + 54;
-        navY = renderSidebarCategory(graphics, sx + 6, navY, sw - 12, "Главная",
-                null, false, ModuleManager.get().modules().size(), mouseX, mouseY, alpha);
-        for (ModuleCategory cat : ModuleCategory.values()) {
-            int count = ModuleManager.get().byCategory(cat).size();
-            navY = renderSidebarCategory(graphics, sx + 6, navY, sw - 12, cat.title(),
-                    cat, false, count, mouseX, mouseY, alpha);
-        }
-
-        // Кнопка HUD Редактора в навигации
-        navY = renderSidebarAction(graphics, sx + 6, navY, sw - 12, "HUD Редактор", false, mouseX, mouseY, alpha, () -> {
-            if (this.minecraft != null) {
-                this.minecraft.setScreen(new HudEditorScreen(this.parent != null ? this.parent : this));
-            }
-        });
-
-        // Вкладка Аккаунты
-        navY = renderSidebarCategory(graphics, sx + 6, navY, sw - 12, "Аккаунты",
-                null, true, AccountManager.get().accounts().size(), mouseX, mouseY, alpha);
-
-        // Внизу узкой левой панели — быстрые кнопки игры / чистого экрана
         if (titleScreenMode && this.minecraft != null && this.minecraft.level == null) {
-            int botY = sy + sh - 76;
-            graphics.fill(sx + 8, botY - 4, sx + sw - 8, botY - 3, ColorUtil.withAlpha(0xFFFFFFFF, Math.round(16 * alpha)));
             Screen host = this.parent != null ? this.parent : this;
-            botY = renderSidebarAction(graphics, sx + 6, botY, sw - 12, "▶ Одиночная", true, mouseX, mouseY, alpha,
+            int btnH = height - 6;
+            int btnY = y + 3;
+            int rightX = x + width - 5;
+
+            rightX = renderTopBarButton(graphics, rightX, btnY, 48, btnH, "✕ Выход", false, true, mouseX, mouseY, alpha,
+                    () -> this.minecraft.stop()) - 5;
+            rightX = renderTopBarButton(graphics, rightX, btnY, 64, btnH, "⚙ Опции MC", false, false, mouseX, mouseY, alpha,
+                    () -> this.minecraft.setScreen(new OptionsScreen(host, this.minecraft.options))) - 5;
+            rightX = renderTopBarButton(graphics, rightX, btnY, 62, btnH, "🌐 Сетевая", false, false, mouseX, mouseY, alpha,
+                    () -> this.minecraft.setScreen(new JoinMultiplayerScreen(host))) - 5;
+            renderTopBarButton(graphics, rightX, btnY, 72, btnH, "▶ Одиночная", true, false, mouseX, mouseY, alpha,
                     () -> this.minecraft.setScreen(new SelectWorldScreen(host)));
-            botY = renderSidebarAction(graphics, sx + 6, botY, sw - 12, "🌐 Сетевая", false, mouseX, mouseY, alpha,
-                    () -> this.minecraft.setScreen(new JoinMultiplayerScreen(host)));
-            botY = renderSidebarAction(graphics, sx + 6, botY, sw - 12, "⚙ Опции MC", false, mouseX, mouseY, alpha,
-                    () -> this.minecraft.setScreen(new OptionsScreen(host, this.minecraft.options)));
-            renderSidebarAction(graphics, sx + 6, botY, sw - 12, "✕ Выход", false, mouseX, mouseY, alpha,
-                    () -> this.minecraft.stop());
         } else {
-            int botY = sy + sh - 24;
-            KeybindManager km = KeybindManager.get();
-            String cleanKey = KeybindManager.formatKey(km.cleanScreenKeybind());
-            boolean cleanListening = "CLEAN_SCREEN".equals(this.listeningBindTarget);
-            String cleanLabel = cleanListening ? "⌨ Клавиша..." : ("Чистый [" + cleanKey + "]");
-            int btnX = sx + 6;
-            int btnW = sw - 12;
-            int btnH = 18;
-            boolean cleanHov = inside(mouseX, mouseY, btnX, botY, btnW, btnH);
-            DrawUtil.drawMatteNeonCard(graphics, btnX, botY, btnW, btnH, 8, alpha,
-                    (km.isCleanScreenActive() || cleanListening) ? 0.90F : (cleanHov ? 0.35F : 0.0F), AuroraTheme.accent());
-            DrawUtil.drawCenteredTextScaled(graphics, this.font, cleanLabel, btnX + btnW / 2, botY + 6,
-                    ColorUtil.fade(0xFFFFFFFF, alpha), 0.78F, false);
-            this.hitZones.add(new HitZone(btnX, botY, btnW, btnH,
-                    km::toggleCleanScreen,
-                    km::toggleCleanScreen,
-                    () -> this.listeningBindTarget = cleanListening ? null : "CLEAN_SCREEN"));
-        }
-    }
-
-    private int renderSidebarCategory(GuiGraphics graphics, int x, int y, int w, String title,
-                                      ModuleCategory category, boolean isAccountsTab, int count,
-                                      int mouseX, int mouseY, float alpha) {
-        boolean active = isAccountsTab ? this.accountsTabActive : (!this.accountsTabActive && this.selectedCategory == category);
-        int h = 18;
-        boolean hovered = inside(mouseX, mouseY, x, y, w, h);
-
-        DrawUtil.drawMatteNeonCard(graphics, x, y, w, h, 8, alpha,
-                active ? 0.95F : (hovered ? 0.30F : 0.0F), AuroraTheme.accent());
-
-        int textCol = active ? 0xFFFFFFFF : (hovered ? 0xFFE6ECF8 : 0xFF949EB2);
-        DrawUtil.drawTextScaled(graphics, this.font, (active ? "§l" : "") + title, x + 7, y + 6,
-                ColorUtil.fade(textCol, alpha), 0.80F, false);
-
-        String cntStr = Integer.toString(count);
-        int cntW = Math.round(this.font.width(cntStr) * 0.75F);
-        DrawUtil.drawTextScaled(graphics, this.font, cntStr, x + w - cntW - 6, y + 6,
-                ColorUtil.fade(active ? AuroraTheme.accent() : 0xFF687285, alpha), 0.75F, false);
-
-        this.hitZones.add(new HitZone(x, y, w, h, () -> {
-            this.accountsTabActive = isAccountsTab;
-            if (!isAccountsTab) {
-                this.selectedCategory = category;
-            }
-            this.scrollOffset = 0.0F;
-        }, null, null));
-        return y + h + 3;
-    }
-
-    private int renderSidebarAction(GuiGraphics graphics, int x, int y, int w, String label,
-                                    boolean highlighted, int mouseX, int mouseY, float alpha, Runnable action) {
-        int h = 16;
-        boolean hovered = inside(mouseX, mouseY, x, y, w, h);
-        DrawUtil.drawMatteNeonCard(graphics, x, y, w, h, 8, alpha,
-                hovered ? 0.85F : (highlighted ? 0.45F : 0.0F), AuroraTheme.accent());
-        int col = (hovered || highlighted) ? 0xFFFFFFFF : 0xFF9AA4B8;
-        DrawUtil.drawTextScaled(graphics, this.font, label, x + 7, y + 5,
-                ColorUtil.fade(col, alpha), 0.78F, false);
-        this.hitZones.add(new HitZone(x, y, w, h, action, null, null));
-        return y + h + 3;
-    }
-
-    // ─────────────────── Верхняя информационная плашка над сеткой карточек ───────────────────
-
-    private void renderHeaderBar(GuiGraphics graphics, int x, int y, int width,
-                                 int mouseX, int mouseY, float alpha, boolean titleScreenMode) {
-        DrawUtil.drawMatteNeonCard(graphics, x, y, width, 20, 9, alpha, 0.0F, AuroraTheme.accent());
-        String catName = this.accountsTabActive
-                ? "Аккаунты (Offline-смена в игре)"
-                : (this.selectedCategory == null ? "Главная · Все модули (сетка 3 колонки)" : this.selectedCategory.title());
-        DrawUtil.drawTextScaled(graphics, this.font, "§l" + catName, x + 8, y + 6,
-                ColorUtil.fade(0xFFFFFFFF, alpha), 0.82F, false);
-
-        String hint = "ЛКМ: Вкл/Выкл · ПКМ: Настройки · СКМ: Бинд";
-        int hintW = Math.round(this.font.width(hint) * 0.72F);
-        int rightEdge = titleScreenMode ? (x + width - 8) : (x + width - 24);
-        int accW = 84;
-        int accX = rightEdge - accW;
-        int accY = y + 3;
-
-        if (accX - hintW - 10 > x + 130) {
-            DrawUtil.drawTextScaled(graphics, this.font, hint, accX - hintW - 8, y + 7,
-                    ColorUtil.fade(0xFF727B8E, alpha), 0.72F, false);
-        }
-
-        // Кнопка текущего аккаунта
-        String curUser = "👤 " + AccountManager.get().currentUsername();
-        boolean accHov = inside(mouseX, mouseY, accX, accY, accW, 14);
-        DrawUtil.drawMatteNeonCard(graphics, accX, accY, accW, 14, 7, alpha,
-                this.accountsTabActive ? 0.90F : (accHov ? 0.50F : 0.0F), AuroraTheme.accent());
-        DrawUtil.drawCenteredTextScaled(graphics, this.font,
-                trimToWidth(curUser, Math.round((accW - 8) / 0.75F)),
-                accX + accW / 2, accY + 4, ColorUtil.fade(0xFFFFFFFF, alpha), 0.75F, false);
-        this.hitZones.add(new HitZone(accX, accY, accW, 14, () -> {
-            this.accountsTabActive = !this.accountsTabActive;
-            this.scrollOffset = 0.0F;
-        }, null, null));
-
-        if (!titleScreenMode) {
-            int closeX = x + width - 18;
+            String hint = "ЛКМ: Вкл/Выкл · ПКМ: Настройки · СКМ: Бинд";
+            int hintW = Math.round(this.font.width(hint) * 0.72F);
+            int closeX = x + width - 19;
             int closeY = y + 3;
-            boolean closeHov = inside(mouseX, mouseY, closeX, closeY, 14, 14);
-            DrawUtil.drawMatteNeonCard(graphics, closeX, closeY, 14, 14, 6, alpha,
-                    closeHov ? 0.85F : 0.0F, AuroraTheme.danger());
+            if (closeX - hintW - 10 > searchX + searchW + 8) {
+                DrawUtil.drawTextScaled(graphics, this.font, hint, closeX - hintW - 10, y + 7,
+                        ColorUtil.fade(0xFF7A8396, alpha), 0.72F, false);
+            }
+            boolean closeHov = inside(mouseX, mouseY, closeX, closeY, 15, height - 6);
+            DrawUtil.drawMatteNeonCard(graphics, closeX, closeY, 15, height - 6, 6, alpha,
+                    closeHov ? 0.90F : 0.0F, AuroraTheme.danger());
             DrawUtil.drawCenteredTextScaled(graphics, this.font, "✕", closeX + 7, closeY + 4,
-                    ColorUtil.fade(closeHov ? AuroraTheme.danger() : 0xFF9AA4B8, alpha), 0.78F, false);
-            this.hitZones.add(new HitZone(closeX, closeY, 14, 14, this::onClose, null, null));
+                    ColorUtil.fade(closeHov ? AuroraTheme.danger() : 0xFF9AA4B8, alpha), 0.75F, false);
+            this.hitZones.add(new HitZone(closeX, closeY, 15, height - 6, this::onClose, null, null));
         }
     }
 
-    // ─────────────────── СЕТКА КАРТОЧЕК МОДУЛЕЙ В 3 КОЛОНКИ (MATTE BLACK + NEON) ───────────────────
+    private int renderTopBarButton(GuiGraphics graphics, int rightX, int y, int w, int h, String label,
+                                   boolean primary, boolean danger, int mouseX, int mouseY, float alpha, Runnable action) {
+        int bx = rightX - w;
+        boolean hov = inside(mouseX, mouseY, bx, y, w, h);
+        int neonCol = danger ? AuroraTheme.danger() : AuroraTheme.accent();
+        float glow = primary ? (hov ? 1.0F : 0.75F) : (hov ? 0.85F : 0.0F);
+        DrawUtil.drawMatteNeonCard(graphics, bx, y, w, h, 7, alpha, glow, neonCol);
+        DrawUtil.drawCenteredTextScaled(graphics, this.font, label, bx + w / 2, y + 4,
+                ColorUtil.fade(0xFFFFFFFF, alpha), 0.74F, false);
+        this.hitZones.add(new HitZone(bx, y, w, h, action, null, null));
+        return bx;
+    }
 
-    private void renderModuleColumns(GuiGraphics graphics, int bodyX, int bodyY, int bodyW, int bodyH,
-                                     int mouseX, int mouseY, float alpha, float dt) {
-        List<Module> modules = filteredModules();
-        int colW = (bodyW - COL_GAP * (COLS - 1)) / COLS;
-        int[] colY = new int[COLS];
-        for (int i = 0; i < COLS; i++) {
-            colY[i] = bodyY + 2 - Math.round(this.scrollOffset);
+    // ─────────────────── Отдельный вертикальный столбик категории (ClickGUI Column) ───────────────────
+
+    private void renderCategoryColumn(GuiGraphics graphics, int colIdx, int colX, int colY, int colW, int maxColH,
+                                      String title, ModuleCategory category,
+                                      int mouseX, int mouseY, float alpha, float dt) {
+        List<Module> modules = filteredByCategory(category);
+
+        // Вычисляем полную высоту карточек внутри этого столбика
+        int innerContentH = 6;
+        for (Module m : modules) {
+            boolean expanded = this.expandedModules.contains(m);
+            float expandCurr = this.expandAnims.getOrDefault(m, 0.0F);
+            float expandTarget = expanded ? 1.0F : 0.0F;
+            expandCurr += (expandTarget - expandCurr) * Math.min(1.0F, dt * 14.0F * AuroraTheme.motion());
+            if (Math.abs(expandTarget - expandCurr) < 0.005F) {
+                expandCurr = expandTarget;
+            }
+            this.expandAnims.put(m, expandCurr);
+            int visSettingsH = Math.round(computeExpandedContentHeight(m) * Easing.easeOutCubic(expandCurr));
+            innerContentH += CARD_HEADER_H + visSettingsH + CARD_GAP;
+        }
+        if (category == ModuleCategory.HUD) {
+            innerContentH += (CARD_HEADER_H + CARD_GAP) * 2;
         }
 
-        // Оставляем +6px по краям scissor для мягкого неонового свечения (glow) крайних карточек
-        graphics.enableScissor(bodyX - 6, bodyY - 4, bodyX + bodyW + 6, bodyY + bodyH + 4);
+        int targetColH = Math.min(maxColH, Math.max(COL_HEADER_H + 54, COL_HEADER_H + innerContentH + 4));
 
-        int maxBottom = bodyY;
-        for (int idx = 0; idx < modules.size(); idx++) {
-            Module module = modules.get(idx);
-            int col = idx % COLS;
-            int cardX = bodyX + col * (colW + COL_GAP);
-            int cardY = colY[col];
+        // Матовый чёрный корпус вертикального столбика
+        DrawUtil.drawLiquidGlassPanel(graphics, colX, colY, colW, targetColH, 11, alpha);
 
-            int cardH = renderModuleCard(graphics, module, cardX, cardY, colW,
-                    bodyY - 4, bodyY + bodyH + 4, mouseX, mouseY, alpha, dt);
-            colY[col] += cardH + ROW_GAP;
-            maxBottom = Math.max(maxBottom, colY[col] + Math.round(this.scrollOffset));
+        // Шапка столбика сверху + тонкая неоновая линия-акцент под шапкой
+        renderColumnHeader(graphics, colX, colY, colW, title, modules.size(), alpha);
+
+        int bodyTop = colY + COL_HEADER_H + 4;
+        int bodyH = targetColH - COL_HEADER_H - 8;
+        int cardX = colX + 5;
+        int cardW = colW - 10;
+
+        this.colMaxScroll[colIdx] = Math.max(0.0F, innerContentH - bodyH);
+        if (this.colScroll[colIdx] > this.colMaxScroll[colIdx]) {
+            this.colScroll[colIdx] = this.colMaxScroll[colIdx];
+        }
+
+        int curY = bodyTop - Math.round(this.colScroll[colIdx]);
+
+        // Оставляем запас по X для мягкого неонового свечения (glow) вокруг карточек внутри столбика
+        graphics.enableScissor(colX - 2, bodyTop - 2, colX + colW + 2, bodyTop + bodyH + 2);
+
+        for (Module module : modules) {
+            int cardH = renderModuleCard(graphics, module, cardX, curY, cardW,
+                    bodyTop - 2, bodyTop + bodyH + 2, mouseX, mouseY, alpha, dt);
+            curY += cardH + CARD_GAP;
+        }
+
+        // В столбике «Экран / HUD» ниже карточки HUD идут карточки «Редактор HUD» и «Чистый экран»
+        if (category == ModuleCategory.HUD) {
+            curY += renderHudExtraCards(graphics, cardX, curY, cardW,
+                    bodyTop - 2, bodyTop + bodyH + 2, mouseX, mouseY, alpha);
         }
 
         graphics.disableScissor();
-
-        this.maxScroll = Math.max(0.0F, (maxBottom - bodyY) - bodyH + 10.0F);
-        if (this.scrollOffset > this.maxScroll) {
-            this.scrollOffset = this.maxScroll;
-        }
     }
+
+    private void renderColumnHeader(GuiGraphics graphics, int colX, int colY, int colW,
+                                    String title, int count, float alpha) {
+        DrawUtil.drawTextScaled(graphics, this.font, "§l" + title, colX + 8, colY + 8,
+                ColorUtil.fade(0xFFFFFFFF, alpha), 0.80F, false);
+
+        String cntStr = Integer.toString(count);
+        int cntW = Math.round(this.font.width(cntStr) * 0.74F) + 8;
+        int cntX = colX + colW - cntW - 6;
+        int cntY = colY + 6;
+        DrawUtil.drawMatteNeonCard(graphics, cntX, cntY, cntW, 12, 5, alpha, 0.55F, AuroraTheme.accent());
+        DrawUtil.drawCenteredTextScaled(graphics, this.font, cntStr, cntX + cntW / 2, cntY + 3,
+                ColorUtil.fade(AuroraTheme.accent(), alpha), 0.74F, false);
+
+        // Тонкая неоновая линия под шапкой столбика
+        graphics.fill(colX + 6, colY + COL_HEADER_H - 1, colX + colW - 6, colY + COL_HEADER_H,
+                ColorUtil.withAlpha(AuroraTheme.accent(), Math.round(140 * alpha)));
+    }
+
+    private int renderHudExtraCards(GuiGraphics graphics, int x, int startY, int width,
+                                    int clipTop, int clipBottom, int mouseX, int mouseY, float alpha) {
+        int curY = startY;
+
+        // 1. Карточка «Редактор HUD (Drag & Drop)»
+        if (curY + CARD_HEADER_H >= clipTop && curY <= clipBottom) {
+            boolean hov = inside(mouseX, mouseY, x, curY, width, CARD_HEADER_H)
+                    && mouseY >= clipTop && mouseY <= clipBottom;
+            DrawUtil.drawMatteNeonCard(graphics, x, curY, width, CARD_HEADER_H, CARD_RADIUS, alpha,
+                    hov ? 0.85F : 0.0F, AuroraTheme.accent());
+            DrawUtil.drawTextScaled(graphics, this.font, "§lРедактор HUD", x + 8, curY + 8,
+                    ColorUtil.fade(0xFFFFFFFF, alpha), 0.84F, false);
+            DrawUtil.drawTextScaled(graphics, this.font, "Перетаскивание панелей", x + 8, curY + 21,
+                    ColorUtil.fade(0xFF8C94A6, alpha), 0.72F, false);
+            if (mouseY >= clipTop && mouseY <= clipBottom) {
+                Screen host = this.parent != null ? this.parent : this;
+                this.hitZones.add(new HitZone(x, curY, width, CARD_HEADER_H, () -> {
+                    if (this.minecraft != null) {
+                        this.minecraft.setScreen(new HudEditorScreen(host));
+                    }
+                }, null, null));
+            }
+        }
+        curY += CARD_HEADER_H + CARD_GAP;
+
+        // 2. Карточка «Чистый экран» (F8)
+        if (curY + CARD_HEADER_H >= clipTop && curY <= clipBottom) {
+            KeybindManager km = KeybindManager.get();
+            boolean cleanOn = km.isCleanScreenActive();
+            boolean cleanListening = "CLEAN_SCREEN".equals(this.listeningBindTarget);
+            DrawUtil.drawMatteNeonCard(graphics, x, curY, width, CARD_HEADER_H, CARD_RADIUS, alpha,
+                    cleanOn ? 1.0F : 0.0F, AuroraTheme.accent());
+
+            String keyStr = KeybindManager.formatKey(km.cleanScreenKeybind());
+            int badgeW = cleanListening ? 28 : Math.max(16, Math.round(this.font.width(keyStr) * 0.70F) + 8);
+            int bx = x + width - 6 - badgeW;
+            int by = curY + 6;
+            DrawUtil.drawMatteNeonCard(graphics, bx, by, badgeW, 12, 5, alpha,
+                    cleanListening ? 1.0F : 0.40F, AuroraTheme.accent());
+            if (cleanListening) {
+                drawKeyboardIcon(graphics, bx + 4, by + 3, ColorUtil.fade(AuroraTheme.accent(), alpha));
+                DrawUtil.drawTextScaled(graphics, this.font, "...", bx + 15, by + 3,
+                        ColorUtil.fade(AuroraTheme.accent(), alpha), 0.70F, false);
+            } else {
+                DrawUtil.drawCenteredTextScaled(graphics, this.font, keyStr, bx + badgeW / 2, by + 3,
+                        ColorUtil.fade(0xFFE8F0FF, alpha), 0.70F, false);
+            }
+
+            DrawUtil.drawTextScaled(graphics, this.font, "§lЧистый экран", x + 8, curY + 8,
+                    ColorUtil.fade(0xFFFFFFFF, alpha), 0.84F, false);
+            DrawUtil.drawTextScaled(graphics, this.font, "Скрытие HUD по клавише", x + 8, curY + 21,
+                    ColorUtil.fade(0xFF8C94A6, alpha), 0.72F, false);
+
+            if (mouseY >= clipTop && mouseY <= clipBottom) {
+                this.hitZones.add(new HitZone(x, curY, width, CARD_HEADER_H,
+                        km::toggleCleanScreen,
+                        km::toggleCleanScreen,
+                        () -> this.listeningBindTarget = cleanListening ? null : "CLEAN_SCREEN"));
+            }
+        }
+        curY += CARD_HEADER_H + CARD_GAP;
+        return curY - startY;
+    }
+
+    // ─────────────────── Карточка модуля внутри вертикального столбика ───────────────────
 
     private int renderModuleCard(GuiGraphics graphics, Module module, int x, int y, int width,
                                  int clipTop, int clipBottom, int mouseX, int mouseY, float alpha, float dt) {
-        boolean expanded = this.expandedModules.contains(module);
         float expandCurr = this.expandAnims.getOrDefault(module, 0.0F);
-        float expandTarget = expanded ? 1.0F : 0.0F;
-        expandCurr += (expandTarget - expandCurr) * Math.min(1.0F, dt * 14.0F * AuroraTheme.motion());
-        if (Math.abs(expandTarget - expandCurr) < 0.005F) {
-            expandCurr = expandTarget;
-        }
-        this.expandAnims.put(module, expandCurr);
 
         float toggleCurr = this.toggleAnims.getOrDefault(module, module.isEnabled() ? 1.0F : 0.0F);
         float toggleTarget = module.isEnabled() ? 1.0F : 0.0F;
@@ -489,7 +504,7 @@ public final class AuroraInlineMenuScreen extends Screen {
             return totalH;
         }
 
-        // 1. ВНЕШНИЙ ВИД КАРТОЧКИ: Матовый чёрный (#0B0C10) + Неоновая обводка с glow ТОЛЬКО при включённом модуле!
+        // 1. Матовый чёрный прямоугольник (#0B0C10) + Неоновая обводка с glow ТОЛЬКО при включённом модуле
         DrawUtil.drawMatteNeonCard(graphics, x, y, width, totalH, CARD_RADIUS, alpha, toggleCurr, AuroraTheme.accent());
 
         // 2. Окошко бинда (СКМ) в правом верхнем углу карточки (иконка клавиатуры -> буква)
@@ -498,25 +513,25 @@ public final class AuroraInlineMenuScreen extends Screen {
                     module.setKeybind(key);
                     NotificationManager.get().pushKeybindChanged(module.name(), KeybindManager.formatKey(key));
                 },
-                x + width - 7, y + 7, mouseX, mouseY, clipTop, clipBottom, alpha, dt);
+                x + width - 6, y + 6, mouseX, mouseY, clipTop, clipBottom, alpha, dt);
 
-        // 3. ТЕКСТ ВНУТРИ КАРТОЧКИ: Название белым жирным + короткое описание серым мелким шрифтом
-        float titleScale = 0.88F;
-        int availTitlePx = Math.max(36, width - 16 - (bindBadgeW > 0 ? bindBadgeW + 4 : 0));
+        // 3. Текст внутри карточки: Название (белым жирным) + короткое описание (серым мелким шрифтом)
+        float titleScale = 0.84F;
+        int availTitlePx = Math.max(32, width - 14 - (bindBadgeW > 0 ? bindBadgeW + 4 : 0));
         String titleStr = trimToWidth(module.name(), Math.round(availTitlePx / titleScale));
-        DrawUtil.drawTextScaled(graphics, this.font, "§l" + titleStr, x + 8, y + 9,
+        DrawUtil.drawTextScaled(graphics, this.font, "§l" + titleStr, x + 7, y + 8,
                 ColorUtil.fade(0xFFFFFFFF, alpha), titleScale, false);
 
-        float descScale = 0.74F;
-        int availDescPx = Math.max(40, width - 16);
+        float descScale = 0.71F;
+        int availDescPx = Math.max(36, width - 14);
         String descStr = trimToWidth(module.description(), Math.round(availDescPx / descScale));
-        DrawUtil.drawTextScaled(graphics, this.font, descStr, x + 8, y + 24,
+        DrawUtil.drawTextScaled(graphics, this.font, descStr, x + 7, y + 21,
                 ColorUtil.fade(0xFF8C94A6, alpha), descScale, false);
 
-        // 4. УПРАВЛЕНИЕ НА ШАПКЕ КАРТОЧКИ:
+        // 4. Управление (ЛКМ / ПКМ / СКМ):
         // ЛКМ — включает/выключает модуль (зажигает/гасит неоновую обводку)
-        // ПКМ — плавно выкатывает настройки вниз внутри карточки (аккордеон)
-        // СКМ — вызывает маленькое окошко с иконкой клавиатуры для назначения клавиши
+        // ПКМ — плавно раскрывает настройки вниз внутри карточки (аккордеон)
+        // СКМ — вызывает окошко бинда с иконкой клавиатуры
         Runnable toggleExpand = () -> {
             if (this.expandedModules.contains(module)) {
                 this.expandedModules.remove(module);
@@ -532,31 +547,24 @@ public final class AuroraInlineMenuScreen extends Screen {
                     () -> this.listeningBindTarget = (this.listeningBindTarget == module) ? null : module));
         }
 
-        // 5. АККОРДЕОН НАСТРОЕК ВНУТРИ КАРТОЧКИ (при раскрытии по ПКМ)
+        // 5. Настройки внутри карточки (при раскрытии по ПКМ)
         if (visibleContentH > 3) {
             int innerTop = Math.max(clipTop, y + CARD_HEADER_H);
             int innerBottom = Math.min(clipBottom, y + CARD_HEADER_H + visibleContentH);
             if (innerBottom > innerTop) {
-                graphics.fill(x + 7, y + CARD_HEADER_H - 1, x + width - 7, y + CARD_HEADER_H,
+                graphics.fill(x + 6, y + CARD_HEADER_H - 1, x + width - 6, y + CARD_HEADER_H,
                         ColorUtil.withAlpha(0xFFFFFFFF, Math.round(18 * alpha * expandCurr)));
 
                 graphics.enableScissor(x + 2, innerTop, x + width - 2, innerBottom);
-                renderInlineSettings(graphics, module, x + 7, y + CARD_HEADER_H + 4, width - 14,
+                renderInlineSettings(graphics, module, x + 6, y + CARD_HEADER_H + 4, width - 12,
                         innerTop, innerBottom, mouseX, mouseY, alpha * expandCurr, dt);
-                // Восстанавливаем внешний scissor сетки
                 graphics.disableScissor();
-                graphics.enableScissor(x - 500, clipTop, x + 1500, clipBottom);
             }
         }
 
         return totalH;
     }
 
-    /**
-     * Окошко назначения клавиши (по СКМ):
-     * - При нажатии СКМ плавно выезжает плашка с иконкой клавиатуры «⌨ ...»;
-     * - После нажатия клавиши окошко плавно уменьшается и показывает назначенную букву («R», «G», и т.д.).
-     */
     private int renderCornerKeybindPopup(GuiGraphics graphics, Object target, int currentKey,
                                          IntConsumer onBindChanged, int rightX, int topY,
                                          int mouseX, int mouseY, int clipTop, int clipBottom,
@@ -576,10 +584,9 @@ public final class AuroraInlineMenuScreen extends Screen {
         }
 
         String keyLetter = hasKey ? KeybindManager.formatKey(currentKey) : "";
-        String text = listening ? "  ..." : keyLetter;
-        float scale = 0.72F;
+        float scale = 0.70F;
         int baseW = Math.max(14, Math.round(this.font.width(keyLetter.isEmpty() ? "K" : keyLetter) * scale) + 8);
-        int listenW = 30;
+        int listenW = 28;
         int badgeW = Math.round(baseW + (listenW - baseW) * Easing.easeOutCubic(anim));
         int badgeH = 12;
         int bx = rightX - badgeW;
@@ -591,10 +598,10 @@ public final class AuroraInlineMenuScreen extends Screen {
         int textCol = listening ? AuroraTheme.accent() : 0xFFE8F0FF;
         if (listening || anim > 0.35F) {
             drawKeyboardIcon(graphics, bx + 4, topY + 3, ColorUtil.fade(AuroraTheme.accent(), alpha));
-            DrawUtil.drawTextScaled(graphics, this.font, "...", bx + 16, topY + 3,
+            DrawUtil.drawTextScaled(graphics, this.font, "...", bx + 15, topY + 3,
                     ColorUtil.fade(textCol, alpha), scale, false);
         } else {
-            DrawUtil.drawCenteredTextScaled(graphics, this.font, text, bx + badgeW / 2, topY + 3,
+            DrawUtil.drawCenteredTextScaled(graphics, this.font, keyLetter, bx + badgeW / 2, topY + 3,
                     ColorUtil.fade(textCol, alpha), scale, false);
         }
 
@@ -608,16 +615,13 @@ public final class AuroraInlineMenuScreen extends Screen {
     }
 
     private static void drawKeyboardIcon(GuiGraphics graphics, int x, int y, int color) {
-        // Компактная пиксельная иконка клавиатуры 9×6px
         graphics.fill(x, y, x + 9, y + 1, color);
         graphics.fill(x, y + 5, x + 9, y + 6, color);
         graphics.fill(x, y + 1, x + 1, y + 5, color);
         graphics.fill(x + 8, y + 1, x + 9, y + 5, color);
-        // Клавиши
         graphics.fill(x + 2, y + 2, x + 3, y + 3, color);
         graphics.fill(x + 4, y + 2, x + 5, y + 3, color);
         graphics.fill(x + 6, y + 2, x + 7, y + 3, color);
-        // Пробел
         graphics.fill(x + 2, y + 4, x + 7, y + 5, color);
     }
 
@@ -673,7 +677,7 @@ public final class AuroraInlineMenuScreen extends Screen {
 
             String icon = i < icons.length ? icons[i] : "✦";
             DrawUtil.drawCenteredTextScaled(graphics, this.font, icon, cx + cellW / 2, y + 5,
-                    ColorUtil.fade(active ? AuroraTheme.accent() : 0xFF9AA4B8, alpha), 0.78F, false);
+                    ColorUtil.fade(active ? AuroraTheme.accent() : 0xFF9AA4B8, alpha), 0.76F, false);
 
             if (mouseY >= clipTop && mouseY <= clipBottom) {
                 this.hitZones.add(new HitZone(cx, y, cellW, cellH, () -> module.shapeSetting().set(shape), null, null));
@@ -681,7 +685,7 @@ public final class AuroraInlineMenuScreen extends Screen {
         }
     }
 
-    // ─────────────────── НАСТРОЙКИ ВНУТРИ КАРТОЧКИ (ПОЛЗУНКИ / КРУЖОК ЦВЕТА / ТУМБЛЕРЫ) ───────────────────
+    // ─────────────────── Настройки внутри раскрытой карточки ───────────────────
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private int renderSettingRow(GuiGraphics graphics, Module module, Setting<?> setting,
@@ -713,14 +717,13 @@ public final class AuroraInlineMenuScreen extends Screen {
 
         if (setting instanceof BooleanSetting boolSetting) {
             if (visible) {
-                // Компактный переключатель (тумблер)
                 int swW = 20;
                 int swH = 10;
                 int swX = x + width - swW;
                 int swY = y + (SETTING_ROW_H - swH) / 2;
 
-                float scale = 0.75F;
-                int maxLabelW = Math.round((swX - x - 5) / scale);
+                float scale = 0.73F;
+                int maxLabelW = Math.round((swX - x - 4) / scale);
                 DrawUtil.drawTextScaled(graphics, this.font, trimToWidth(boolSetting.name(), maxLabelW),
                         x, y + 5, ColorUtil.fade(0xFFB4BECE, alpha), scale, false);
 
@@ -743,20 +746,20 @@ public final class AuroraInlineMenuScreen extends Screen {
 
         if (setting instanceof EnumSetting enumSetting) {
             if (visible) {
-                float scale = 0.72F;
+                float scale = 0.70F;
                 String valText = "◂ " + enumSetting.get().toString() + " ▸";
-                int pillW = Math.min(width * 54 / 100, Math.round(this.font.width(valText) * scale) + 10);
+                int pillW = Math.min(width * 54 / 100, Math.round(this.font.width(valText) * scale) + 8);
                 int pillX = x + width - pillW;
                 int pillY = y + 3;
 
-                int maxLabelW = Math.round((pillX - x - 4) / 0.74F);
+                int maxLabelW = Math.round((pillX - x - 4) / 0.72F);
                 DrawUtil.drawTextScaled(graphics, this.font, trimToWidth(enumSetting.name(), maxLabelW),
-                        x, y + 5, ColorUtil.fade(0xFFB4BECE, alpha), 0.74F, false);
+                        x, y + 5, ColorUtil.fade(0xFFB4BECE, alpha), 0.72F, false);
 
                 boolean pillHov = inside(mouseX, mouseY, pillX, pillY, pillW, 13);
                 DrawUtil.drawMatteNeonCard(graphics, pillX, pillY, pillW, 13, 6, alpha,
                         pillHov ? 0.80F : 0.30F, AuroraTheme.accent());
-                String trimmedVal = trimToWidth(valText, Math.round((pillW - 6) / scale));
+                String trimmedVal = trimToWidth(valText, Math.round((pillW - 5) / scale));
                 DrawUtil.drawCenteredTextScaled(graphics, this.font, trimmedVal,
                         pillX + pillW / 2, pillY + 3, ColorUtil.fade(0xFFFFFFFF, alpha), scale, false);
 
@@ -790,12 +793,11 @@ public final class AuroraInlineMenuScreen extends Screen {
                 int circleX = x + width - circleSize - 1;
                 int circleY = y + (SETTING_ROW_H - circleSize) / 2;
 
-                float scale = 0.75F;
-                int maxLabelW = Math.round((circleX - x - 6) / scale);
+                float scale = 0.73F;
+                int maxLabelW = Math.round((circleX - x - 5) / scale);
                 DrawUtil.drawTextScaled(graphics, this.font, trimToWidth(colorSetting.name(), maxLabelW),
                         x, y + 5, ColorUtil.fade(0xFFB4BECE, alpha), scale, false);
 
-                // Аккуратный кружок выбора цвета (без растянутой радуги на пол-экрана!)
                 DrawUtil.drawSliderKnob(graphics, circleX - 1, circleY - 1, circleSize + 2,
                         ColorUtil.fade(expanded ? AuroraTheme.accent() : 0xFF3E4656, alpha));
                 DrawUtil.drawSliderKnob(graphics, circleX, circleY, circleSize, ColorUtil.fade(color, alpha));
@@ -826,24 +828,19 @@ public final class AuroraInlineMenuScreen extends Screen {
         return y + SETTING_ROW_H;
     }
 
-    /**
-     * Ползунок (слайдер): аккуратная тонкая полоска с неоновым кружком.
-     */
     private void renderNeonSliderRow(GuiGraphics graphics, Setting<?> setting, float normalized,
                                      String valueText, int x, int y, int width,
                                      int clipTop, int clipBottom, int mouseX, int mouseY, float alpha) {
         float clamped = clamp01(normalized);
-        float scale = 0.74F;
+        float scale = 0.72F;
 
-        // Верхняя строка: название слева, числовое значение справа
         int valW = Math.round(this.font.width(valueText) * scale);
-        int maxLabelW = Math.round((width - valW - 6) / scale);
+        int maxLabelW = Math.round((width - valW - 5) / scale);
         DrawUtil.drawTextScaled(graphics, this.font, trimToWidth(setting.name(), maxLabelW),
                 x, y + 2, ColorUtil.fade(0xFFB4BECE, alpha), scale, false);
         DrawUtil.drawTextScaled(graphics, this.font, valueText,
                 x + width - valW, y + 2, ColorUtil.fade(AuroraTheme.accent(), alpha), scale, false);
 
-        // Нижняя строка: тонкая полоска (2px) с неоновым кружком
         int trackX = x + 1;
         int trackW = width - 2;
         int trackY = y + 15;
@@ -858,7 +855,6 @@ public final class AuroraInlineMenuScreen extends Screen {
         int knobSize = 7;
         int knobX = trackX + Math.round((trackW - knobSize) * clamped);
         int knobY = trackY - 3;
-        // Мягкое неоновое свечение вокруг кружка ползунка + яркий неоновый кружок
         DrawUtil.drawSliderKnob(graphics, knobX - 2, knobY - 2, knobSize + 4,
                 ColorUtil.withAlpha(AuroraTheme.accent(), Math.round(95 * alpha)));
         DrawUtil.drawSliderKnob(graphics, knobX, knobY, knobSize,
@@ -893,23 +889,18 @@ public final class AuroraInlineMenuScreen extends Screen {
         }
     }
 
-    /**
-     * Компактная палитра цветов, открывающаяся по клику на кружок цвета:
-     * 8 аккуратных кружков-пресетов + 2 коротких мини-ползунка тона и яркости внутри карточки.
-     */
     private void renderCompactColorPalettePopover(GuiGraphics graphics, ColorSetting setting,
                                                   int x, int y, int width, int clipTop, int clipBottom,
                                                   int mouseX, int mouseY, float alpha) {
         DrawUtil.drawMatteNeonCard(graphics, x, y, width, COLOR_EXPANDED_H - 2, 7, alpha, 0.35F, AuroraTheme.accent());
 
-        // 1. Ряд из 8 аккуратных цветных кружков
-        int dotSize = 9;
+        int dotSize = 8;
         int totalDotsW = QUICK_SWATCHES.length * dotSize;
-        int gap = Math.max(2, (width - 10 - totalDotsW) / (QUICK_SWATCHES.length - 1));
+        int gap = Math.max(2, (width - 8 - totalDotsW) / (QUICK_SWATCHES.length - 1));
         int dotY = y + 5;
         for (int i = 0; i < QUICK_SWATCHES.length; i++) {
             int presetCol = QUICK_SWATCHES[i];
-            int dx = x + 5 + i * (dotSize + gap);
+            int dx = x + 4 + i * (dotSize + gap);
             boolean selected = (setting.rgb() & 0xFFFFFF) == (presetCol & 0xFFFFFF);
             if (selected) {
                 DrawUtil.drawSliderKnob(graphics, dx - 1, dotY - 1, dotSize + 2, ColorUtil.fade(0xFFFFFFFF, alpha));
@@ -921,15 +912,14 @@ public final class AuroraInlineMenuScreen extends Screen {
             }
         }
 
-        // 2. Короткий тонкий мини-ползунок оттенка (Tone) и яркости (Bri)
         int color = setting.rgb();
         float hue = ColorUtil.hueOf(color);
         float sat = ColorUtil.saturationOf(color);
         float bri = ColorUtil.brightnessOf(color);
 
         int barY = y + 21;
-        int halfW = (width - 16) / 2;
-        int hueX = x + 5;
+        int halfW = (width - 14) / 2;
+        int hueX = x + 4;
         int briX = hueX + halfW + 6;
 
         graphics.fill(hueX, barY, hueX + halfW, barY + 2, ColorUtil.withAlpha(0xFF222836, Math.round(230 * alpha)));
@@ -970,87 +960,91 @@ public final class AuroraInlineMenuScreen extends Screen {
         }
     }
 
-    // ─────────────────── ВКЛАДКА «АККАУНТЫ» (СЕТКА КАРТОЧЕК В 3 КОЛОНКИ) ───────────────────
+    // ─────────────────── 4-й вертикальный столбик: «Аккаунты» (ClickGUI Column) ───────────────────
 
-    private void renderAccountsTab(GuiGraphics graphics, int bodyX, int bodyY, int bodyW, int bodyH,
-                                   int mouseX, int mouseY, float alpha) {
+    private void renderAccountsColumn(GuiGraphics graphics, int colIdx, int colX, int colY, int colW, int maxColH,
+                                      String title, int mouseX, int mouseY, float alpha) {
         AccountManager am = AccountManager.get();
+        List<String> saved = am.accounts();
         String currentName = am.currentUsername();
 
-        // Верхняя матовая карточка ввода и быстрой смены ника
-        int topH = 38;
-        DrawUtil.drawMatteNeonCard(graphics, bodyX, bodyY, bodyW, topH, CARD_RADIUS, alpha, 0.90F, AuroraTheme.accent());
-        DrawUtil.drawTextScaled(graphics, this.font, "§lАктивный: " + currentName,
-                bodyX + 10, bodyY + 8, ColorUtil.fade(0xFFFFFFFF, alpha), 0.85F, false);
-        DrawUtil.drawTextScaled(graphics, this.font, "Мгновенная Offline-смена без перезапуска",
-                bodyX + 10, bodyY + 21, ColorUtil.fade(0xFF8C94A6, alpha), 0.74F, false);
+        int innerContentH = 6 + (CARD_HEADER_H + CARD_GAP) * (2 + saved.size());
+        int targetColH = Math.min(maxColH, Math.max(COL_HEADER_H + 54, COL_HEADER_H + innerContentH + 4));
 
-        int rndW = 78;
-        int rndX = bodyX + bodyW - rndW - 8;
-        int rndY = bodyY + 10;
-        boolean rndHov = inside(mouseX, mouseY, rndX, rndY, rndW, 18);
-        DrawUtil.drawMatteNeonCard(graphics, rndX, rndY, rndW, 18, 7, alpha, rndHov ? 0.95F : 0.40F, AuroraTheme.accent());
-        DrawUtil.drawCenteredTextScaled(graphics, this.font, "🎲 Случайный", rndX + rndW / 2, rndY + 6,
-                ColorUtil.fade(0xFFFFFFFF, alpha), 0.76F, false);
-        this.hitZones.add(new HitZone(rndX, rndY, rndW, 18, () -> {
+        DrawUtil.drawLiquidGlassPanel(graphics, colX, colY, colW, targetColH, 11, alpha);
+        renderColumnHeader(graphics, colX, colY, colW, title, saved.size(), alpha);
+
+        int bodyTop = colY + COL_HEADER_H + 4;
+        int bodyH = targetColH - COL_HEADER_H - 8;
+        int cardX = colX + 5;
+        int cardW = colW - 10;
+
+        this.colMaxScroll[colIdx] = Math.max(0.0F, innerContentH - bodyH);
+        if (this.colScroll[colIdx] > this.colMaxScroll[colIdx]) {
+            this.colScroll[colIdx] = this.colMaxScroll[colIdx];
+        }
+
+        int curY = bodyTop - Math.round(this.colScroll[colIdx]);
+
+        graphics.enableScissor(colX - 2, bodyTop - 2, colX + colW + 2, bodyTop + bodyH + 2);
+
+        // 1. Карточка «Случайный ник»
+        boolean rndHov = inside(mouseX, mouseY, cardX, curY, cardW, CARD_HEADER_H);
+        DrawUtil.drawMatteNeonCard(graphics, cardX, curY, cardW, CARD_HEADER_H, CARD_RADIUS, alpha,
+                rndHov ? 0.85F : 0.0F, AuroraTheme.accent());
+        DrawUtil.drawTextScaled(graphics, this.font, "§l🎲 Случайный ник", cardX + 7, curY + 8,
+                ColorUtil.fade(0xFFFFFFFF, alpha), 0.82F, false);
+        DrawUtil.drawTextScaled(graphics, this.font, "Сгенерировать в 1 клик", cardX + 7, curY + 21,
+                ColorUtil.fade(0xFF8C94A6, alpha), 0.71F, false);
+        this.hitZones.add(new HitZone(cardX, curY, cardW, CARD_HEADER_H, () -> {
             this.accountInput = am.switchRandomAccount();
         }, null, null));
+        curY += CARD_HEADER_H + CARD_GAP;
 
-        int boxW = 132;
-        int boxX = rndX - boxW - 6;
-        int boxY = bodyY + 10;
-        boolean boxHov = inside(mouseX, mouseY, boxX, boxY, boxW, 18);
-        DrawUtil.drawMatteNeonCard(graphics, boxX, boxY, boxW, 18, 7, alpha,
+        // 2. Карточка ввода нового ника
+        boolean boxHov = inside(mouseX, mouseY, cardX, curY, cardW, CARD_HEADER_H);
+        DrawUtil.drawMatteNeonCard(graphics, cardX, curY, cardW, CARD_HEADER_H, CARD_RADIUS, alpha,
                 this.accountInputFocused ? 0.95F : (boxHov ? 0.45F : 0.0F), AuroraTheme.accent());
+        DrawUtil.drawTextScaled(graphics, this.font, "§l✎ Новый аккаунт", cardX + 7, curY + 8,
+                ColorUtil.fade(0xFFFFFFFF, alpha), 0.82F, false);
         String shownInput = this.accountInput.isEmpty()
-                ? (this.accountInputFocused ? "Введите ник...|" : "✎ Новый ник + Enter...")
+                ? (this.accountInputFocused ? "Введите ник...|" : "Нажмите для ввода ника")
                 : (this.accountInput + (this.accountInputFocused ? "|" : ""));
-        DrawUtil.drawTextScaled(graphics, this.font, trimToWidth(shownInput, Math.round((boxW - 10) / 0.76F)),
-                boxX + 6, boxY + 6, ColorUtil.fade(this.accountInput.isEmpty() ? 0xFF727B8E : 0xFFFFFFFF, alpha), 0.76F, false);
-        this.hitZones.add(new HitZone(boxX, boxY, boxW, 18, () -> {
+        DrawUtil.drawTextScaled(graphics, this.font, trimToWidth(shownInput, Math.round((cardW - 14) / 0.72F)),
+                cardX + 7, curY + 21,
+                ColorUtil.fade(this.accountInput.isEmpty() ? 0xFF8C94A6 : AuroraTheme.accent(), alpha), 0.72F, false);
+        this.hitZones.add(new HitZone(cardX, curY, cardW, CARD_HEADER_H, () -> {
             this.accountInputFocused = true;
             this.searchFocused = false;
         }, () -> this.accountInput = "", null));
+        curY += CARD_HEADER_H + CARD_GAP;
 
-        // Сетка сохранённых аккаунтов в 3 колонки
-        int gridTop = bodyY + topH + 9;
-        int gridH = Math.max(40, bodyY + bodyH - gridTop);
-        List<String> saved = am.accounts();
-        int cardW = (bodyW - COL_GAP * (COLS - 1)) / COLS;
-        int cardH = 40;
-
-        graphics.enableScissor(bodyX - 6, gridTop - 4, bodyX + bodyW + 6, gridTop + gridH + 4);
-        for (int i = 0; i < saved.size(); i++) {
-            String acc = saved.get(i);
-            int r = i / COLS;
-            int c = i % COLS;
-            int cx = bodyX + c * (cardW + COL_GAP);
-            int cy = gridTop + r * (cardH + ROW_GAP);
-
+        // 3. Вертикальный список карточек сохранённых аккаунтов
+        for (String acc : saved) {
             boolean isCurrent = acc.equalsIgnoreCase(currentName);
-            DrawUtil.drawMatteNeonCard(graphics, cx, cy, cardW, cardH, CARD_RADIUS, alpha,
+            DrawUtil.drawMatteNeonCard(graphics, cardX, curY, cardW, CARD_HEADER_H, CARD_RADIUS, alpha,
                     isCurrent ? 1.0F : 0.0F, AuroraTheme.accent());
 
-            DrawUtil.drawTextScaled(graphics, this.font, "§l" + trimToWidth(acc, Math.round((cardW - 30) / 0.85F)),
-                    cx + 9, cy + 9, ColorUtil.fade(0xFFFFFFFF, alpha), 0.85F, false);
-            DrawUtil.drawTextScaled(graphics, this.font, isCurrent ? "● Активен в сессии" : "ЛКМ — переключить",
-                    cx + 9, cy + 22, ColorUtil.fade(isCurrent ? AuroraTheme.accent() : 0xFF8C94A6, alpha), 0.72F, false);
+            DrawUtil.drawTextScaled(graphics, this.font, "§l" + trimToWidth(acc, Math.round((cardW - 26) / 0.84F)),
+                    cardX + 7, curY + 8, ColorUtil.fade(0xFFFFFFFF, alpha), 0.84F, false);
+            DrawUtil.drawTextScaled(graphics, this.font, isCurrent ? "● Активен в сессии" : "ЛКМ — выбрать ник",
+                    cardX + 7, curY + 21, ColorUtil.fade(isCurrent ? AuroraTheme.accent() : 0xFF8C94A6, alpha), 0.71F, false);
 
-            int delX = cx + cardW - 18;
-            int delY = cy + 7;
-            DrawUtil.drawCenteredTextScaled(graphics, this.font, "✕", delX + 5, delY + 2,
-                    ColorUtil.fade(0xFF727B8E, alpha), 0.75F, false);
+            int delX = cardX + cardW - 16;
+            int delY = curY + 7;
+            DrawUtil.drawCenteredTextScaled(graphics, this.font, "✕", delX + 4, delY + 2,
+                    ColorUtil.fade(0xFF727B8E, alpha), 0.72F, false);
 
-            this.hitZones.add(new HitZone(cx, cy, cardW - 22, cardH, () -> am.switchAccount(acc), null, null));
+            this.hitZones.add(new HitZone(cardX, curY, cardW - 20, CARD_HEADER_H, () -> am.switchAccount(acc), null, null));
             this.hitZones.add(new HitZone(delX, delY, 14, 14, () -> am.removeAccount(acc), null, null));
+            curY += CARD_HEADER_H + CARD_GAP;
         }
+
         graphics.disableScissor();
     }
 
-    private List<Module> filteredModules() {
-        List<Module> all = (this.selectedCategory == null)
-                ? ModuleManager.get().modules()
-                : ModuleManager.get().byCategory(this.selectedCategory);
+    private List<Module> filteredByCategory(ModuleCategory category) {
+        List<Module> all = ModuleManager.get().byCategory(category);
         if (this.searchQuery == null || this.searchQuery.isBlank()) {
             return all;
         }
@@ -1118,8 +1112,17 @@ public final class AuroraInlineMenuScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        this.scrollOffset = Math.max(0.0F, Math.min(this.maxScroll,
-                this.scrollOffset - (float) verticalAmount * 22.0F));
+        for (int c = 0; c < NUM_COLS; c++) {
+            if (mouseX >= this.colLeftX[c] && mouseX <= this.colRightX[c]) {
+                this.colScroll[c] = Math.max(0.0F, Math.min(this.colMaxScroll[c],
+                        this.colScroll[c] - (float) verticalAmount * 22.0F));
+                return true;
+            }
+        }
+        for (int c = 0; c < NUM_COLS; c++) {
+            this.colScroll[c] = Math.max(0.0F, Math.min(this.colMaxScroll[c],
+                    this.colScroll[c] - (float) verticalAmount * 22.0F));
+        }
         return true;
     }
 
@@ -1176,11 +1179,8 @@ public final class AuroraInlineMenuScreen extends Screen {
             return true;
         }
 
-        // Быстрые клавиши демонстрации состояний (F5/F6/F7/F9/F10):
-        // F6: Раскрытие настроек внутри карточки (ПКМ) + компактная палитра цветов + ползунки
+        // F6: Раскрытие настроек внутри карточек в столбиках Визуал и Интерфейс + компактная палитра цветов
         if (key == GLFW.GLFW_KEY_F6) {
-            this.accountsTabActive = false;
-            this.selectedCategory = null;
             Module blocks = ModuleManager.get().module("blocks");
             expandOnly(blocks);
             if (blocks != null) {
@@ -1200,14 +1200,10 @@ public final class AuroraInlineMenuScreen extends Screen {
                     }
                 }
             }
-            this.scrollOffset = 0.0F;
             return true;
         }
-        // F7: Демонстрация СКМ-окошка бинда с иконкой клавиатуры («⌨ ...») и назначенной буквой («R»)
+        // F7: СКМ-окошко бинда с иконкой клавиатуры («[⌨ ...]») и назначенная буква («[R]»)
         if (key == GLFW.GLFW_KEY_F7) {
-            this.accountsTabActive = false;
-            this.selectedCategory = null;
-            this.expandedColors.clear();
             Module particles = ModuleManager.get().module("particles");
             if (particles != null) {
                 particles.setKeybind(GLFW.GLFW_KEY_R);
@@ -1216,24 +1212,12 @@ public final class AuroraInlineMenuScreen extends Screen {
             if (sky != null) {
                 startBindForModule(sky);
             }
-            this.scrollOffset = 0.0F;
             return true;
         }
-        // F5: Раскрытие карточки ViewModel & Руки (ПКМ) в 3-колоночной сетке
+        // F5: Раскрытие карточки «Эффекты руки» в столбике «Визуал»
         if (key == GLFW.GLFW_KEY_F5) {
-            this.accountsTabActive = false;
-            this.selectedCategory = null;
             Module hands = ModuleManager.get().module("hands");
             expandOnly(hands);
-            this.scrollOffset = 0.0F;
-            return true;
-        }
-        // F9: Вкладка «Визуал» в 3-колоночной сетке
-        if (key == GLFW.GLFW_KEY_F9) {
-            this.accountsTabActive = false;
-            this.selectedCategory = ModuleCategory.VISUAL;
-            this.expandedModules.clear();
-            this.scrollOffset = 0.0F;
             return true;
         }
         // F10: Редактор HUD

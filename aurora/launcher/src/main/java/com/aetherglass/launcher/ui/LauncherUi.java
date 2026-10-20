@@ -389,10 +389,11 @@ public final class LauncherUi {
         bottom.add(this.progressBar, BorderLayout.CENTER);
         bottom.add(buttons, BorderLayout.SOUTH);
 
-        JPanel cardsGrid = new JPanel(new java.awt.GridLayout(2, 3, 9, 9));
-        cardsGrid.setOpaque(false);
         boolean[] cardStates = {true, true, true, false, true, false};
-        cardsGrid.add(UiKit.matteNeonGridCard(
+
+        JPanel col1 = new JPanel(new java.awt.GridLayout(3, 1, 0, 7));
+        col1.setOpaque(false);
+        col1.add(UiKit.matteNeonGridCard(
                 "AetherGlass Client",
                 "16 шейдеров, HUD и 3D-эффекты",
                 () -> this.aetherClientBox.isSelected(),
@@ -402,38 +403,65 @@ public final class LauncherUi {
                         this.config.installAetherGlassClient(this.aetherClientBox.isSelected());
                     }
                 }));
-        cardsGrid.add(UiKit.matteNeonGridCard(
-                "Sodium + Iris",
-                "Ускорение рендера и шейдеры",
+        col1.add(UiKit.matteNeonGridCard(
+                "Iris Shaders",
+                "Поддержка 3D и видео-шейдеров",
+                () -> cardStates[0],
+                () -> cardStates[0] = !cardStates[0]));
+        col1.add(UiKit.matteNeonGridCard(
+                "Continuity + Indium",
+                "Связные текстуры и API рендера",
+                () -> cardStates[3],
+                () -> cardStates[3] = !cardStates[3]));
+
+        JPanel col2 = new JPanel(new java.awt.GridLayout(3, 1, 0, 7));
+        col2.setOpaque(false);
+        col2.add(UiKit.matteNeonGridCard(
+                "Sodium 1.21.11",
+                "Ускорение рендера чанков",
                 () -> this.installModsBox.isSelected(),
                 () -> {
                     this.installModsBox.setSelected(!this.installModsBox.isSelected());
                     this.config.installMods(this.installModsBox.isSelected());
                 }));
-        cardsGrid.add(UiKit.matteNeonGridCard(
+        col2.add(UiKit.matteNeonGridCard(
                 "Lithium + Ferrite",
                 "Оптимизация тиков и ОЗУ",
                 () -> cardStates[2],
                 () -> cardStates[2] = !cardStates[2]));
-        cardsGrid.add(UiKit.matteNeonGridCard(
+        col2.add(UiKit.matteNeonGridCard(
                 "EntityCulling",
                 "Отсечение невидимых сущностей",
-                () -> cardStates[3],
-                () -> cardStates[3] = !cardStates[3]));
-        cardsGrid.add(UiKit.matteNeonGridCard(
+                () -> cardStates[5],
+                () -> cardStates[5] = !cardStates[5]));
+
+        JPanel col3 = new JPanel(new java.awt.GridLayout(3, 1, 0, 7));
+        col3.setOpaque(false);
+        col3.add(UiKit.matteNeonGridCard(
                 "ImmediatelyFast",
                 "Пакетный рендер GUI и HUD",
                 () -> cardStates[4],
                 () -> cardStates[4] = !cardStates[4]));
-        cardsGrid.add(UiKit.matteNeonGridCard(
+        col3.add(UiKit.matteNeonGridCard(
                 "ModMenu + Reese",
                 "Удобный список модов в игре",
-                () -> cardStates[5],
-                () -> cardStates[5] = !cardStates[5]));
+                () -> cardStates[1],
+                () -> cardStates[1] = !cardStates[1]));
+        col3.add(UiKit.matteNeonGridCard(
+                "Dynamic FPS",
+                "Экономия ресурсов в фоне",
+                () -> false,
+                () -> {}));
+
+        JPanel columnsRow = new JPanel(new java.awt.GridLayout(1, 3, 10, 0));
+        columnsRow.setOpaque(false);
+        columnsRow.add(UiKit.card("✦ ВИЗУАЛ И КЛИЕНТ", col1));
+        columnsRow.add(UiKit.card("◎ ОПТИМИЗАЦИЯ", col2));
+        columnsRow.add(UiKit.card("◈ ИНТЕРФЕЙС И HUD", col3));
 
         JPanel center = new JPanel(new BorderLayout(0, 10));
         center.setOpaque(false);
-        center.add(cardsGrid, BorderLayout.NORTH);
+        center.add(columnsRow, BorderLayout.NORTH);
         JPanel midStack = new JPanel(new BorderLayout(0, 10));
         midStack.setOpaque(false);
         midStack.add(UiKit.card("Аккаунт", accountRow), BorderLayout.NORTH);

@@ -65,6 +65,7 @@ public final class UiPreview {
             ImageIO.write(image, "png", file.toFile());
             System.out.println("сохранено: " + file + " (" + nonBlankPixels(image) + " непустых пикселей)");
         }
+        System.exit(0);
     }
 
     /** Рисует компонент в изображение фиксированного размера. */
