@@ -4,6 +4,7 @@ import com.aetherglass.client.gui.theme.AuroraTheme;
 import com.aetherglass.client.modules.Module;
 import com.aetherglass.client.modules.ModuleCategory;
 import com.aetherglass.client.modules.settings.BooleanSetting;
+import com.aetherglass.client.modules.settings.ColorSetting;
 import com.aetherglass.client.modules.settings.EnumSetting;
 import com.aetherglass.client.modules.settings.FloatSetting;
 import com.aetherglass.client.modules.settings.IntSetting;
@@ -34,6 +35,12 @@ public final class InterfaceModule extends Module {
         }
     }
 
+    private final ColorSetting borderColor = register(new ColorSetting("borderColor", "Цвет рамки",
+            "Цвет тонкой неоновой рамки столбиков, карточек и меню", 0xFFAA3DFF, setting -> apply()));
+    private final FloatSetting borderWidth = register(new FloatSetting("borderWidth", "Жирность рамки",
+            "Толщина рамки прямоугольников (от 0.5px до 3.0px)", 1.0F, 0.5F, 3.0F, 0.25F, setting -> apply()));
+    private final FloatSetting borderGlow = register(new FloatSetting("borderGlow", "Свечение рамки",
+            "Сила мягкого свечения вокруг тонкой рамки", 0.25F, 0.0F, 1.0F, 0.05F, setting -> apply()));
     private final EnumSetting<Preset> preset = register(new EnumSetting<>("preset", "Оформление",
             "Готовый набор палитры, плотности и радиуса", Preset.DEFAULT, Preset.values(),
             setting -> applyPreset()));
@@ -41,7 +48,12 @@ public final class InterfaceModule extends Module {
             "Тёмная, светлая или неоновая", AuroraTheme.Palette.DARK, AuroraTheme.Palette.values(),
             setting -> apply()));
     private final FloatSetting accentHue = register(new FloatSetting("hue", "Оттенок стекла (Hue)",
-            "Цвет подсветки и тонировки стекла интерфейса", 0.76F, 0.0F, 1.0F, 0.01F, setting -> apply()));
+            "Цвет подсветки и тонировки стекла интерфейса", 0.76F, 0.0F, 1.0F, 0.01F, setting -> {
+                if (this.borderColor != null) {
+                    this.borderColor.setRgb(com.aetherglass.client.render.util.ColorUtil.hsb(setting.get(), 0.76F, 1.0F));
+                }
+                apply();
+            }));
     private final FloatSetting blur = register(new FloatSetting("blur", "Сила размытия (Blur)",
             "Интенсивность матового размытия стеклянных подложек меню и HUD", 0.72F, 0.0F, 1.0F, 0.05F, setting -> apply()));
     private final FloatSetting density = register(new FloatSetting("density", "Плотность стекла",
@@ -95,6 +107,15 @@ public final class InterfaceModule extends Module {
     private void apply() {
         AuroraTheme.palette(this.palette.get());
         AuroraTheme.accentHue(this.accentHue.get());
+        if (this.borderColor != null) {
+            AuroraTheme.borderColor(this.borderColor.rgb());
+        }
+        if (this.borderWidth != null) {
+            AuroraTheme.borderWidth(this.borderWidth.get());
+        }
+        if (this.borderGlow != null) {
+            AuroraTheme.borderGlow(this.borderGlow.get());
+        }
         if (this.blur != null) {
             AuroraTheme.blur(this.blur.get());
         }

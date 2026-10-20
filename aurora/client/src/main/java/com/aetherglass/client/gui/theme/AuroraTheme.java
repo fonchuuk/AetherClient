@@ -29,6 +29,10 @@ public final class AuroraTheme {
 
     private static Palette palette = Palette.DARK;
     private static float accentHue = 0.76F;
+    private static int customBorderColor = 0xFFAA3DFF;
+    private static boolean useCustomBorderColor = true;
+    private static float borderWidth = 1.0F;
+    private static float borderGlow = 0.25F;
     private static float density = 0.55F;
     private static float blur = 0.68F;
     private static float radius = 11.0F;
@@ -58,6 +62,33 @@ public final class AuroraTheme {
         } else {
             accentHue = hue;
         }
+        useCustomBorderColor = false;
+    }
+
+    public static int borderColor() {
+        return useCustomBorderColor ? (0xFF000000 | (customBorderColor & 0xFFFFFF)) : accent();
+    }
+
+    public static void borderColor(int rgb) {
+        customBorderColor = 0xFF000000 | (rgb & 0xFFFFFF);
+        useCustomBorderColor = true;
+        accentHue = ColorUtil.hueOf(customBorderColor);
+    }
+
+    public static float borderWidth() {
+        return borderWidth;
+    }
+
+    public static void borderWidth(float width) {
+        borderWidth = Math.max(0.5F, Math.min(3.0F, width));
+    }
+
+    public static float borderGlow() {
+        return borderGlow;
+    }
+
+    public static void borderGlow(float glow) {
+        borderGlow = Math.max(0.0F, Math.min(1.0F, glow));
     }
 
     /** Сила размытия стеклянных подложек (0..1). */
@@ -187,6 +218,9 @@ public final class AuroraTheme {
     }
 
     public static int accent() {
+        if (useCustomBorderColor) {
+            return 0xFF000000 | (customBorderColor & 0xFFFFFF);
+        }
         return switch (palette) {
             case LIGHT -> ColorUtil.hsb(accentHue, 0.82F, 0.72F);
             case NEON -> ColorUtil.hsb(accentHue, 0.76F, 1.0F);

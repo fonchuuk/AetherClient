@@ -50,8 +50,8 @@ import java.util.function.IntConsumer;
  * с гладким векторным шрифтом Montserrat TrueType.
  */
 public final class AuroraInlineMenuScreen extends Screen {
-    public static final int NUM_COLS = 4;
-    public static final int COL_GAP = 7;
+    public static final int NUM_COLS = 3;
+    public static final int COL_GAP = 9;
     public static final int CARD_GAP = 3;
     public static final int CARD_RADIUS = 5;
     public static final int CARD_HEADER_H = 21;
@@ -210,7 +210,7 @@ public final class AuroraInlineMenuScreen extends Screen {
             graphics.fill(0, 0, screenW, screenH, dimColor);
         }
 
-        int totalW = Math.min(444, screenW - 56);
+        int totalW = Math.min(414, screenW - 56);
         int startX = (screenW - totalW) / 2;
         int slideY = Math.round((1.0F - progress) * 8.0F);
 
@@ -222,12 +222,11 @@ public final class AuroraInlineMenuScreen extends Screen {
         int maxColH = screenH - colsTopY - 12;
         int colW = (totalW - COL_GAP * (NUM_COLS - 1)) / NUM_COLS;
 
-        String[] colTitles = {"ВИЗУАЛ", "ИНТЕРФЕЙС", "ЭКРАН / HUD", "АККАУНТЫ"};
+        String[] colTitles = {"ВИЗУАЛ", "ИНТЕРФЕЙС", "ЭКРАН / HUD"};
         ModuleCategory[] colCats = {
                 ModuleCategory.VISUAL,
                 ModuleCategory.INTERFACE,
-                ModuleCategory.HUD,
-                null
+                ModuleCategory.HUD
         };
 
         for (int col = 0; col < NUM_COLS; col++) {
@@ -235,13 +234,8 @@ public final class AuroraInlineMenuScreen extends Screen {
             this.colLeftX[col] = cx;
             this.colRightX[col] = cx + colW;
 
-            if (col < 3) {
-                renderCategoryColumn(graphics, col, cx, colsTopY, colW, maxColH,
-                        colTitles[col], colCats[col], mouseX, mouseY, progress, dt);
-            } else {
-                renderAccountsColumn(graphics, col, cx, colsTopY, colW, maxColH,
-                        colTitles[col], mouseX, mouseY, progress);
-            }
+            renderCategoryColumn(graphics, col, cx, colsTopY, colW, maxColH,
+                    colTitles[col], colCats[col], mouseX, mouseY, progress, dt);
         }
     }
 
@@ -1181,7 +1175,7 @@ public final class AuroraInlineMenuScreen extends Screen {
             return true;
         }
 
-        // F6: Раскрытие настроек внутри карточек в столбиках Визуал и Интерфейс + компактная палитра цветов
+        // F6: Раскрытие настроек внутри карточек в столбиках Визуал и Интерфейс («Оформление»: Цвет и Жирность рамки)
         if (key == GLFW.GLFW_KEY_F6) {
             Module blocks = ModuleManager.get().module("blocks");
             expandOnly(blocks);
@@ -1189,13 +1183,13 @@ public final class AuroraInlineMenuScreen extends Screen {
                 blocks.setEnabled(true);
                 this.toggleAnims.put(blocks, 1.0F);
             }
-            Module crosshair = ModuleManager.get().module("crosshair");
-            if (crosshair != null) {
-                crosshair.setEnabled(true);
-                this.toggleAnims.put(crosshair, 1.0F);
-                this.expandedModules.add(crosshair);
-                this.expandAnims.put(crosshair, 1.0F);
-                for (Setting<?> s : crosshair.settings()) {
+            Module iface = ModuleManager.get().module("interface");
+            if (iface != null) {
+                iface.setEnabled(true);
+                this.toggleAnims.put(iface, 1.0F);
+                this.expandedModules.add(iface);
+                this.expandAnims.put(iface, 1.0F);
+                for (Setting<?> s : iface.settings()) {
                     if (s instanceof ColorSetting cs) {
                         this.expandedColors.add(cs);
                         break;

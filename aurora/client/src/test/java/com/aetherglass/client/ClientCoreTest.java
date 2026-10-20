@@ -209,7 +209,11 @@ final class ClientCoreTest {
         AuroraTheme.radius(14.6F);
         assertEquals(15, AuroraTheme.radiusPx());
 
-        AuroraTheme.accentHue(0.55F);
+        AuroraTheme.borderColor(0xFFAA3DFF);
+        assertEquals(0xFFAA3DFF, AuroraTheme.borderColor());
+        AuroraTheme.borderWidth(1.0F);
+        assertEquals(1.0F, AuroraTheme.borderWidth(), 0.001F);
+        assertEquals(3, com.aetherglass.client.gui.screen.AuroraInlineMenuScreen.NUM_COLS);
         AuroraTheme.blur(0.65F);
         AuroraTheme.radius(10.0F);
     }

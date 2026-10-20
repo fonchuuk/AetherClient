@@ -231,34 +231,118 @@ public final class DrawUtil {
         }
         float a = Math.max(0.0F, Math.min(1.0F, alpha));
         float glow = Math.max(0.0F, Math.min(1.0F, neonGlow));
-        int r = limit(Math.max(4, Math.min(10, radius)), width, height);
+        int r = limit(Math.max(3, Math.min(8, radius)), width, height);
+        float cfgGlow = AuroraTheme.borderGlow();
+        float cfgWidth = AuroraTheme.borderWidth();
 
-        // 1. Внешнее неоновое свечение (glow) по периметру — ТОЛЬКО когда включено
-        if (glow > 0.015F) {
-            int outerGlow = ColorUtil.withAlpha(neonColor, Math.round(115 * a * glow));
-            int midGlow = ColorUtil.withAlpha(neonColor, Math.round(180 * a * glow));
-            drawNineSlice(graphics, TEX_NINE_SHADOW, x - 4, y - 4, width + 8, height + 8,
-                    Math.min(22, r + 4), NINE_CORNER_TEX, NINE_TEX_SIZE, outerGlow);
-            drawNineSlice(graphics, TEX_NINE_SHADOW, x - 2, y - 2, width + 4, height + 4,
-                    Math.min(18, r + 2), NINE_CORNER_TEX, NINE_TEX_SIZE, midGlow);
-        } else {
-            drawSoftShadow(graphics, x, y, width, height, r, a * 0.70F);
+        // 1. Деликатное внешнее свечение (регулируется «Свечение рамки» в модуле Оформление)
+        if (glow > 0.015F && cfgGlow > 0.01F) {
+            int haloAlpha = Math.round(95 * a * glow * cfgGlow);
+            if (haloAlpha > 2) {
+                drawNineSlice(graphics, TEX_NINE_SHADOW, x - 2, y - 2, width + 4, height + 4,
+                        Math.min(16, r + 2), NINE_CORNER_TEX, NINE_TEX_SIZE,
+                        ColorUtil.withAlpha(neonColor, haloAlpha));
+            }
         }
 
-        // 2. Фон: Матовый чёрный (#0B0C10) с лёгкой прозрачностью — НИКОГДА не перекрашивается
-        int matteBlack = ColorUtil.withAlpha(0xFF0B0C10, Math.round(240 * a));
-        drawNineSlice(graphics, TEX_NINE_FILL, x, y, width, height, r, NINE_CORNER_TEX, NINE_TEX_SIZE, matteBlack);
+        // 2. Фон: строгий матовый прямоугольник со скруглёнными углами (#0B0C10)
+        int matteBlack = ColorUtil.withAlpha(0xFF0B0C10, Math.round(234 * a));
+        fillRoundedPixelExact(graphics, x, y, width, height, r, matteBlack);
 
-        // 3. Обводка по периметру: тонкая современная неоновая при включении, деликатная грань при выключении
+        // 3. Тонкая чёткая рамка по периметру (регулируется по цвету и жирности в «Оформление»)
         if (glow > 0.015F) {
-            int neonBorder = ColorUtil.withAlpha(ColorUtil.lerp(neonColor, 0xFFFFFFFF, 0.22F), Math.round(245 * a * glow));
-            drawNineSlice(graphics, TEX_NINE_BORDER, x, y, width, height,
-                    r, NINE_CORNER_TEX, NINE_TEX_SIZE, neonBorder);
+            float thicknessAlphaScale = cfgWidth < 1.0F ? (0.45F + 0.55F * cfgWidth) : 1.0F;
+            int borderAlpha = Math.round(235 * a * glow * thicknessAlphaScale);
+            int neonBorder = ColorUtil.withAlpha(neonColor, borderAlpha);
+            int pxThickness = Math.max(1, Math.round(cfgWidth));
+            drawThinRoundedOutline(graphics, x, y, width, height, r, neonBorder, pxThickness);
         } else {
-            int subtleGrey = ColorUtil.withAlpha(0xFFFFFFFF, Math.round(16 * a));
-            drawNineSlice(graphics, TEX_NINE_BORDER, x, y, width, height,
-                    r, NINE_CORNER_TEX, NINE_TEX_SIZE, subtleGrey);
+            int subtleGrey = ColorUtil.withAlpha(0xFFFFFFFF, Math.round(22 * a));
+            drawThinRoundedOutline(graphics, x, y, width, height, r, subtleGrey, 1);
         }
+    }
+
+    /**
+     * Заполняет прямоугольник со скруглёнными углами с субпиксельной точностью (0.5 GUI px = 1 физ. пиксель при guiScale=2).
+     */
+    public static void fillRoundedPixelExact(GuiGraphics graphics, int x, int y, int width, int height,
+                                             int radius, int color) {
+        if (graphics == null || width <= 0 || height <= 0 || ColorUtil.alpha(color) <= 0) {
+            return;
+        }
+        int sx = x * 2;
+        int sy = y * 2;
+        int sw = width * 2;
+        int sh = height * 2;
+        int sr = Math.max(0, Math.min(radius * 2, Math.min(sw / 2, sh / 2)));
+
+        graphics.pose().pushMatrix();
+        graphics.pose().scale(0.5F, 0.5F);
+        if (sr <= 1) {
+            graphics.fill(sx, sy, sx + sw, sy + sh, color);
+        } else {
+            graphics.fill(sx, sy + sr, sx + sw, sy + sh - sr, color);
+            for (int ry = 0; ry < sr; ry++) {
+                int inset = rowInset(ry, sh, sr);
+                if (sw - inset * 2 > 0) {
+                    graphics.fill(sx + inset, sy + ry, sx + sw - inset, sy + ry + 1, color);
+                    int botY = sy + sh - 1 - ry;
+                    graphics.fill(sx + inset, botY, sx + sw - inset, botY + 1, color);
+                }
+            }
+        }
+        graphics.pose().popMatrix();
+    }
+
+    /**
+     * Отрисовывает ультра-тонкую чёткую рамку прямоугольника со скруглёнными углами
+     * с разрешением в 1 физический пиксель (0.5 GUI px).
+     */
+    public static void drawThinRoundedOutline(GuiGraphics graphics, int x, int y, int width, int height,
+                                              int radius, int color, int thickness) {
+        if (graphics == null || width <= 2 || height <= 2 || ColorUtil.alpha(color) <= 0) {
+            return;
+        }
+        int sx = x * 2;
+        int sy = y * 2;
+        int sw = width * 2;
+        int sh = height * 2;
+        int sr = Math.max(0, Math.min(radius * 2, Math.min(sw / 2, sh / 2)));
+        int bw = Math.max(1, Math.min(6, thickness));
+
+        graphics.pose().pushMatrix();
+        graphics.pose().scale(0.5F, 0.5F);
+        if (sr <= 1) {
+            graphics.fill(sx, sy, sx + sw, sy + bw, color);
+            graphics.fill(sx, sy + sh - bw, sx + sw, sy + sh, color);
+            graphics.fill(sx, sy + bw, sx + bw, sy + sh - bw, color);
+            graphics.fill(sx + sw - bw, sy + bw, sx + sw, sy + sh - bw, color);
+        } else {
+            // Прямые участки сторон (верх, низ, лево, право) толщиной ровно bw физ. пикселей
+            graphics.fill(sx + sr, sy, sx + sw - sr, sy + bw, color);
+            graphics.fill(sx + sr, sy + sh - bw, sx + sw - sr, sy + sh, color);
+            graphics.fill(sx, sy + sr, sx + bw, sy + sh - sr, color);
+            graphics.fill(sx + sw - bw, sy + sr, sx + sw, sy + sh - sr, color);
+
+            // Гладкие субпиксельные дуги скруглённых углов
+            for (int ry = 0; ry < sr; ry++) {
+                int outerInset = rowInset(ry, sh, sr);
+                int spanEnd;
+                if (ry < bw) {
+                    spanEnd = sr;
+                } else {
+                    int prevOuter = rowInset(ry - bw, sh, sr);
+                    spanEnd = Math.max(outerInset + bw, prevOuter);
+                }
+                int topY = sy + ry;
+                int botY = sy + sh - 1 - ry;
+                graphics.fill(sx + outerInset, topY, sx + spanEnd, topY + 1, color);
+                graphics.fill(sx + sw - spanEnd, topY, sx + sw - outerInset, topY + 1, color);
+                graphics.fill(sx + outerInset, botY, sx + spanEnd, botY + 1, color);
+                graphics.fill(sx + sw - spanEnd, botY, sx + sw - outerInset, botY + 1, color);
+            }
+        }
+        graphics.pose().popMatrix();
     }
 
     /**
@@ -269,7 +353,7 @@ public final class DrawUtil {
         if (graphics == null || width <= 0 || height <= 0 || alpha <= 0.01F) {
             return;
         }
-        int r = limit(Math.min(11, radius), width, height);
+        int r = limit(Math.min(8, radius), width, height);
         float hover = Math.max(0.0F, Math.min(1.0F, hoverAmount));
         float active = Math.max(0.0F, Math.min(1.0F, activeAmount));
         float glow = Math.max(active, hover * 0.72F);
@@ -288,19 +372,19 @@ public final class DrawUtil {
     }
 
     /**
-     * Матовое чёрное окно контейнера (Matte Black + тонкая грань, без синей заливки).
+     * Матовое чёрное окно контейнера / столбика: прямоугольник со скруглёнными углами и тонкой рамкой.
      */
     public static void drawLiquidGlassPanel(GuiGraphics graphics, int x, int y, int width, int height,
                                             int radius, float alpha) {
         if (graphics == null || width <= 0 || height <= 0 || alpha <= 0.01F) {
             return;
         }
-        int r = limit(Math.min(12, radius), width, height);
-        drawSoftShadow(graphics, x, y, width, height, r, alpha);
-        int panelFill = ColorUtil.withAlpha(0xFF07080B, Math.round(244 * alpha));
-        drawNineSlice(graphics, TEX_NINE_FILL, x, y, width, height, r, NINE_CORNER_TEX, NINE_TEX_SIZE, panelFill);
-        int rim = ColorUtil.withAlpha(0xFFFFFFFF, Math.round(22 * alpha));
-        drawNineSlice(graphics, TEX_NINE_BORDER, x, y, width, height, r, NINE_CORNER_TEX, NINE_TEX_SIZE, rim);
+        int r = limit(Math.min(8, radius), width, height);
+        int panelFill = ColorUtil.withAlpha(0xFF08090D, Math.round(236 * alpha));
+        fillRoundedPixelExact(graphics, x, y, width, height, r, panelFill);
+        int pxThickness = Math.max(1, Math.round(AuroraTheme.borderWidth()));
+        int rim = ColorUtil.withAlpha(AuroraTheme.accent(), Math.round(78 * alpha));
+        drawThinRoundedOutline(graphics, x, y, width, height, r, rim, pxThickness);
     }
 
     /**
