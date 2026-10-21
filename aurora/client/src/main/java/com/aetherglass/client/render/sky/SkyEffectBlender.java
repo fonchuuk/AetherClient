@@ -3,7 +3,6 @@ package com.aetherglass.client.render.sky;
 import com.aetherglass.client.render.ColorController;
 import com.aetherglass.client.render.RenderResources;
 import com.aetherglass.client.render.shader.ShaderEffect;
-import com.aetherglass.client.render.shader.ShaderMath;
 import com.aetherglass.client.render.util.ColorUtil;
 import com.aetherglass.client.render.util.FrameClock;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -14,42 +13,69 @@ import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.Identifier;
 import org.joml.Matrix4f;
+import org.joml.Quaternionf;
 
 /**
- * Видео-купол и шейдерный генератор неба ({@code SkyShader}, Блок 3.1–3.2):
+ * Видео-купол неба ({@code SkyShader}).
+ *
+ * <p>Купол — равноугольная (equirectangular) развёртка видео-панорамы: столбцы
+ * UV соответствуют азимуту 0…360°, строки — высоте от горизонта до зенита.
+ * Кадры лежат листом ({@code sky_video_*.png}, 12 панорам по 512×192), и номер
+ * строки выбирается по времени — то есть по небу действительно крутится видео,
+ * а не заливается цвет.</p>
+ *
+ * <p>Что было не так раньше и почему переделано:</p>
  * <ul>
- *   <li>Бесшовная полярная UV-развёртка (0 разрывов на стыках 0°/360° и в зените);</li>
- *   <li>Предвычисленная таблица геометрии купола (0 вызовов {@code Math.sin/cos} на вершину в кадре);</li>
- *   <li>Поддержка размытого плейсхолдера ({@code _b2.png}) на первых кадрах без блокировки UI;</li>
- *   <li>Регулировка видео-пресета, скорости проигрывания и интенсивности свечения.</li>
+ *   <li>UV считались радиально от центра («диск»), поэтому текстура сходилась
+ *       в точку в зените и выглядела как пятно, а не как небо;</li>
+ *   <li>каждая вершина вызывала полный шейдерный расчёт ({@code sampleSurface}:
+ *       несколько {@code sin/cos} и {@code pow}) — 768 вершин × 60 раз в секунду
+ *       на пустом месте съедали кадровое время;</li>
+ *   <li>цвет вершины перебивал текстуру, поэтому видео было не видно.</li>
  * </ul>
+ *
+ * <p>Сейчас: геометрия и UV предвычислены один раз, в кадре считается только
+ * поворот купола (одна кватернионная матрица) и номер кадра. Ноль трансцендентных
+ * функций на вершину, одна текстура, один батч.</p>
  */
 public final class SkyEffectBlender {
     private static final int LIGHT_FULLBRIGHT = 0x00F000F0;
-    private static final int AZ_STEPS = 16;
-    private static final int EL_BANDS = 4;
+
+    /** Шагов по азимуту: 64 даёт гладкую дугу без «многоугольника» на горизонте. */
+    private static final int AZ_STEPS = 64;
+    /** Поясов по высоте: 16 — плавный переход зенит → горизонт. */
+    private static final int EL_BANDS = 16;
     private static final int GRID_VERTS = (EL_BANDS + 1) * (AZ_STEPS + 1);
+
+    /** Кадров в видео-листе (см. tools/gen_sky_video.py). */
+    public static final int VIDEO_FRAMES = 12;
+    private static final float FRAME_H = 192.0F;
+    /** Полпикселя внутрь строки — чтобы билинейная фильтрация не смешала соседние кадры. */
+    private static final float FRAME_INSET = 0.5F / (VIDEO_FRAMES * FRAME_H);
+
     private static final float DOME_RADIUS = 78.0F;
-    private static final float MIN_EL = -0.10F;
-    private static final float MAX_EL = 1.48F;
+    private static final float MIN_EL = -0.05F;              // чуть ниже горизонта, чтобы не было щели
+    private static final float MAX_EL = (float) (Math.PI * 0.5D);
 
     private static final float[] AZ_COS = new float[AZ_STEPS + 1];
     private static final float[] AZ_SIN = new float[AZ_STEPS + 1];
     private static final float[] EL_COS = new float[EL_BANDS + 1];
     private static final float[] EL_SIN = new float[EL_BANDS + 1];
-    private static final float[] EL_T = new float[EL_BANDS + 1];
-    private static final float[] EL_FADE = new float[EL_BANDS + 1];
+    private static final float[] EL_V = new float[EL_BANDS + 1];
+    private static final float[] EL_ALPHA = new float[EL_BANDS + 1];
 
+    // Предвычисленная геометрия купола: в кадре только поворот матрицей
     private static final float[] VX = new float[GRID_VERTS];
     private static final float[] VY = new float[GRID_VERTS];
     private static final float[] VZ = new float[GRID_VERTS];
     private static final float[] VU = new float[GRID_VERTS];
-    private static final float[] VV = new float[GRID_VERTS];
-    private static final int[] VCOL = new int[GRID_VERTS];
+    private static final int[] VALPHA = new int[GRID_VERTS];
+
+    private static final Quaternionf DOME_ROT = new Quaternionf();
 
     static {
         for (int a = 0; a <= AZ_STEPS; a++) {
-            // При a == AZ_STEPS угол точно замыкается на a == 0, исключая щель на стыке
+            // Последний столбец замыкается на первый: шва на стыке 0°/360° нет
             int wrapped = (a == AZ_STEPS) ? 0 : a;
             double az = (wrapped / (double) AZ_STEPS) * Math.PI * 2.0D;
             AZ_COS[a] = (float) Math.cos(az);
@@ -58,11 +84,31 @@ public final class SkyEffectBlender {
         for (int b = 0; b <= EL_BANDS; b++) {
             float t = b / (float) EL_BANDS;
             float el = MIN_EL + (MAX_EL - MIN_EL) * t;
-            EL_T[b] = t;
             EL_COS[b] = (float) Math.cos(el);
             EL_SIN[b] = (float) Math.sin(el);
-            // Мягкое затухание у самого горизонта, а в зените — полная плотность без дыры
-            EL_FADE[b] = (float) Math.sin(Math.min(1.0F, t * 1.35F) * (Math.PI * 0.5D));
+            EL_V[b] = t;
+            // Плотность у горизонта падает — стык купола с землёй мягкий, без линии
+            EL_ALPHA[b] = (float) Math.pow(Math.min(1.0F, t * 1.25F), 0.65D);
+        }
+        int stride = AZ_STEPS + 1;
+        for (int b = 0; b <= EL_BANDS; b++) {
+            float cosEl = EL_COS[b];
+            float sinEl = EL_SIN[b];
+            for (int a = 0; a < AZ_STEPS; a++) {
+                int idx = b * stride + a;
+                VX[idx] = AZ_COS[a] * cosEl * DOME_RADIUS;
+                VY[idx] = sinEl * DOME_RADIUS;
+                VZ[idx] = AZ_SIN[a] * cosEl * DOME_RADIUS;
+                VU[idx] = a / (float) AZ_STEPS;
+                VALPHA[idx] = Math.round(255.0F * EL_ALPHA[b]);
+            }
+            int first = b * stride;
+            int last = first + AZ_STEPS;
+            VX[last] = VX[first];
+            VY[last] = VY[first];
+            VZ[last] = VZ[first];
+            VU[last] = 1.0F;
+            VALPHA[last] = VALPHA[first];
         }
     }
 
@@ -73,19 +119,20 @@ public final class SkyEffectBlender {
     private static float speed = 0.55F;
     private static float intensity = 0.82F;
     private static boolean renderDome = true;
-    private static float domeOpacity = 0.68F;
+    private static float domeOpacity = 0.92F;
     private static ShaderEffect domeShader = ShaderEffect.AURORA;
 
     private static boolean invokedThisSession;
+    private static boolean domeDrawn;
     private static int lastResultColor;
-    private static int renderedFrames;
+    private static int lastFrame;
 
     private SkyEffectBlender() {
     }
 
     public static void configure(int firstColor, int secondColor, float cycleSpeed, float blendIntensity) {
         configure(SkyPreset.AURORA, firstColor, secondColor, ColorUtil.lerp(firstColor, secondColor, 0.5F),
-                cycleSpeed, blendIntensity, true, 0.68F, ShaderEffect.AURORA);
+                cycleSpeed, blendIntensity, true, 0.92F, ShaderEffect.AURORA);
     }
 
     public static void configure(int firstColor, int secondColor, int thirdColor,
@@ -126,8 +173,22 @@ public final class SkyEffectBlender {
         return ColorUtil.lerp(mix12, c3, w2 * 0.65F);
     }
 
+    /**
+     * Когда видео-купол включён, ванильный цвет неба не подмешивается: иначе небо
+     * «меняет цвет как /time set» и перебивает видео. Купол сам закрывает свод.
+     */
+    public static boolean domeActive() {
+        return renderDome && domeOpacity > 0.02F;
+    }
+
     public static int blendSky(int vanillaSkyRgb) {
         invokedThisSession = true;
+        if (domeActive()) {
+            // Оставляем глубокий тёмный фон под куполом: он нужен только как
+            // подложка на случай, если текстура ещё не загрузилась.
+            lastResultColor = 0xFF05070E;
+            return 0x0005070E;
+        }
         int vanilla = 0xFF000000 | (vanillaSkyRgb & 0x00FFFFFF);
         int target = currentTargetColor();
         int mixed = ColorUtil.lerp(vanilla, target, Math.min(1.0F, intensity));
@@ -136,6 +197,10 @@ public final class SkyEffectBlender {
     }
 
     public static int blendSunrise(int vanillaArgb) {
+        if (domeActive()) {
+            // Нижняя полоса горизонта у купола тоже из видео — не подкрашиваем её
+            return ColorUtil.withAlpha(0x00000000, 0);
+        }
         float time = FrameClock.elapsedSeconds() * speed;
         float horizonWave = 0.5F + 0.5F * (float) Math.cos(time * 1.6F + 0.8F);
         int c2 = ColorController.resolve(second);
@@ -150,11 +215,12 @@ public final class SkyEffectBlender {
     }
 
     /**
-     * Отрисовывает бесшовный видео-купол неба с полярной развёрткой (0 разрывов на стыках)
-     * и плавным вращением/перетеканием видео-слоёв.
+     * Рисует видео-купол: равноугольная развёртка кадра из листа, поворот по
+     * времени, один батч. В кадре нет ни одной тригонометрической функции на
+     * вершину — только поворот предвычисленной сетки.
      */
     public static void renderSkyDome(PoseStack poseStack) {
-        if (!renderDome || intensity <= 0.02F || domeOpacity <= 0.02F || poseStack == null) {
+        if (!domeActive() || intensity <= 0.01F || poseStack == null) {
             return;
         }
         MultiBufferSource.BufferSource buffers = RenderResources.acquire();
@@ -162,77 +228,32 @@ public final class SkyEffectBlender {
             return;
         }
         try {
-            renderedFrames++;
-            // Первые 4 кадра используем лёгкий размытый плейсхолдер, чтобы не было рывка при подгрузке
-            Identifier skyTex = (renderedFrames <= 4)
-                    ? activePreset.blurredPlaceholder()
-                    : activePreset.videoFrame();
-            RenderType layer = RenderTypes.entityTranslucentEmissive(skyTex);
-            VertexConsumer consumer = buffers.getBuffer(layer);
-            Matrix4f matrix = poseStack.last().pose();
-
             float time = FrameClock.elapsedSeconds();
-            float rotAngle = time * speed * 0.14F;
-            float cosRot = ShaderMath.cos(rotAngle);
-            float sinRot = ShaderMath.sin(rotAngle);
+            int frame = (int) (time * (3.0F + speed * 9.0F)) % VIDEO_FRAMES;
+            if (frame < 0) {
+                frame = 0;
+            }
+            lastFrame = frame;
+            float v0 = frame / (float) VIDEO_FRAMES + FRAME_INSET;
+            float v1 = (frame + 1) / (float) VIDEO_FRAMES - FRAME_INSET;
+            float dv = v1 - v0;
 
-            int c1 = ColorController.resolve(first);
-            int c2 = ColorController.resolve(second);
-            int c3 = ColorController.resolve(third);
-
-            int stride = AZ_STEPS + 1;
-            float shaderInt = 0.85F + Math.min(1.0F, intensity) * 0.65F;
-            float shaderSpd = speed * 1.35F;
-
-            for (int b = 0; b <= EL_BANDS; b++) {
-                float tEl = EL_T[b];
-                float cosEl = EL_COS[b];
-                float sinEl = EL_SIN[b];
-                float bandFade = EL_FADE[b];
-                int baseColor = (b == 0) ? c3 : (b < EL_BANDS ? ColorUtil.lerp(c3, c2, tEl) : ColorUtil.lerp(c2, c1, tEl));
-                float effOpacity = Math.min(1.0F, domeOpacity * intensity * bandFade);
-                float polarR = 0.42F * (1.0F - tEl * 0.58F);
-                int rowBase = b * stride;
-
-                for (int a = 0; a < AZ_STEPS; a++) {
-                    float cosAz = AZ_COS[a];
-                    float sinAz = AZ_SIN[a];
-
-                    float wave = 2.4F * ShaderMath.sin(cosAz * 2.0F + sinAz * 2.0F + time * speed * 1.8F + tEl * 2.2F);
-                    float x = cosAz * cosEl * DOME_RADIUS;
-                    float z = sinAz * cosEl * DOME_RADIUS;
-                    float y = sinEl * DOME_RADIUS + wave * (1.0F - tEl * 0.6F);
-
-                    float rx = cosAz * cosRot - sinAz * sinRot;
-                    float rz = sinAz * cosRot + cosAz * sinRot;
-                    float u = 0.5F + rx * polarR;
-                    float v = 0.5F + rz * polarR;
-
-                    int col = ShaderMath.sampleSurface(domeShader, baseColor,
-                            shaderInt, shaderSpd, effOpacity,
-                            u, v, 0.0F, 1.0F, 0.0F, u * 2.5F, v * 2.5F, 0.0F, time);
-                    int alpha = Math.max(0, Math.min(255, Math.round(ColorUtil.alpha(col) * bandFade * 0.78F)));
-                    int packedCol = (alpha << 24) | (col & 0x00FFFFFF);
-
-                    int idx = rowBase + a;
-                    VX[idx] = x;
-                    VY[idx] = y;
-                    VZ[idx] = z;
-                    VU[idx] = u;
-                    VV[idx] = v;
-                    VCOL[idx] = packedCol;
-                }
-                // Замыкаем шов 360° -> 0° без повторного вычисления шейдера
-                int firstIdx = rowBase;
-                int lastIdx = rowBase + AZ_STEPS;
-                VX[lastIdx] = VX[firstIdx];
-                VY[lastIdx] = VY[firstIdx];
-                VZ[lastIdx] = VZ[firstIdx];
-                VU[lastIdx] = VU[firstIdx];
-                VV[lastIdx] = VV[firstIdx];
-                VCOL[lastIdx] = VCOL[firstIdx];
+            int alphaScale = Math.round(255.0F * domeOpacity * Math.min(1.0F, intensity));
+            if (alphaScale <= 3) {
+                return;
             }
 
+            Identifier sheet = activePreset.skySheet();
+            RenderType layer = RenderTypes.entityTranslucentEmissive(sheet);
+            VertexConsumer consumer = buffers.getBuffer(layer);
+
+            poseStack.pushPose();
+            // Купол медленно вращается вокруг оси мира: небо «крутится», а не мигает
+            DOME_ROT.rotationY((time * (0.06F + speed * 0.10F)) % (float) (Math.PI * 2.0D));
+            poseStack.mulPose(DOME_ROT);
+            Matrix4f matrix = poseStack.last().pose();
+
+            int stride = AZ_STEPS + 1;
             for (int b = 0; b < EL_BANDS; b++) {
                 int r0 = b * stride;
                 int r1 = (b + 1) * stride;
@@ -242,27 +263,31 @@ public final class SkyEffectBlender {
                     int i11 = r1 + a + 1;
                     int i01 = r1 + a;
 
-                    emitCachedVertex(consumer, matrix, i00);
-                    emitCachedVertex(consumer, matrix, i10);
-                    emitCachedVertex(consumer, matrix, i11);
-                    emitCachedVertex(consumer, matrix, i01);
-
-                    emitCachedVertex(consumer, matrix, i01);
-                    emitCachedVertex(consumer, matrix, i11);
-                    emitCachedVertex(consumer, matrix, i10);
-                    emitCachedVertex(consumer, matrix, i00);
+                    // лицевая сторона (смотрим изнутри купола)
+                    vertex(consumer, matrix, i00, VU[i00], v0 + dv * EL_V[b]);
+                    vertex(consumer, matrix, i10, VU[i10], v0 + dv * EL_V[b]);
+                    vertex(consumer, matrix, i11, VU[i11], v0 + dv * EL_V[b + 1]);
+                    vertex(consumer, matrix, i01, VU[i01], v0 + dv * EL_V[b + 1]);
+                    // обратная сторона: купол виден и на развороте камеры
+                    vertex(consumer, matrix, i01, VU[i01], v0 + dv * EL_V[b + 1]);
+                    vertex(consumer, matrix, i11, VU[i11], v0 + dv * EL_V[b + 1]);
+                    vertex(consumer, matrix, i10, VU[i10], v0 + dv * EL_V[b]);
+                    vertex(consumer, matrix, i00, VU[i00], v0 + dv * EL_V[b]);
                 }
             }
             buffers.endBatch(layer);
+            poseStack.popPose();
+            domeDrawn = true;
         } catch (Throwable ignored) {
             RenderResources.release();
         }
     }
 
-    private static void emitCachedVertex(VertexConsumer consumer, Matrix4f matrix, int idx) {
+    private static void vertex(VertexConsumer consumer, Matrix4f matrix, int idx, float u, float v) {
+        int alpha = Math.round(VALPHA[idx] * (domeOpacity > 0 ? 1.0F : 0.0F));
         consumer.addVertex(matrix, VX[idx], VY[idx], VZ[idx])
-                .setColor(VCOL[idx])
-                .setUv(VU[idx], VV[idx])
+                .setColor(255, 255, 255, Math.min(255, alpha))
+                .setUv(u, v)
                 .setOverlay(OverlayTexture.NO_OVERLAY)
                 .setLight(LIGHT_FULLBRIGHT)
                 .setNormal(0.0F, 1.0F, 0.0F);
@@ -280,10 +305,17 @@ public final class SkyEffectBlender {
         return activePreset;
     }
 
+    public static int currentFrame() {
+        return lastFrame;
+    }
+
     public static String debugState() {
         if (!invokedThisSession) {
             return "ожидание мира";
         }
-        return String.format("%s · #%06X", activePreset.toString(), lastResultColor & 0xFFFFFF);
+        if (!domeDrawn) {
+            return activePreset.toString() + " · купол выкл.";
+        }
+        return String.format("%s · кадр %d/%d", activePreset.toString(), lastFrame + 1, VIDEO_FRAMES);
     }
 }

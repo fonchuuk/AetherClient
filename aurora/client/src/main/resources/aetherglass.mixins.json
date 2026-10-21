@@ -9,6 +9,7 @@
     "ItemInHandRendererMixin",
     "GameRendererMixin",
     "SkyRendererMixin",
+    "CloudRendererMixin",
     "KeyboardHandlerMixin",
     "MouseHandlerMixin",
     "AbstractContainerScreenMixin",

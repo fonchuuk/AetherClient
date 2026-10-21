@@ -32,6 +32,8 @@ public final class FrameClock {
             previousNanos = now;
         }
         elapsedSeconds += deltaSeconds;
+        // новый кадр — новый кэш шейдерной математики (см. ShaderMath)
+        com.aetherglass.client.render.shader.ShaderMath.newFrame();
     }
 
     /** Длительность предыдущего кадра в секундах. */

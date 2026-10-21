@@ -379,11 +379,31 @@ public final class DrawUtil {
             }
         }
 
-        // 2. Фон: строгий матовый прямоугольник со скруглёнными углами (#0B0C10)
-        int matteBlack = ColorUtil.withAlpha(0xFF0B0C10, Math.round(234 * a));
-        fillRoundedPixelExact(graphics, x, y, width, height, r, matteBlack);
+        // 2. Размытый мир под панелью (настоящий backdrop blur, см. BackdropBlur).
+        //    Если путь недоступен — панель остаётся полупрозрачным стеклом.
+        boolean blurred = drawBlurredBackdrop(graphics, x, y, width, height, r, a);
 
-        // 3. Тонкая чёткая рамка по периметру (регулируется по цвету и жирности в «Оформление»)
+        // 3. Тонировка стекла: без размытия плотнее (мир и так виден), с размытием
+        //    легче — иначе размытие превращается в серую заливку.
+        int tintAlpha = Math.round((blurred ? 104 : 122) * a);
+        int glassTint = ColorUtil.withAlpha(0xFF0B0C10, tintAlpha);
+        fillRoundedPixelExact(graphics, x, y, width, height, r, glassTint);
+
+        // 4. Верхняя «линза»: светлое пятно у кромки, растворяющееся книзу
+        int glossH = Math.max(3, Math.min(height - 2, Math.round(height * 0.42F)));
+        int glossTop = ColorUtil.withAlpha(0xFFFFFFFF, Math.round(26 * a));
+        int glossBottom = ColorUtil.withAlpha(0xFFFFFFFF, 0);
+        graphics.fillGradient(x + r, y + 1, x + width - r, y + 1 + glossH, glossTop, glossBottom);
+
+        // 5. Скользящий солнечный блик по панели
+        drawSurfaceSolarSheen(graphics, x, y, width, height, r, a);
+
+        // 6. Нижняя подсветка: стекло «ловит» цвет акцента у основания
+        int bottomGlow = ColorUtil.withAlpha(neonColor, Math.round((26 + 34 * glow) * a));
+        int bottomClear = ColorUtil.withAlpha(neonColor, 0);
+        graphics.fillGradient(x + r, y + height - 3, x + width - r, y + height - 1, bottomClear, bottomGlow);
+
+        // 7. Тонкая чёткая рамка по периметру (регулируется по цвету и жирности в «Оформление»)
         if (glow > 0.015F) {
             float thicknessAlphaScale = cfgWidth < 1.0F ? (0.45F + 0.55F * cfgWidth) : 1.0F;
             int borderAlpha = Math.round(235 * a * glow * thicknessAlphaScale);
@@ -391,9 +411,63 @@ public final class DrawUtil {
             int pxThickness = Math.max(1, Math.round(cfgWidth));
             drawThinRoundedOutline(graphics, x, y, width, height, r, neonBorder, pxThickness);
         } else {
-            int subtleGrey = ColorUtil.withAlpha(0xFFFFFFFF, Math.round(22 * a));
+            int subtleGrey = ColorUtil.withAlpha(0xFFFFFFFF, Math.round(30 * a));
             drawThinRoundedOutline(graphics, x, y, width, height, r, subtleGrey, 1);
         }
+    }
+
+    /**
+     * Рисует размытый мир внутри панели со скруглёнными углами.
+     *
+     * <p>Текстура размытия — уменьшенный кадр экрана, посчитанный на GPU в
+     * {@link com.aetherglass.client.render.hud.BackdropBlur}. Здесь она
+     * растягивается на панель построчно с отступами таблицы {@code CORNER_INSET},
+     * поэтому углы остаются круглыми, а не обрезаются прямоугольным срезом.
+     * Все строки идут одной текстурой в один батч — это один draw call на панель.</p>
+     *
+     * @return {@code true}, если размытие реально нарисовано
+     */
+    private static boolean drawBlurredBackdrop(GuiGraphics graphics, int x, int y, int width, int height, int r,
+                                               float a) {
+        Identifier blur = com.aetherglass.client.render.hud.BackdropBlur.texture();
+        if (blur == null || !com.aetherglass.client.render.hud.BackdropBlur.available()) {
+            return false;
+        }
+        int guiW = graphics.guiWidth();
+        int guiH = graphics.guiHeight();
+        int texW = com.aetherglass.client.render.hud.BackdropBlur.width();
+        int texH = com.aetherglass.client.render.hud.BackdropBlur.height();
+        if (guiW <= 0 || guiH <= 0 || texW <= 0 || texH <= 0) {
+            return false;
+        }
+        float sx = texW / (float) guiW;
+        float sy = texH / (float) guiH;
+        int tint = ColorUtil.withAlpha(0xFF9FB4D8, Math.round(196 * a)); // легкий холодный оттенок стекла
+        int topRow = y + 1;
+        int bottomRow = y + height - 1;
+        for (int row = topRow; row < bottomRow; row++) {
+            int inset = 0;
+            if (r > 1) {
+                int fromEdge = Math.min(row - y, bottomRow - 1 - row);
+                if (fromEdge >= 0 && fromEdge < r) {
+                    inset = CORNER_INSET[r][fromEdge];
+                }
+            }
+            int rowX = x + inset;
+            int rowW = width - inset * 2;
+            if (rowW <= 0) {
+                continue;
+            }
+            float u = rowX * sx;
+            float v = row * sy;
+            float u2 = (rowX + rowW) * sx;
+            float v2 = (row + 1) * sy;
+            int uW = Math.max(1, Math.round(u2 - u));
+            int vH = Math.max(1, Math.round(v2 - v));
+            graphics.blit(RenderPipelines.GUI_TEXTURED, blur, rowX, row, u, v, rowW, 1,
+                    uW, vH, texW, texH, tint);
+        }
+        return true;
     }
 
     /**
@@ -520,32 +594,67 @@ public final class DrawUtil {
         drawMatteNeonCard(graphics, x, y, width, height, r, alpha, hoveredOrActive ? 0.90F : 0.0F, AuroraTheme.accent());
     }
 
+    /**
+     * Скользящий солнечный блик: мягкая диагональная полоса света, которая
+     * медленно проходит по панели слева направо и обратно.
+     *
+     * <p>Раньше здесь рисовались две линии толщиной в пиксель — на скриншотах их
+     * не было видно вообще, панели читались как глухие прямоугольники. Теперь
+     * блик — набор вертикальных полос с треугольным профилем яркости (это
+     * единственный способ получить градиент без шейдера: {@code fill} с разной
+     * альфой на каждую колонку, всё в одном батче).</p>
+     */
     private static void drawSurfaceSolarSheen(GuiGraphics graphics, int x, int y, int width, int height,
                                               int radius, float alpha) {
-        if (width < 20 || height < 8 || alpha <= 0.02F) {
+        if (width < 24 || height < 8 || alpha <= 0.02F) {
             return;
         }
         float time = FrameClock.elapsedSeconds();
-        float phase = 0.5F + 0.5F * (float) Math.sin(time * 0.90D + x * 0.005D + y * 0.003D);
+        float phase = 0.5F + 0.5F * (float) Math.sin(time * 0.55D + (x * 0.013D + y * 0.009D));
         int margin = Math.max(2, radius);
         int usableW = width - margin * 2;
-        if (usableW <= 8) {
+        if (usableW <= 12) {
             return;
         }
-        int sheenW = Math.max(14, Math.round(usableW * 0.34F));
-        int travel = Math.max(0, usableW - sheenW);
-        int sheenX = x + margin + Math.round(travel * phase);
-        int domeH = Math.max(3, Math.min(10, height / 3));
-
-        int topSheen = ColorUtil.withAlpha(0xFFEAF6FF, Math.round(14 * alpha));
-        int botSheen = ColorUtil.withAlpha(AuroraTheme.accent(), 0);
-        graphics.fillGradient(x + margin, y + 1, x + width - margin, y + 1 + domeH, topSheen, botSheen);
-
-        int edgeGlintCol = ColorUtil.withAlpha(0xFFFFFAEC, Math.round(62 * alpha));
-        graphics.fill(sheenX, y, sheenX + sheenW, y + 1, edgeGlintCol);
-        int oppX = x + margin + Math.round(travel * (1.0F - phase));
-        int botGlintCol = ColorUtil.withAlpha(ColorUtil.lerp(0xFFFFFFFF, AuroraTheme.accent(), 0.35F), Math.round(42 * alpha));
-        graphics.fill(oppX, y + height - 1, oppX + sheenW, y + height, botGlintCol);
+        int bandW = Math.max(18, Math.round(usableW * 0.55F));
+        int travel = Math.max(0, usableW - bandW);
+        int bandX = x + margin + Math.round(travel * phase);
+        int columns = Math.min(18, bandW);
+        int step = Math.max(1, bandW / columns);
+        int top = y + 2;
+        int bottom = y + height - 3;
+        if (bottom <= top) {
+            return;
+        }
+        int peak = Math.round(34 * alpha);
+        if (peak <= 1) {
+            return;
+        }
+        for (int i = 0; i < columns; i++) {
+            int cx = bandX + i * step;
+            if (cx + step <= x + margin || cx >= x + width - margin) {
+                continue;
+            }
+            // треугольный профиль: ярче в середине полосы, полностью прозрачен на краях
+            float t = columns <= 1 ? 0.5F : i / (float) (columns - 1);
+            float falloff = 1.0F - Math.abs(t * 2.0F - 1.0F);
+            int colAlpha = Math.round(peak * falloff * falloff);
+            if (colAlpha <= 1) {
+                continue;
+            }
+            int color = ColorUtil.withAlpha(0xFFFFFFFF, colAlpha);
+            int from = Math.max(cx, x + margin);
+            int to = Math.min(cx + step, x + width - margin);
+            if (to > from) {
+                graphics.fill(from, top, to, bottom, color);
+            }
+        }
+        int accentAlpha = Math.round(56 * alpha);
+        if (accentAlpha > 1) {
+            int edge = ColorUtil.withAlpha(0xFFFFFAEC, accentAlpha);
+            graphics.fill(Math.max(x + margin, bandX), y, Math.min(x + width - margin, bandX + Math.max(10, bandW / 3)),
+                    y + 1, edge);
+        }
     }
 
     public static void drawGlow(GuiGraphics graphics, int x, int y, int width, int height, int radius, int color,

@@ -349,7 +349,24 @@ final class ClientCoreTest {
         // 4.3: Crosshair — поддержка минимального размера в 1–2 пикселя
         assertEquals(5, com.aetherglass.client.render.crosshair.CrosshairStyle.values().length);
 
-        // 4.4: SkyShader — перелив неба и горизонта
+        // 4.4: SkyShader — видео-купол на небе и перелив горизонта
+        // С включённым куполом ванильный цвет неба и полоса горизонта не подмешиваются:
+        // иначе небо «меняет цвет как /time set» и перебивает видео-панораму.
+        com.aetherglass.client.render.sky.SkyEffectBlender.configure(
+                com.aetherglass.client.render.sky.SkyPreset.AURORA, 0xFF0E2A47, 0xFF3BF0C5, 0xFF7B5CFF,
+                0.55F, 0.82F, true, 0.92F, com.aetherglass.client.render.shader.ShaderEffect.AURORA);
+        assertTrue(com.aetherglass.client.render.sky.SkyEffectBlender.domeActive(),
+                "видео-купол включён по умолчанию");
+        int domeSky = com.aetherglass.client.render.sky.SkyEffectBlender.blendSky(0x78A7FF);
+        int domeSunrise = com.aetherglass.client.render.sky.SkyEffectBlender.blendSunrise(0x00000000);
+        assertEquals(0, ColorUtil.alpha(domeSunrise),
+                "с куполом ванильный горизонт не подкрашивается — его рисует панорама");
+        assertTrue((domeSky & 0x00FFFFFF) < 0x202020, "под куполом остаётся тёмная подложка");
+
+        // Без купола перелив цвета и свечение горизонта работают как раньше
+        com.aetherglass.client.render.sky.SkyEffectBlender.configure(
+                com.aetherglass.client.render.sky.SkyPreset.AURORA, 0xFF0E2A47, 0xFF3BF0C5, 0xFF7B5CFF,
+                0.55F, 0.82F, false, 0.92F, com.aetherglass.client.render.shader.ShaderEffect.AURORA);
         int blendedSky = com.aetherglass.client.render.sky.SkyEffectBlender.blendSky(0x78A7FF);
         int blendedSunrise = com.aetherglass.client.render.sky.SkyEffectBlender.blendSunrise(0x00000000);
         assertTrue(blendedSky >= 0);

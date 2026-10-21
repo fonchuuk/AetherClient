@@ -28,6 +28,7 @@ public enum SkyPreset {
     private final ShaderEffect defaultShader;
     private final Identifier videoFrame;
     private final Identifier blurredPlaceholder;
+    private final Identifier skySheet;
 
     SkyPreset(String title, int first, int second, int third, ShaderEffect defaultShader,
               String framePath, String placeholderPath) {
@@ -38,6 +39,8 @@ public enum SkyPreset {
         this.defaultShader = defaultShader;
         this.videoFrame = Identifier.fromNamespaceAndPath("aetherglass", framePath);
         this.blurredPlaceholder = Identifier.fromNamespaceAndPath("aetherglass", placeholderPath);
+        this.skySheet = Identifier.fromNamespaceAndPath("aetherglass",
+                "textures/sky/sky_video_" + sheetName(name()) + ".png");
     }
 
     public int first() {
@@ -62,6 +65,25 @@ public enum SkyPreset {
 
     public Identifier blurredPlaceholder() {
         return this.blurredPlaceholder;
+    }
+
+    /**
+     * Лист видео-кадров для купола неба: 12 равноугольных панорам, уложенных
+     * вертикально. Купол выбирает нужную строку по времени, поэтому «видео»
+     * крутится без единой операции шейдера и без переключения текстур.
+     */
+    public Identifier skySheet() {
+        return this.skySheet;
+    }
+
+    private static String sheetName(String enumName) {
+        return switch (enumName) {
+            case "NEBULA" -> "nebula";
+            case "SUNSET" -> "sunset";
+            case "CYBER_PRISM" -> "prism";
+            case "NIGHT" -> "night";
+            default -> "aurora";
+        };
     }
 
     @Override

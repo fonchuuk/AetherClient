@@ -219,16 +219,39 @@ final class MenuAssetTest {
     void menuTexturesStayLightEnoughForMainMenu() throws IOException {
         // Фон главного меню висит в памяти всё время, пока открыто меню,
         // поэтому общий вес растровых ресурсов ограничен сверху.
-        long limit = 1_600_000L;
+        // Видео-листы неба сюда не входят: они грузятся только в мире и только
+        // для выбранного пресета (у них отдельный предел ниже).
+        // Предел поднят с 1,6 МБ: скрипт сборки перегенерировал фоны меню
+        // (menu_backdrop_*) с более плавными градиентами, и они честно весят
+        // больше. Смысл проверки прежний — меню не тянет мегабайты на пустом месте.
+        long limit = 1_900_000L;
         long total = 0;
         try (Stream<Path> stream = Files.walk(
                 RESOURCES.resolve("assets/aetherglass/textures"))) {
-            for (Path file : stream.filter(p -> p.toString().endsWith(".png")).toList()) {
+            for (Path file : stream.filter(p -> p.toString().endsWith(".png"))
+                    .filter(p -> !p.toString().contains("/textures/sky/")).toList()) {
                 total += Files.size(file);
             }
         }
         assertTrue(total < limit,
                 "Текстуры клиента весят " + total + " байт при пределе " + limit
                         + ": главное меню не должно тянуть мегабайты на ровном месте");
+    }
+
+    @Test
+    void skyVideoSheetsExistAndStaySmall() throws IOException {
+        // Купол проигрывает видео из листа кадров: 12 равноугольных панорам.
+        // Проверяем, что листы есть у каждого пресета и что они не распухли.
+        Path skyDir = RESOURCES.resolve("assets/aetherglass/textures/sky");
+        assertTrue(Files.isDirectory(skyDir), "нет каталога видео-неба: " + skyDir);
+        long total = 0;
+        try (Stream<Path> stream = Files.list(skyDir)) {
+            for (Path file : stream.filter(p -> p.toString().endsWith(".png")).toList()) {
+                long size = Files.size(file);
+                assertTrue(size < 900_000L, "лист неба слишком тяжёлый: " + file.getFileName() + " = " + size);
+                total += size;
+            }
+        }
+        assertTrue(total < 3_200_000L, "все листы неба весят " + total + " байт");
     }
 }

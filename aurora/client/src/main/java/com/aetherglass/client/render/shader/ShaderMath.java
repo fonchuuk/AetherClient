@@ -37,6 +37,70 @@ public final class ShaderMath {
      * @param timeSeconds время в секундах
      * @return итоговый ARGB-цвет точки поверхности
      */
+
+    // ─────────────── кэш результатов сэмплирования на кадр ───────────────
+    //
+    // Каждая вершина грани раньше пересчитывала полный шейдер: несколько
+    // sin/cos, pow и ветвлений на вершину. Значения меняются медленно и
+    // повторяются (соседние вершины одной грани, одинаковые нормали, близкие
+    // UV), поэтому результат кэшируется на кадр по квантованному ключу.
+    // Шаг квантования подобран так, чтобы разница была невидимой: UV 1/64,
+    // цвет 1/32 на канал, время 1/10 с.
+    private static final int SHADER_CACHE_BITS = 14;
+    private static final int SHADER_CACHE_SIZE = 1 << SHADER_CACHE_BITS;
+    private static final int SHADER_CACHE_MASK = SHADER_CACHE_SIZE - 1;
+    private static final long[] CACHE_KEY = new long[SHADER_CACHE_SIZE];
+    private static final int[] CACHE_VALUE = new int[SHADER_CACHE_SIZE];
+    private static final long[] CACHE_EPOCH = new long[SHADER_CACHE_SIZE];
+    // Мировые координаты в ключ не влезают по разрядности (long и так заполнен),
+    // поэтому они хранятся рядом и сверяются отдельно: совпадение ключа без
+    // совпадения позиции — это промах, а не «чужой» цвет на грани.
+    private static final int[] CACHE_WX = new int[SHADER_CACHE_SIZE];
+    private static final int[] CACHE_WY = new int[SHADER_CACHE_SIZE];
+    private static final int[] CACHE_WZ = new int[SHADER_CACHE_SIZE];
+    private static long currentEpoch = 1L;
+    private static long cacheHits;
+    private static long cacheMisses;
+
+    /** Новый кадр: старые записи становятся недоступны без очистки массива. */
+    public static void newFrame() {
+        currentEpoch++;
+    }
+
+    public static long cacheHits() {
+        return cacheHits;
+    }
+
+    public static long cacheMisses() {
+        return cacheMisses;
+    }
+
+    public static void resetCacheStats() {
+        cacheHits = 0L;
+        cacheMisses = 0L;
+    }
+
+    private static long shaderKey(ShaderEffect effect, int baseColor,
+                                  float intensity, float speed, float opacity,
+                                  float u, float v,
+                                  float nx, float ny, float nz,
+                                  float timeSeconds) {
+        long key = effect != null ? effect.ordinal() : 0;
+        key = (key << 5) | (((baseColor >> 19) & 0x1F));        // R
+        key = (key << 5) | (((baseColor >> 11) & 0x1F));        // G
+        key = (key << 5) | (((baseColor >> 3) & 0x1F));         // B
+        key = (key << 6) | (((int) (u * 64.0F)) & 0x3F);
+        key = (key << 6) | (((int) (v * 64.0F)) & 0x3F);
+        key = (key << 2) | ((nx > 0.3F ? 1 : 0) | (nx < -0.3F ? 2 : 0));
+        key = (key << 2) | ((ny > 0.3F ? 1 : 0) | (ny < -0.3F ? 2 : 0));
+        key = (key << 2) | ((nz > 0.3F ? 1 : 0) | (nz < -0.3F ? 2 : 0));
+        key = (key << 2) | (((int) (intensity * 3.0F)) & 0x3);
+        key = (key << 2) | (((int) (speed * 2.0F)) & 0x3);
+        key = (key << 2) | (((int) (opacity * 3.0F)) & 0x3);
+        key = (key << 10) | (((int) (timeSeconds * 10.0F)) & 0x3FF);
+        return key;
+    }
+
     public static int sampleSurface(ShaderEffect effect, int baseColor,
                                     float intensity, float speed, float opacity,
                                     float u, float v,
@@ -53,6 +117,39 @@ public final class ShaderMath {
         float safeOpacity = clamp(finite(opacity, 0.78F), 0.02F, 1.0F);
         float t = finite(timeSeconds, 0.0F) * safeSpeed;
 
+        long key = shaderKey(effect, baseColor, safeIntensity, safeSpeed, safeOpacity,
+                safeU, safeV, nx, ny, nz, timeSeconds);
+        int slot = (int) (mixKey(key) & SHADER_CACHE_MASK);
+        int qx = (int) (wx * 4.0F);
+        int qy = (int) (wy * 4.0F);
+        int qz = (int) (wz * 4.0F);
+        if (CACHE_EPOCH[slot] == currentEpoch && CACHE_KEY[slot] == key
+                && CACHE_WX[slot] == qx && CACHE_WY[slot] == qy && CACHE_WZ[slot] == qz) {
+            cacheHits++;
+            return CACHE_VALUE[slot];
+        }
+        int computed = computeSurface(effect, baseColor, safeIntensity, safeSpeed, safeOpacity,
+                safeU, safeV, nx, ny, nz, wx, wy, wz, t);
+        CACHE_KEY[slot] = key;
+        CACHE_VALUE[slot] = computed;
+        CACHE_WX[slot] = qx;
+        CACHE_WY[slot] = qy;
+        CACHE_WZ[slot] = qz;
+        CACHE_EPOCH[slot] = currentEpoch;
+        cacheMisses++;
+        return computed;
+    }
+
+    private static long mixKey(long key) {
+        long h = key * 0x9E3779B97F4A7C15L;
+        return h ^ (h >>> 29);
+    }
+
+    private static int computeSurface(ShaderEffect effect, int baseColor,
+                                      float safeIntensity, float safeSpeed, float safeOpacity,
+                                      float safeU, float safeV,
+                                      float nx, float ny, float nz,
+                                      float wx, float wy, float wz, float t) {
         // Учитываем ориентацию грани по нормали: верхняя грань светлее, нижняя глубже.
         float normalShade = 0.88F + 0.12F * clamp(ny * 0.65F + nx * 0.25F - nz * 0.20F, -1.0F, 1.0F);
         float edgeDist = Math.min(Math.min(safeU, 1.0F - safeU), Math.min(safeV, 1.0F - safeV));

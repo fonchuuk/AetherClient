@@ -28,6 +28,11 @@ public final class ParticleSystem {
     private static final Identifier WHITE =
             Identifier.fromNamespaceAndPath("aetherglass", "textures/particle/circle.png");
     private static final PoseStack.Pose IDENTITY_POSE = new PoseStack().last();
+    /** Кэш значений enum: {@code values()} каждый раз копирует массив — в кадре это аллокация. */
+    private static final ParticleShape[] SHAPES = ParticleShape.values();
+    /** Угол второго «креста» билборда: даёт объём вместо плоской наклейки. */
+    private static final float CROSS_ANGLE_COS = (float) Math.cos(Math.toRadians(46.0D));
+    private static final float CROSS_ANGLE_SIN = (float) Math.sin(Math.toRadians(46.0D));
 
     private int capacity;
     private int count;
@@ -60,6 +65,8 @@ public final class ParticleSystem {
     private final Vector3f rightVec = new Vector3f();
     private final Vector3f upVec = new Vector3f();
     private final Vector3f viewDirVec = new Vector3f();
+    private final Vector3f crossRight = new Vector3f();
+    private final Vector3f crossUp = new Vector3f();
 
     public ParticleSystem(int initialCapacity) {
         allocate(Math.max(MIN_CAPACITY, initialCapacity));
@@ -380,7 +387,7 @@ public final class ParticleSystem {
                 presentMask |= (1 << sh.ordinal());
             }
         }
-        for (ParticleShape targetShape : ParticleShape.values()) {
+        for (ParticleShape targetShape : SHAPES) {
             if ((presentMask & (1 << targetShape.ordinal())) == 0) {
                 continue;
             }
@@ -416,6 +423,26 @@ public final class ParticleSystem {
                     drawBillboard(IDENTITY_POSE, consumer, px, py, pz, right, up, haloRadius, haloColor);
                 }
                 drawBillboard(IDENTITY_POSE, consumer, px, py, pz, right, up, coreRadius, coreColor);
+
+                // Второй билборд, повёрнутый в плоскости экрана: капля выглядит
+                // объёмной и не «схлопывается» в плоский диск при взгляде сбоку.
+                // Стоимость — один дополнительный квад на частицу, ни одной
+                // новой аллокации: базисные векторы переиспользуются.
+                int crossColor = ColorUtil.fade(coreColor, fade * 0.34F);
+                if (ColorUtil.alpha(crossColor) > 2) {
+                    float ux = up.x * CROSS_ANGLE_SIN;
+                    float uy = up.y * CROSS_ANGLE_SIN;
+                    float uz = up.z * CROSS_ANGLE_SIN;
+                    float rx = right.x * CROSS_ANGLE_SIN;
+                    float ry = right.y * CROSS_ANGLE_SIN;
+                    float rz = right.z * CROSS_ANGLE_SIN;
+                    crossRight.set(right.x * CROSS_ANGLE_COS + ux, right.y * CROSS_ANGLE_COS + uy,
+                            right.z * CROSS_ANGLE_COS + uz);
+                    crossUp.set(up.x * CROSS_ANGLE_COS - rx, up.y * CROSS_ANGLE_COS - ry,
+                            up.z * CROSS_ANGLE_COS - rz);
+                    drawBillboard(IDENTITY_POSE, consumer, px, py, pz, crossRight, crossUp,
+                            coreRadius * 0.92F, crossColor);
+                }
             }
         }
     }

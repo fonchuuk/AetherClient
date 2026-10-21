@@ -33,9 +33,14 @@ public abstract class SkyRendererMixin {
         try {
             state.skyColor = SkyEffectBlender.blendSky(state.skyColor);
             state.sunriseAndSunsetColor = SkyEffectBlender.blendSunrise(state.sunriseAndSunsetColor);
-            // Поддерживаем мягкое мерцание звёзд и плавное движение небосвода
-            float shimmer = 0.45F + 0.25F * (float) Math.sin(FrameClock.elapsedSeconds() * 1.7D);
-            state.starBrightness = Math.max(state.starBrightness, shimmer * SkyEffectBlender.intensity());
+            // Звёзды на видео-куполе уже нарисованы в самой панораме: ванильные
+            // поверх неё дают двойной слой и «мусор» на стыках кадров.
+            if (SkyEffectBlender.domeActive()) {
+                state.starBrightness = 0.0F;
+            } else {
+                float shimmer = 0.45F + 0.25F * (float) Math.sin(FrameClock.elapsedSeconds() * 1.7D);
+                state.starBrightness = Math.max(state.starBrightness, shimmer * SkyEffectBlender.intensity());
+            }
         } catch (Throwable throwable) {
             if (!aetherglass$loggedError) {
                 aetherglass$loggedError = true;

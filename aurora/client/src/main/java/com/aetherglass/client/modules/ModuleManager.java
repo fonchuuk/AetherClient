@@ -20,6 +20,13 @@ import java.util.Map;
  * сообщает об изменении.</p>
  */
 public final class ModuleManager {
+    /** Один фоновый поток на все сохранения конфига. */
+    private static final java.util.concurrent.ExecutorService SAVE_EXECUTOR =
+            java.util.concurrent.Executors.newSingleThreadExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "aetherglass-config-save");
+                thread.setDaemon(true);
+                return thread;
+            });
     private static final ModuleManager INSTANCE = new ModuleManager();
 
     private final Map<String, Module> byId = new LinkedHashMap<>();
@@ -123,6 +130,24 @@ public final class ModuleManager {
             writeModule(module);
         }
         ModConfig.get().save();
+    }
+
+    /**
+     * Сохраняет конфиг в отдельном потоке.
+     *
+     * <p>Закрытие меню не должно ждать диск: запись всех модулей и файла
+     * {@code aetherglass.conf} раньше шла прямо в потоке отрисовки, из-за чего
+     * последний кадр меню «залипал». Очередь из одного потока — чтобы две
+     * записи не наложились друг на друга.</p>
+     */
+    public void saveAsync() {
+        SAVE_EXECUTOR.execute(() -> {
+            try {
+                saveNow();
+            } catch (Throwable throwable) {
+                AuroraLog.error("асинхронное сохранение конфига", throwable);
+            }
+        });
     }
 
     /** Сохраняет с задержкой: вызывается из игрового цикла. */

@@ -33,7 +33,11 @@ public final class SkyEffectsModule extends Module {
     private final FloatSetting domeOpacity = register(new FloatSetting("domeOpacity",
             "Прозрачность видео-купола",
             "Плотность отображения видео-слоя на небесной сфере",
-            0.68F, 0.10F, 1.00F, 0.05F, this::onUserSettingChanged));
+            0.92F, 0.10F, 1.00F, 0.05F, this::onUserSettingChanged));
+    private final BooleanSetting hideClouds = register(new BooleanSetting("hideClouds",
+            "Убирать ванильные облака",
+            "Полностью отключает кубические ванильные облака, пока включён видео-купол",
+            true, this::onUserSettingChanged));
     private final EnumSetting<ShaderEffect> domeShader = register(new EnumSetting<>("domeShader",
             "Шейдер-фильтр купола",
             "Дополнительный шейдерный слой поверх видео-купола неба",
@@ -61,6 +65,11 @@ public final class SkyEffectsModule extends Module {
         }
         apply();
         settingChanged(this.preset);
+    }
+
+    /** Нужно ли скрывать ванильные облака (используется миксином CloudRenderer). */
+    public boolean hidesVanillaClouds() {
+        return this.hideClouds.isEnabled();
     }
 
     private void apply() {

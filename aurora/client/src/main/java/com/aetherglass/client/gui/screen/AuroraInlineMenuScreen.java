@@ -190,13 +190,17 @@ public final class AuroraInlineMenuScreen extends Screen {
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
         FrameClock.tick();
         float dt = FrameClock.deltaSeconds();
-        this.openAnimation.speed(9.0F * AuroraTheme.motion());
+        // Открытие — плавное, закрытие — быстрое: 34 вместо 9 даёт ~0,12 с
+        // (экспоненциальное сглаживание доходит до нуля за ln(1/0.02)/скорость).
+        this.openAnimation.speed((this.closing ? 34.0F : 9.0F) * AuroraTheme.motion());
         this.openAnimation.update(dt);
         float raw = this.openAnimation.current();
         float progress = Easing.easeOutCubic(raw);
 
-        if (this.closing && raw <= 0.02F) {
-            ModuleManager.get().saveNow();
+        if (this.closing && raw <= 0.06F) {
+            // Запись конфига — на диск и в отдельном потоке: раньше она шла прямо
+            // в потоке отрисовки и закрытие меню ощущалось как фриз.
+            ModuleManager.get().saveAsync();
             if (this.minecraft != null && this.parent != null) {
                 this.minecraft.setScreen(this.parent);
             } else if (this.minecraft != null && this.minecraft.level != null) {
