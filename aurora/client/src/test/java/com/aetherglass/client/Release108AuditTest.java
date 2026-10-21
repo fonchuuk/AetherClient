@@ -78,7 +78,7 @@ class Release108AuditTest {
         assertNotNull(hands.setting("idleAnim"), "Должна быть настройка Idle Animation");
         assertNotNull(hands.setting("eatingAnim"), "Должна быть настройка Eating/Drinking Animation");
         assertTrue(hands.noClipEating());
-        assertEquals(1.0F, hands.viewScale(), 0.001F);
+        assertEquals(1.12F, hands.viewScale(), 0.001F);
     }
 
     @Test

@@ -3,12 +3,15 @@ package com.aetherglass.launcher.ui;
 import com.aetherglass.launcher.auth.AuthSession;
 import com.aetherglass.launcher.auth.AuthStore;
 import com.aetherglass.launcher.auth.MicrosoftAuth;
+import com.aetherglass.launcher.core.AutoUpdater;
+import com.aetherglass.launcher.core.CrashDoctor;
 import com.aetherglass.launcher.core.GameInstaller;
 import com.aetherglass.launcher.core.GameLauncher;
 import com.aetherglass.launcher.core.JavaRuntime;
 import com.aetherglass.launcher.core.LauncherConfig;
 import com.aetherglass.launcher.core.LauncherPaths;
 import com.aetherglass.launcher.core.ModInstaller;
+import com.aetherglass.launcher.core.ModpackArchive;
 import com.aetherglass.launcher.core.ModpackProfile;
 import com.aetherglass.launcher.core.ModrinthCatalog;
 import com.aetherglass.launcher.core.Rules;
@@ -98,12 +101,19 @@ public final class LauncherUi {
     private final JComponent root;
 
     private final JComboBox<String> versionBox = UiKit.combo(new JComboBox<>(
-            new String[]{"1.21.11", "1.21.4", "1.20.4", "1.20.1", "1.19.4", "1.18.2", "1.16.5"}));
+            new String[]{"1.21.11", "26.2", "1.21.4", "1.20.4", "1.20.1", "1.19.4", "1.16.5"}));
     private final JComboBox<String> loaderBox = UiKit.combo(new JComboBox<>(
             ModpackProfile.SUPPORTED_LOADERS.toArray(new String[0])));
     private final JComboBox<ModpackProfile> modpackBox = UiKit.combo(new JComboBox<>());
+    private final JComboBox<LauncherConfig.JvmPreset> jvmPresetBox = UiKit.combo(new JComboBox<>(
+            LauncherConfig.JvmPreset.values()));
+    private final JPanel visualModpacksGrid = new JPanel(new java.awt.GridLayout(0, 2, 14, 14));
+    private final JPanel screenshotsGrid = new JPanel(new java.awt.GridLayout(0, 3, 10, 10));
+    private JTable installedModsTable;
     private final JCheckBox aetherClientBox = UiKit.check(
-            new JCheckBox("Установить AetherGlass Client"));
+            new JCheckBox("Установить AetherGlass"));
+    private final JCheckBox modalOptimizeModsBox = UiKit.check(
+            new JCheckBox("Установить моды на оптимизацию (Sodium, Lithium и др.)", true));
     private final DefaultTableModel modpacksTableModel = new DefaultTableModel(
             new Object[]{"Сборка", "Версия MC", "Загрузчик", "AetherGlass Client", "Оптимизация"}, 0) {
         @Override
@@ -111,8 +121,12 @@ public final class LauncherUi {
             return false;
         }
     };
-    private final JTextField newPackNameField = UiKit.field(new JTextField(16));
-    private final JLabel accountLabel = UiKit.chip("Вход не выполнен", UiTheme.DANGER);
+    private final JTextField newPackNameField = UiKit.field(new JTextField(18));
+    private final JTextField newPackDescField = UiKit.field(new JTextField(18));
+    private JPanel profileDropdownOverlay;
+    private JPanel accountModalOverlay;
+    private JPanel createModpackModalOverlay;
+    private final JLabel accountLabel = UiKit.chip("Steve", UiTheme.ACCENT);
     private final JLabel javaInfoLabel = UiKit.muted("Java не проверена");
     private final JLabel statusLabel = UiKit.muted("Готов к работе");
     private final JProgressBar progressBar = UiKit.progress();
@@ -141,7 +155,10 @@ public final class LauncherUi {
         this.dialogParent = dialogParent;
         this.paths = new LauncherPaths(config.gameDirectory());
         this.authStore = new AuthStore(this.paths.authFile());
+        UiTheme.applyPalette(UiTheme.NeonPalette.fromName(config.accentTheme()));
+        UiTheme.syncPaletteToClient(this.paths.base(), UiTheme.currentPalette());
         this.root = buildUi();
+        installDragAndDrop(this.root);
         reloadSession();
         applyModrinthPage(ModrinthCatalog.builtinPage(this.modrinthProjectType, "", 0), false);
         if (!java.awt.GraphicsEnvironment.isHeadless()) {
@@ -158,30 +175,71 @@ public final class LauncherUi {
     private JComponent buildUi() {
         JPanel panel = UiKit.background();
 
-        JPanel header = new JPanel(new BorderLayout(14, 0));
+        JPanel header = new JPanel(new BorderLayout(12, 0));
         header.setOpaque(false);
-        header.setBorder(BorderFactory.createEmptyBorder(16, 20, 6, 20));
+        header.setBorder(BorderFactory.createEmptyBorder(12, 18, 6, 18));
         JLabel title = new JLabel("AETHERGLASS");
         title.setFont(UiTheme.TITLE);
         title.setForeground(UiTheme.TEXT);
-        JLabel subtitle = UiKit.muted("Matte Black · Neon Launcher · 1.21.11");
+        JLabel subtitle = UiKit.muted("Matte Black · Neon Launcher · v1.0.8 · 1.21.11");
         JPanel titles = new JPanel(new BorderLayout(0, 2));
         titles.setOpaque(false);
         titles.add(title, BorderLayout.NORTH);
         titles.add(subtitle, BorderLayout.SOUTH);
-        header.add(titles, BorderLayout.WEST);
-        header.add(this.accountLabel, BorderLayout.EAST);
+
+        JPanel brandWest = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        brandWest.setOpaque(false);
+        brandWest.add(UiKit.neonLogoBadge());
+        brandWest.add(titles);
+        brandWest.add(UiKit.paletteSwitcher(palette -> {
+            this.config.accentTheme(palette.name());
+            this.config.save(this.paths.launcherConfig());
+            UiTheme.syncPaletteToClient(this.paths.base(), palette);
+            status("Тема неона: " + palette.displayName() + " (синхронизирована с меню RSHIFT в игре)");
+            if (this.root != null) {
+                this.root.repaint();
+            }
+        }));
+
+        long sysRamMb = JavaRuntime.totalMemoryMb();
+        String ramText = (sysRamMb > 0)
+                ? (this.config.maxMemoryMb() / 1024) + " / " + Math.max(1L, Math.round(sysRamMb / 1024.0)) + " ГБ"
+                : this.config.maxMemoryMb() + " МБ";
+        String diskText = formatFreeDiskSpace();
+        JButton updateGithubBtn = UiKit.primaryButton("Обновить с GitHub");
+        updateGithubBtn.setToolTipText("Проверить релиз на GitHub в 1 клик, скачать свежую версию и перезапустить лаунчер");
+        updateGithubBtn.addActionListener(e -> checkAndUpdateFromGitHub());
+
+        JButton crashDoctorBtn = UiKit.button("Доктор крашей");
+        crashDoctorBtn.setToolTipText("Умная диагностика логов, конфликтов модов и авто-починка в 1 клик");
+        crashDoctorBtn.addActionListener(e -> runCrashDoctorDialog());
+
+        JPanel rightTelemetry = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 2));
+        rightTelemetry.setOpaque(false);
+        rightTelemetry.add(updateGithubBtn);
+        rightTelemetry.add(crashDoctorBtn);
+        rightTelemetry.add(UiKit.profileDropdownButton(
+                () -> this.session != null ? this.session.playerName()
+                        : (this.offlineNickField.getText().isBlank() ? "Steve" : this.offlineNickField.getText()),
+                () -> toggleProfileDropdown(this.profileDropdownOverlay == null || !this.profileDropdownOverlay.isVisible())
+        ));
+
+        header.add(brandWest, BorderLayout.WEST);
+        header.add(rightTelemetry, BorderLayout.EAST);
 
         this.tabs = new JTabbedPane(JTabbedPane.LEFT);
         UiKit.styleTabs(this.tabs);
-        this.tabs.addTab("Главная", gameTab());
         this.tabs.addTab("Сборки", modpacksTab());
         this.tabs.addTab("Моды", modsTab());
+        this.tabs.addTab("Аккаунты", gameTab());
+        this.tabs.addTab("Скриншоты", screenshotsTab());
         this.tabs.addTab("Настройки", settingsTab());
         this.tabs.addTab("Логи", this.logPanel);
         this.tabs.addChangeListener(e -> {
-            if (this.tabs.getSelectedIndex() == 2 && !java.awt.GraphicsEnvironment.isHeadless()) {
+            if (this.tabs.getSelectedIndex() == 1 && !java.awt.GraphicsEnvironment.isHeadless()) {
                 loadModrinthPage(this.modrinthQueryField.getText().trim(), false);
+            } else if (this.tabs.getSelectedIndex() == 3) {
+                refreshScreenshotsGallery();
             }
         });
         syncModpackControls();
@@ -189,7 +247,375 @@ public final class LauncherUi {
         panel.add(header, BorderLayout.NORTH);
         panel.add(this.tabs, BorderLayout.CENTER);
         updateButtons();
-        return panel;
+
+        JPanel layeredRoot = new JPanel() {
+            @Override
+            public boolean isOptimizedDrawingEnabled() {
+                return false;
+            }
+        };
+        layeredRoot.setLayout(new javax.swing.OverlayLayout(layeredRoot));
+        layeredRoot.setOpaque(false);
+
+        this.profileDropdownOverlay = buildProfileDropdownOverlay();
+        this.accountModalOverlay = buildAccountModalOverlay();
+        this.createModpackModalOverlay = buildCreateModpackModalOverlay();
+
+        layeredRoot.add(this.createModpackModalOverlay);
+        layeredRoot.add(this.accountModalOverlay);
+        layeredRoot.add(this.profileDropdownOverlay);
+        layeredRoot.add(panel);
+        return layeredRoot;
+    }
+
+    public void toggleProfileDropdown(boolean visible) {
+        if (this.profileDropdownOverlay != null) {
+            if (visible) {
+                if (this.accountModalOverlay != null) {
+                    this.accountModalOverlay.setVisible(false);
+                }
+                if (this.createModpackModalOverlay != null) {
+                    this.createModpackModalOverlay.setVisible(false);
+                }
+            }
+            this.profileDropdownOverlay.setVisible(visible);
+            if (this.root != null) {
+                this.root.revalidate();
+                this.root.repaint();
+            }
+        }
+    }
+
+    public void openAccountSwitchModal(boolean visible) {
+        if (this.profileDropdownOverlay != null) {
+            this.profileDropdownOverlay.setVisible(false);
+        }
+        if (this.createModpackModalOverlay != null && visible) {
+            this.createModpackModalOverlay.setVisible(false);
+        }
+        if (this.accountModalOverlay != null) {
+            this.accountModalOverlay.setVisible(visible);
+            if (this.root != null) {
+                this.root.revalidate();
+                this.root.repaint();
+            }
+        }
+    }
+
+    public void openCreateModpackModal(boolean visible) {
+        if (this.profileDropdownOverlay != null) {
+            this.profileDropdownOverlay.setVisible(false);
+        }
+        if (this.accountModalOverlay != null && visible) {
+            this.accountModalOverlay.setVisible(false);
+        }
+        if (this.createModpackModalOverlay != null) {
+            if (visible) {
+                onVersionOrLoaderChanged();
+            }
+            this.createModpackModalOverlay.setVisible(visible);
+            if (this.root != null) {
+                this.root.revalidate();
+                this.root.repaint();
+            }
+        }
+    }
+
+    private JPanel buildProfileDropdownOverlay() {
+        JPanel overlay = new JPanel(new BorderLayout());
+        overlay.setOpaque(false);
+        overlay.setVisible(false);
+        overlay.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+                toggleProfileDropdown(false);
+            }
+        });
+
+        JPanel topRightHolder = new JPanel(new FlowLayout(FlowLayout.RIGHT, 18, 52));
+        topRightHolder.setOpaque(false);
+
+        JButton switchAccBtn = new JButton("Сменить аккаунт") {
+            {
+                setFont(UiTheme.SMALL_BOLD);
+                setForeground(UiTheme.TEXT);
+                setOpaque(false);
+                setContentAreaFilled(false);
+                setBorderPainted(false);
+                setFocusPainted(false);
+                setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
+                setBorder(BorderFactory.createEmptyBorder(0, 36, 0, 12));
+                setPreferredSize(new java.awt.Dimension(196, 36));
+                setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+            }
+
+            @Override
+            protected void paintComponent(java.awt.Graphics g) {
+                java.awt.Graphics2D g2 = (java.awt.Graphics2D) g.create();
+                g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+                boolean hov = getModel().isRollover();
+                g2.setColor(hov ? new java.awt.Color(36, 22, 58, 220) : new java.awt.Color(18, 16, 28, 210));
+                g2.fillRoundRect(1, 1, getWidth() - 2, getHeight() - 2, 9, 9);
+                g2.setColor(UiTheme.ACCENT);
+                g2.setStroke(new java.awt.BasicStroke(1.2F));
+                g2.drawRoundRect(1, 1, getWidth() - 2, getHeight() - 2, 9, 9);
+
+                // Векторный значок смены аккаунта (две встречные стрелки)
+                int ix = 12;
+                int iy = getHeight() / 2;
+                g2.setColor(UiTheme.ACCENT);
+                g2.setStroke(new java.awt.BasicStroke(1.6F, java.awt.BasicStroke.CAP_ROUND, java.awt.BasicStroke.JOIN_ROUND));
+                // Верхняя стрелка вправо
+                g2.drawLine(ix, iy - 3, ix + 12, iy - 3);
+                g2.drawLine(ix + 9, iy - 6, ix + 12, iy - 3);
+                g2.drawLine(ix + 9, iy, ix + 12, iy - 3);
+                // Нижняя стрелка влево
+                g2.drawLine(ix + 12, iy + 3, ix, iy + 3);
+                g2.drawLine(ix + 3, iy, ix, iy + 3);
+                g2.drawLine(ix + 3, iy + 6, ix, iy + 3);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        switchAccBtn.addActionListener(e -> openAccountSwitchModal(true));
+
+        JPanel glassMenu = new JPanel(new BorderLayout()) {
+            @Override
+            protected void paintComponent(java.awt.Graphics g) {
+                java.awt.Graphics2D g2 = (java.awt.Graphics2D) g.create();
+                g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new java.awt.Color(10, 11, 17, 242));
+                g2.fillRoundRect(1, 1, getWidth() - 2, getHeight() - 2, 12, 12);
+                g2.setColor(UiTheme.ACCENT);
+                g2.setStroke(new java.awt.BasicStroke(1.2F));
+                g2.drawRoundRect(1, 1, getWidth() - 2, getHeight() - 2, 12, 12);
+                g2.dispose();
+            }
+        };
+        glassMenu.setOpaque(false);
+        glassMenu.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        glassMenu.add(switchAccBtn, BorderLayout.CENTER);
+
+        topRightHolder.add(glassMenu);
+        overlay.add(topRightHolder, BorderLayout.NORTH);
+        return overlay;
+    }
+
+    private JPanel buildAccountModalOverlay() {
+        JPanel backdrop = createModalBackdrop(() -> openAccountSwitchModal(false));
+
+        JTextField modalNickField = UiKit.field(new JTextField(16));
+        modalNickField.setText(this.session != null ? this.session.playerName() : "Steve");
+
+        JPanel form = new JPanel(new GridBagLayout());
+        form.setOpaque(false);
+        GridBagConstraints c = new GridBagConstraints();
+        c.insets = new Insets(6, 6, 6, 6);
+        c.anchor = GridBagConstraints.LINE_START;
+        c.gridx = 0;
+        c.gridy = 0;
+        form.add(UiKit.skinAvatarBadge(modalNickField::getText), c);
+        c.gridx = 1;
+        form.add(UiKit.muted("Новый никнейм:"), c);
+        c.gridx = 2;
+        form.add(modalNickField, c);
+
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        actions.setOpaque(false);
+        JButton cancelBtn = UiKit.button("Отмена");
+        JButton applyBtn = UiKit.primaryButton("Сохранить аккаунт");
+        cancelBtn.addActionListener(e -> openAccountSwitchModal(false));
+        Runnable applyNick = () -> {
+            String nick = modalNickField.getText().trim();
+            if (!nick.isEmpty()) {
+                this.offlineNickField.setText(nick);
+                loginOffline(nick);
+                openAccountSwitchModal(false);
+            }
+        };
+        applyBtn.addActionListener(e -> applyNick.run());
+        modalNickField.addActionListener(e -> applyNick.run());
+        actions.add(cancelBtn);
+        actions.add(applyBtn);
+
+        JPanel modalCard = createGlassModalBox("Сменить оффлайн-аккаунт",
+                "Введите новый никнейм игрока (3–16 символов)", form, actions, 430, 195);
+        backdrop.add(modalCard);
+        return backdrop;
+    }
+
+    private JPanel buildCreateModpackModalOverlay() {
+        JPanel backdrop = createModalBackdrop(() -> openCreateModpackModal(false));
+
+        this.versionBox.setPreferredSize(new java.awt.Dimension(220, 30));
+        this.loaderBox.setPreferredSize(new java.awt.Dimension(220, 30));
+        this.newPackNameField.setPreferredSize(new java.awt.Dimension(220, 30));
+        this.newPackDescField.setPreferredSize(new java.awt.Dimension(220, 30));
+        this.newPackNameField.setText("MyPack");
+        this.newPackDescField.setText("Сборка с оптимизацией");
+
+        JPanel form = new JPanel(new GridBagLayout());
+        form.setOpaque(false);
+        GridBagConstraints c = new GridBagConstraints();
+        c.insets = new Insets(6, 6, 6, 6);
+        c.anchor = GridBagConstraints.LINE_START;
+        c.fill = GridBagConstraints.HORIZONTAL;
+
+        c.gridx = 0;
+        c.gridy = 0;
+        c.weightx = 0.0;
+        form.add(UiKit.muted("Название сборки:"), c);
+        c.gridx = 1;
+        c.weightx = 1.0;
+        form.add(this.newPackNameField, c);
+
+        c.gridx = 0;
+        c.gridy++;
+        c.weightx = 0.0;
+        form.add(UiKit.muted("Краткое описание:"), c);
+        c.gridx = 1;
+        c.weightx = 1.0;
+        form.add(this.newPackDescField, c);
+
+        c.gridx = 0;
+        c.gridy++;
+        c.weightx = 0.0;
+        form.add(UiKit.muted("Версия Minecraft:"), c);
+        c.gridx = 1;
+        c.weightx = 1.0;
+        form.add(this.versionBox, c);
+
+        c.gridx = 0;
+        c.gridy++;
+        c.weightx = 0.0;
+        form.add(UiKit.muted("Загрузчик модов:"), c);
+        c.gridx = 1;
+        c.weightx = 1.0;
+        form.add(this.loaderBox, c);
+
+        c.gridx = 0;
+        c.gridy++;
+        c.gridwidth = 2;
+        form.add(this.aetherClientBox, c);
+
+        c.gridy++;
+        form.add(this.modalOptimizeModsBox, c);
+
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        actions.setOpaque(false);
+        JButton folderBtn = UiKit.button("Папка модов");
+        JButton cloneBtn = UiKit.button("Клонировать");
+        JButton cancelBtn = UiKit.button("Отмена");
+        JButton createBtn = UiKit.primaryButton("Сохранить");
+        folderBtn.addActionListener(e -> openModsFolder());
+        cloneBtn.addActionListener(e -> {
+            ModpackProfile active = this.config.activeModpack();
+            if (active != null) {
+                ModpackProfile copy = this.config.addOrUpdateModpack(
+                        active.name() + " Copy",
+                        active.description(),
+                        active.minecraftVersion(),
+                        active.loader(),
+                        active.installAetherGlassClient(),
+                        active.autoOptimizeMods()
+                );
+                this.config.save(this.paths.launcherConfig());
+                syncModpackControls();
+                openCreateModpackModal(false);
+                status("Клонирована сборка: " + copy.name());
+            }
+        });
+        cancelBtn.addActionListener(e -> openCreateModpackModal(false));
+        createBtn.addActionListener(e -> {
+            String ver = this.versionBox.getSelectedItem() != null
+                    ? this.versionBox.getSelectedItem().toString() : "1.21.11";
+            String loader = this.loaderBox.getSelectedItem() != null
+                    ? this.loaderBox.getSelectedItem().toString() : "Fabric";
+            String name = this.newPackNameField.getText().trim();
+            if (name.isEmpty()) {
+                name = ver;
+            }
+            String desc = this.newPackDescField.getText().trim();
+            ModpackProfile created = this.config.addOrUpdateModpack(
+                    name,
+                    desc,
+                    ver,
+                    loader,
+                    this.aetherClientBox.isEnabled() && this.aetherClientBox.isSelected(),
+                    this.modalOptimizeModsBox.isSelected()
+            );
+            this.config.save(this.paths.launcherConfig());
+            this.newPackNameField.setText("");
+            this.newPackDescField.setText("");
+            syncModpackControls();
+            openCreateModpackModal(false);
+            status("Создана сборка: " + created.name());
+        });
+        actions.add(folderBtn);
+        actions.add(cloneBtn);
+        actions.add(cancelBtn);
+        actions.add(createBtn);
+
+        JPanel modalCard = createGlassModalBox("Добавить / Настроить сборку",
+                "Настройте версию, загрузчик и моды оптимизации", form, actions, 560, 360);
+        backdrop.add(modalCard);
+        return backdrop;
+    }
+
+    private static JPanel createModalBackdrop(Runnable onClose) {
+        JPanel backdrop = new JPanel(new GridBagLayout()) {
+            @Override
+            protected void paintComponent(java.awt.Graphics g) {
+                g.setColor(new java.awt.Color(4, 5, 9, 185));
+                g.fillRect(0, 0, getWidth(), getHeight());
+            }
+        };
+        backdrop.setOpaque(false);
+        backdrop.setVisible(false);
+        backdrop.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+                if (e.getComponent() == backdrop && onClose != null) {
+                    onClose.run();
+                }
+            }
+        });
+        return backdrop;
+    }
+
+    private static JPanel createGlassModalBox(String titleText, String subText,
+                                              JComponent body, JComponent footer,
+                                              int width, int height) {
+        JPanel box = new JPanel(new BorderLayout(0, 12)) {
+            @Override
+            protected void paintComponent(java.awt.Graphics g) {
+                java.awt.Graphics2D g2 = (java.awt.Graphics2D) g.create();
+                g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new java.awt.Color(11, 12, 18, 246));
+                g2.fillRoundRect(1, 1, getWidth() - 2, getHeight() - 2, 14, 14);
+                g2.setColor(UiTheme.ACCENT);
+                g2.setStroke(new java.awt.BasicStroke(1.3F));
+                g2.drawRoundRect(1, 1, getWidth() - 2, getHeight() - 2, 14, 14);
+                g2.dispose();
+            }
+        };
+        box.setOpaque(false);
+        box.setPreferredSize(new java.awt.Dimension(width, height));
+        box.setBorder(BorderFactory.createEmptyBorder(16, 20, 16, 20));
+        box.addMouseListener(new java.awt.event.MouseAdapter() {});
+
+        JPanel head = new JPanel(new BorderLayout(0, 3));
+        head.setOpaque(false);
+        JLabel t = new JLabel(titleText);
+        t.setFont(UiTheme.HEADING);
+        t.setForeground(UiTheme.TEXT);
+        head.add(t, BorderLayout.NORTH);
+        head.add(UiKit.muted(subText), BorderLayout.SOUTH);
+
+        box.add(head, BorderLayout.NORTH);
+        box.add(body, BorderLayout.CENTER);
+        box.add(footer, BorderLayout.SOUTH);
+        return box;
     }
 
     /** Корневой компонент со всем содержимым окна. */
@@ -225,6 +651,75 @@ public final class LauncherUi {
         Path dir = this.paths.resourcePacks();
         Files.createDirectories(dir);
         return dir;
+    }
+
+    /** Возвращает каталог шейдерпаков {@code <gameDir>/shaderpacks} (создавая его при необходимости). */
+    public Path shaderPacksDirectory() throws IOException {
+        Path dir = this.paths.shaderPacks();
+        Files.createDirectories(dir);
+        return dir;
+    }
+
+    /** Возвращает каталог скриншотов {@code <gameDir>/screenshots} (создавая его при необходимости). */
+    public Path screenshotsDirectory() throws IOException {
+        Path dir = this.paths.screenshots();
+        Files.createDirectories(dir);
+        return dir;
+    }
+
+    /** Открывает папку Shaderpacks в системном проводнике. */
+    public void openShaderPacksFolder() {
+        try {
+            openDirectoryInSystem(shaderPacksDirectory());
+        } catch (IOException exception) {
+            showError("Не удалось подготовить папку Шейдерпаков: " + exception.getMessage());
+        }
+    }
+
+    /** Открывает папку Screenshots в системном проводнике. */
+    public void openScreenshotsFolder() {
+        try {
+            openDirectoryInSystem(screenshotsDirectory());
+        } catch (IOException exception) {
+            showError("Не удалось подготовить папку Скриншотов: " + exception.getMessage());
+        }
+    }
+
+    /** Очищает устаревшие архивы логов и временный кэш лаунчера. */
+    public void cleanCacheAndOldLogs() {
+        long freedBytes = 0L;
+        int removedFiles = 0;
+        try {
+            Path logsDir = this.paths.logsDir();
+            if (Files.isDirectory(logsDir)) {
+                try (var stream = Files.list(logsDir)) {
+                    for (Path p : stream.toList()) {
+                        String name = p.getFileName().toString().toLowerCase(Locale.ROOT);
+                        if (name.endsWith(".log.gz") || name.endsWith(".tmp")) {
+                            freedBytes += Files.size(p);
+                            Files.deleteIfExists(p);
+                            removedFiles++;
+                        }
+                    }
+                }
+            }
+        } catch (IOException ignored) {
+        }
+        String summary = String.format(Locale.ROOT,
+                "Кэш очищен: удалено файлов %d (освобождено %.1f МБ)",
+                removedFiles, freedBytes / (1024.0 * 1024.0));
+        status(summary);
+        log(summary);
+    }
+
+    private String formatFreeDiskSpace() {
+        try {
+            Path target = Files.exists(this.paths.base()) ? this.paths.base() : Path.of(".");
+            long usable = Files.getFileStore(target).getUsableSpace();
+            return Math.max(1L, usable / (1024L * 1024L * 1024L)) + " ГБ своб.";
+        } catch (Exception ignored) {
+            return "OK";
+        }
     }
 
     /** Открывает коренную папку игры в системном проводнике. */
@@ -297,6 +792,7 @@ public final class LauncherUi {
         offlineButton.addActionListener(event -> loginOffline(this.offlineNickField.getText()));
         this.offlineNickField.addActionListener(event -> loginOffline(this.offlineNickField.getText()));
         logoutButton.addActionListener(event -> logout());
+        accountRow.add(UiKit.skinAvatarBadge(() -> this.offlineNickField.getText()));
         accountRow.add(UiKit.muted("Ник:"));
         accountRow.add(this.offlineNickField);
         accountRow.add(offlineButton);
@@ -305,7 +801,17 @@ public final class LauncherUi {
 
         JPanel settings = new JPanel(new GridBagLayout());
         settings.setOpaque(false);
-        this.modpackBox.setPreferredSize(new java.awt.Dimension(250, 26));
+        this.modpackBox.setPreferredSize(new java.awt.Dimension(220, 26));
+        this.jvmPresetBox.setPreferredSize(new java.awt.Dimension(210, 26));
+        this.jvmPresetBox.setSelectedItem(this.config.jvmPreset());
+        this.jvmPresetBox.addActionListener(e -> {
+            Object sel = this.jvmPresetBox.getSelectedItem();
+            if (sel instanceof LauncherConfig.JvmPreset preset) {
+                this.config.jvmPreset(preset);
+                this.config.save(this.paths.launcherConfig());
+                status("Профиль JVM: " + preset.displayName());
+            }
+        });
         this.versionBox.setPreferredSize(new java.awt.Dimension(92, 26));
         this.loaderBox.setPreferredSize(new java.awt.Dimension(92, 26));
         GridBagConstraints constraints = new GridBagConstraints();
@@ -313,20 +819,14 @@ public final class LauncherUi {
         constraints.anchor = GridBagConstraints.LINE_START;
         constraints.gridx = 0;
         constraints.gridy = 0;
-        settings.add(UiKit.muted("Активная сборка:"), constraints);
+        settings.add(UiKit.muted("Сборка и JVM:"), constraints);
         constraints.gridx = 1;
-        settings.add(this.modpackBox, constraints);
-        constraints.gridx = 0;
-        constraints.gridy++;
-        settings.add(UiKit.muted("Версия и загрузчик:"), constraints);
-        constraints.gridx = 1;
-        JPanel verLoaderRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        verLoaderRow.setOpaque(false);
-        verLoaderRow.add(this.versionBox);
-        verLoaderRow.add(this.loaderBox);
-        verLoaderRow.add(this.aetherClientBox);
-        settings.add(verLoaderRow, constraints);
-
+        JPanel packAndJvmRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        packAndJvmRow.setOpaque(false);
+        packAndJvmRow.add(this.modpackBox);
+        packAndJvmRow.add(UiKit.muted("Флаги JVM:"));
+        packAndJvmRow.add(this.jvmPresetBox);
+        settings.add(packAndJvmRow, constraints);
         this.versionBox.addActionListener(e -> onVersionOrLoaderChanged());
         this.loaderBox.addActionListener(e -> onVersionOrLoaderChanged());
         this.aetherClientBox.addActionListener(e -> {
@@ -362,23 +862,42 @@ public final class LauncherUi {
         long totalMemory = JavaRuntime.totalMemoryMb();
         memory.add(this.memorySlider);
         memory.add(memoryValue);
+        for (int presetGb : new int[]{2, 4, 6, 8}) {
+            int presetMb = presetGb * 1024;
+            JButton presetBtn = UiKit.button(presetGb + " ГБ");
+            presetBtn.setToolTipText("Выделить " + presetGb + " ГБ (" + presetMb + " МБ) оперативной памяти");
+            presetBtn.addActionListener(e -> this.memorySlider.setValue(presetMb));
+            memory.add(presetBtn);
+        }
         if (totalMemory > 0) {
-            JLabel hint = UiKit.muted("из " + totalMemory + " МБ установлено в системе");
+            JLabel hint = UiKit.muted("из " + totalMemory + " МБ");
             memory.add(hint);
         }
         settings.add(memory, constraints);
         constraints.gridx = 0;
         constraints.gridy++;
-        settings.add(UiKit.muted("Папки игры:"), constraints);
+        settings.add(UiKit.muted("Быстрые действия:"), constraints);
         constraints.gridx = 1;
-        JPanel foldersRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        JPanel foldersRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         foldersRow.setOpaque(false);
         JButton gameRootBtn = UiKit.button("Коренная папка");
         JButton gameModsBtn = UiKit.button("Папка Mods");
+        JButton shadersBtn = UiKit.button("Шейдерпаки");
+        JButton screensBtn = UiKit.button("Скриншоты");
+        JButton backupBtn = UiKit.button("Бэкап миров (.zip)");
+        JButton cleanCacheBtn = UiKit.button("Очистить кэш");
         gameRootBtn.addActionListener(event -> openRootFolder());
         gameModsBtn.addActionListener(event -> openModsFolder());
+        shadersBtn.addActionListener(event -> openShaderPacksFolder());
+        screensBtn.addActionListener(event -> openScreenshotsFolder());
+        backupBtn.addActionListener(event -> backupWorldsInBackground());
+        cleanCacheBtn.addActionListener(event -> cleanCacheAndOldLogs());
         foldersRow.add(gameRootBtn);
         foldersRow.add(gameModsBtn);
+        foldersRow.add(shadersBtn);
+        foldersRow.add(screensBtn);
+        foldersRow.add(backupBtn);
+        foldersRow.add(cleanCacheBtn);
         settings.add(foldersRow, constraints);
 
         JPanel bottom = new JPanel(new BorderLayout(10, 8));
@@ -487,49 +1006,64 @@ public final class LauncherUi {
     }
 
     private JPanel modpacksTab() {
-        JPanel panel = new JPanel(new BorderLayout(0, 12));
+        JPanel panel = new JPanel(new BorderLayout(0, 14));
         panel.setOpaque(false);
-        panel.setBorder(BorderFactory.createEmptyBorder(12, 16, 16, 16));
+        panel.setBorder(BorderFactory.createEmptyBorder(14, 18, 16, 18));
 
-        JTable table = new JTable(this.modpacksTableModel);
-        UiKit.styleTable(table);
-        table.getSelectionModel().addListSelectionListener(e -> {
-            if (e.getValueIsAdjusting()) {
-                return;
-            }
-            int row = table.getSelectedRow();
-            List<ModpackProfile> packs = this.config.modpacks();
-            if (row >= 0 && row < packs.size()) {
-                ModpackProfile pack = packs.get(row);
-                this.config.selectModpack(pack.id());
+        JPanel topBar = new JPanel(new BorderLayout(12, 0));
+        topBar.setOpaque(false);
+
+        JPanel titleBlock = new JPanel(new BorderLayout(0, 2));
+        titleBlock.setOpaque(false);
+        JLabel sectionTitle = new JLabel("Мои сборки");
+        sectionTitle.setFont(UiTheme.HEADING);
+        sectionTitle.setForeground(UiTheme.TEXT);
+        titleBlock.add(sectionTitle, BorderLayout.NORTH);
+        titleBlock.add(UiKit.muted("Выберите сборку или нажмите «Играть» на карточке"), BorderLayout.SOUTH);
+
+        JPanel actionsRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        actionsRight.setOpaque(false);
+        JButton addPackBtn = UiKit.primaryButton("+ Добавить новую сборку");
+        JButton importPackBtn = UiKit.button("Импорт (.zip / .mrpack)");
+        JButton exportPackBtn = UiKit.button("Экспорт (.zip)");
+        JButton deletePackBtn = UiKit.dangerButton("Удалить");
+
+        addPackBtn.addActionListener(e -> openCreateModpackModal(true));
+        importPackBtn.addActionListener(e -> importModpackDialog());
+        exportPackBtn.addActionListener(e -> exportActiveModpack());
+        deletePackBtn.addActionListener(e -> {
+            ModpackProfile active = this.config.activeModpack();
+            if (active != null && this.config.removeModpack(active.id())) {
+                this.config.save(this.paths.launcherConfig());
                 syncModpackControls();
+                status("Удалена сборка: " + active.name());
+            } else {
+                status("Нельзя удалить единственную базовую сборку");
             }
         });
 
-        JPanel createRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
-        createRow.setOpaque(false);
-        this.newPackNameField.setToolTipText("Название новой сборки (например: My PvP 1.20.1)");
-        JButton createPackBtn = UiKit.primaryButton("Создать сборку");
-        createPackBtn.addActionListener(e -> {
-            String name = this.newPackNameField.getText().trim();
-            String ver = this.versionBox.getSelectedItem() != null
-                    ? this.versionBox.getSelectedItem().toString() : this.config.selectedVersion();
-            String loader = this.loaderBox.getSelectedItem() != null
-                    ? this.loaderBox.getSelectedItem().toString() : this.config.selectedLoader();
-            ModpackProfile created = createModpack(name, ver, loader,
-                    this.aetherClientBox.isEnabled() && this.aetherClientBox.isSelected(),
-                    this.installModsBox.isSelected());
-            this.newPackNameField.setText("");
-            status("Создана сборка: " + created.name());
-            log("Создана сборка: " + created);
-        });
-        createRow.add(UiKit.muted("Название:"));
-        createRow.add(this.newPackNameField);
-        createRow.add(createPackBtn);
+        actionsRight.add(addPackBtn);
+        actionsRight.add(importPackBtn);
+        actionsRight.add(exportPackBtn);
+        actionsRight.add(deletePackBtn);
 
-        panel.add(UiKit.card("Карточки сборок (Modpacks — Vanilla / Fabric / Forge / NeoForge / Quilt)",
-                UiKit.scroll(table)), BorderLayout.CENTER);
-        panel.add(UiKit.card("Новая сборка", createRow), BorderLayout.SOUTH);
+        topBar.add(titleBlock, BorderLayout.WEST);
+        topBar.add(actionsRight, BorderLayout.EAST);
+
+        this.visualModpacksGrid.setOpaque(false);
+        JPanel gridHolder = new JPanel(new BorderLayout());
+        gridHolder.setOpaque(false);
+        gridHolder.add(this.visualModpacksGrid, BorderLayout.NORTH);
+
+        JPanel statusStrip = new JPanel(new BorderLayout(12, 0));
+        statusStrip.setOpaque(false);
+        statusStrip.setBorder(BorderFactory.createEmptyBorder(4, 2, 0, 2));
+        statusStrip.add(this.statusLabel, BorderLayout.WEST);
+        statusStrip.add(this.progressBar, BorderLayout.CENTER);
+
+        panel.add(topBar, BorderLayout.NORTH);
+        panel.add(UiKit.scroll(gridHolder), BorderLayout.CENTER);
+        panel.add(statusStrip, BorderLayout.SOUTH);
         return panel;
     }
 
@@ -552,7 +1086,7 @@ public final class LauncherUi {
         this.aetherClientBox.setSelected(supported && preferredSelected);
         this.aetherClientBox.setToolTipText(supported
                 ? "Установить мод AetherGlass Client (1.21.11 Fabric)"
-                : "AetherGlass Client доступен только для 1.21.11 (Fabric). Для этой версии будут запущены ваши моды.");
+                : "AetherGlass доступен только для версии 1.21.11 (Fabric)");
         this.config.installAetherGlassClient(this.aetherClientBox.isSelected());
     }
 
@@ -569,6 +1103,7 @@ public final class LauncherUi {
                 this.config.installAetherGlassClient());
 
         this.modpacksTableModel.setRowCount(0);
+        this.visualModpacksGrid.removeAll();
         for (ModpackProfile p : packs) {
             this.modpacksTableModel.addRow(new Object[]{
                     p.name(),
@@ -577,7 +1112,37 @@ public final class LauncherUi {
                     p.installAetherGlassClient() ? "Включён (1.21.11)" : "Отключён (свои моды)",
                     p.autoOptimizeMods() ? "Авто (Sodium/Lithium)" : "Базовый"
             });
+            this.visualModpacksGrid.add(UiKit.modpackCard(
+                    p.iconInitials(),
+                    p.name(),
+                    p.description(),
+                    p.technicalInfo(),
+                    () -> this.config.activeModpack().id().equals(p.id()),
+                    () -> {
+                        this.config.selectModpack(p.id());
+                        this.config.save(this.paths.launcherConfig());
+                        syncModpackControls();
+                        status("Выбрана сборка: " + p.name() + " (" + p.technicalInfo() + ")");
+                    },
+                    () -> {
+                        this.config.selectModpack(p.id());
+                        this.config.save(this.paths.launcherConfig());
+                        syncModpackControls();
+                        startGame();
+                    },
+                    () -> {
+                        this.config.selectModpack(p.id());
+                        this.newPackNameField.setText(p.name());
+                        this.newPackDescField.setText(p.description());
+                        selectVersionAndLoader(p.minecraftVersion(), p.loader());
+                        this.aetherClientBox.setSelected(p.installAetherGlassClient());
+                        this.modalOptimizeModsBox.setSelected(p.autoOptimizeMods());
+                        openCreateModpackModal(true);
+                    }
+            ));
         }
+        this.visualModpacksGrid.revalidate();
+        this.visualModpacksGrid.repaint();
     }
 
     /** Программный выбор версии и загрузчика (Блок 5.2). */
@@ -623,6 +1188,7 @@ public final class LauncherUi {
         searchBar.setOpaque(false);
         JButton typeModsBtn = UiKit.primaryButton("Моды (Fabric)");
         JButton typeRpBtn = UiKit.button("Ресурспаки");
+        JButton typeShadersBtn = UiKit.button("Шейдеры (Iris)");
         JButton searchBtn = UiKit.primaryButton("Найти");
         JButton popularBtn = UiKit.button("Популярные");
         JButton moreBtn = UiKit.button("Показать ещё");
@@ -634,6 +1200,10 @@ public final class LauncherUi {
         });
         typeRpBtn.addActionListener(event -> {
             this.modrinthProjectType = ModrinthCatalog.TYPE_RESOURCEPACK;
+            loadModrinthPage(this.modrinthQueryField.getText().trim(), false);
+        });
+        typeShadersBtn.addActionListener(event -> {
+            this.modrinthProjectType = ModrinthCatalog.TYPE_SHADER;
             loadModrinthPage(this.modrinthQueryField.getText().trim(), false);
         });
         searchBtn.addActionListener(event -> loadModrinthPage(this.modrinthQueryField.getText().trim(), false));
@@ -649,9 +1219,24 @@ public final class LauncherUi {
         leftTypeBar.setOpaque(false);
         leftTypeBar.add(typeModsBtn);
         leftTypeBar.add(typeRpBtn);
+        leftTypeBar.add(typeShadersBtn);
 
-        JPanel rightActionBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
+        JPanel rightActionBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
         rightActionBar.setOpaque(false);
+        for (String tag : new String[]{"FPS", "PvP", "HUD"}) {
+            JButton tagBtn = UiKit.button(tag);
+            tagBtn.setToolTipText("Быстрый фильтр каталога по тегу: " + tag);
+            tagBtn.addActionListener(e -> {
+                String q = switch (tag) {
+                    case "FPS" -> "sodium";
+                    case "PvP" -> "zoom";
+                    default -> "hud";
+                };
+                this.modrinthQueryField.setText(q);
+                loadModrinthPage(q, false);
+            });
+            rightActionBar.add(tagBtn);
+        }
         rightActionBar.add(searchBtn);
         rightActionBar.add(popularBtn);
 
@@ -698,32 +1283,38 @@ public final class LauncherUi {
 
         JPanel top = new JPanel(new BorderLayout(0, 8));
         top.setOpaque(false);
-        JTable table = new JTable(this.modsModel);
-        UiKit.styleTable(table);
-        top.add(UiKit.scroll(table), BorderLayout.CENTER);
-        top.add(UiKit.muted("Моды ставятся в папку игры и обновляются той же кнопкой."), BorderLayout.SOUTH);
+        this.installedModsTable = new JTable(this.modsModel);
+        UiKit.styleTable(this.installedModsTable);
+        top.add(UiKit.scroll(this.installedModsTable), BorderLayout.CENTER);
+        top.add(UiKit.muted("Моды ставятся в папку игры. Выберите строку и нажмите «Вкл / Выкл мод», чтобы временно отключить мод (.disabled)."), BorderLayout.SOUTH);
 
-        JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         controls.setOpaque(false);
         JButton refresh = UiKit.button("Проверить");
         JButton install = UiKit.primaryButton("Установить / обновить");
+        JButton toggleModBtn = UiKit.button("Вкл / Выкл мод (.disabled)");
         JButton rootFolder = UiKit.button("Коренная папка");
         JButton modsFolder = UiKit.button("Папка Mods");
         JButton rpFolder = UiKit.button("Папка Ресурспаков");
+        JButton shadersFolder = UiKit.button("Папка Шейдеров");
         refresh.addActionListener(event -> refreshModsTable());
         install.addActionListener(event -> installModsInBackground());
+        toggleModBtn.addActionListener(event -> toggleSelectedInstalledMod());
         rootFolder.addActionListener(event -> openRootFolder());
         modsFolder.addActionListener(event -> openModsFolder());
         rpFolder.addActionListener(event -> openResourcePacksFolder());
+        shadersFolder.addActionListener(event -> openShaderPacksFolder());
         controls.add(refresh);
         controls.add(install);
+        controls.add(toggleModBtn);
         controls.add(rootFolder);
         controls.add(modsFolder);
         controls.add(rpFolder);
+        controls.add(shadersFolder);
 
         JPanel split = new JPanel(new java.awt.GridLayout(2, 1, 0, 10));
         split.setOpaque(false);
-        split.add(UiKit.card("Каталог Modrinth (Моды и Ресурспаки — 1 клик)", catalogPanel));
+        split.add(UiKit.card("Каталог Modrinth (Моды, Ресурспаки и Шейдеры Iris — 1 клик)", catalogPanel));
         split.add(UiKit.card("Оптимизационные моды", top));
 
         panel.add(split, BorderLayout.CENTER);
@@ -871,6 +1462,9 @@ public final class LauncherUi {
         }
         for (ModrinthCatalog.Hit hit : page.hits()) {
             this.modrinthHits.add(hit);
+            if (hit.iconUrl() != null && !hit.iconUrl().isBlank()) {
+                UiKit.preloadModrinthIcon(hit.title().toLowerCase(Locale.ROOT), hit.iconUrl(), this.modrinthTable);
+            }
             this.modrinthModel.addRow(new Object[]{
                     hit.title(),
                     hit.author(),
@@ -884,8 +1478,11 @@ public final class LauncherUi {
         }
         this.modrinthOffset = page.offset();
         this.modrinthTotal = Math.max(page.totalHits(), this.modrinthHits.size());
-        String kindLabel = ModrinthCatalog.TYPE_RESOURCEPACK.equals(this.modrinthProjectType)
-                ? "ресурспаков" : "модов";
+        String kindLabel = switch (this.modrinthProjectType) {
+            case ModrinthCatalog.TYPE_RESOURCEPACK -> "ресурспаков";
+            case ModrinthCatalog.TYPE_SHADER -> "шейдерпаков (Iris)";
+            default -> "модов";
+        };
         this.modrinthInfoLabel.setText("Показано " + this.modrinthHits.size()
                 + " из " + this.modrinthTotal + " " + kindLabel
                 + " · Двойной клик или «Скачать в 1 клик» для установки");
@@ -1524,6 +2121,10 @@ public final class LauncherUi {
     }
 
     private String statusOf(ModInstaller.Manifest.Mod mod) {
+        Path disabledTarget = this.paths.mods().resolve(mod.fileName() + ".disabled");
+        if (Files.isRegularFile(disabledTarget)) {
+            return "отключён (.disabled)";
+        }
         Path target = this.paths.mods().resolve(mod.fileName());
         if (!Files.isRegularFile(target)) {
             return "отсутствует";
@@ -1535,6 +2136,345 @@ public final class LauncherUi {
             return Http.sha512(target).equalsIgnoreCase(mod.sha512()) ? "установлен" : "повреждён (сумма)";
         } catch (IOException exception) {
             return "не проверен: " + exception.getMessage();
+        }
+    }
+
+    private JPanel screenshotsTab() {
+        JPanel panel = new JPanel(new BorderLayout(0, 10));
+        panel.setOpaque(false);
+        panel.setBorder(BorderFactory.createEmptyBorder(12, 16, 16, 16));
+
+        this.screenshotsGrid.setOpaque(false);
+        refreshScreenshotsGallery();
+
+        JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        controls.setOpaque(false);
+        JButton refreshBtn = UiKit.primaryButton("Обновить галерею");
+        JButton openFolderBtn = UiKit.button("Открыть папку скриншотов");
+        refreshBtn.addActionListener(e -> refreshScreenshotsGallery());
+        openFolderBtn.addActionListener(e -> openScreenshotsFolder());
+        controls.add(refreshBtn);
+        controls.add(openFolderBtn);
+
+        panel.add(UiKit.card("Галерея скриншотов (<gameDir>/screenshots)", UiKit.scroll(this.screenshotsGrid)), BorderLayout.CENTER);
+        panel.add(controls, BorderLayout.SOUTH);
+        return panel;
+    }
+
+    private void refreshScreenshotsGallery() {
+        this.screenshotsGrid.removeAll();
+        List<Path> files = new ArrayList<>();
+        try {
+            Path dir = screenshotsDirectory();
+            if (Files.isDirectory(dir)) {
+                try (var stream = Files.list(dir)) {
+                    files.addAll(stream
+                            .filter(Files::isRegularFile)
+                            .filter(p -> p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".png"))
+                            .sorted(Comparator.comparingLong((Path p) -> p.toFile().lastModified()).reversed())
+                            .limit(12)
+                            .toList());
+                }
+            }
+        } catch (IOException ignored) {
+        }
+
+        if (files.isEmpty()) {
+            this.screenshotsGrid.add(UiKit.matteNeonGridCard(
+                    "Скриншотов пока нет",
+                    "Нажмите F2 в игре — снимки появятся здесь автоматически",
+                    () -> false,
+                    this::openScreenshotsFolder
+            ));
+        } else {
+            for (Path shot : files) {
+                String name = shot.getFileName().toString();
+                long kb = 0L;
+                try {
+                    kb = Math.max(1L, Files.size(shot) / 1024L);
+                } catch (IOException ignored) {
+                }
+                this.screenshotsGrid.add(UiKit.screenshotThumbnailCard(
+                        shot,
+                        name,
+                        kb + " КБ · Клик — в буфер обмена и открыть",
+                        () -> copyAndOpenScreenshot(shot)
+                ));
+            }
+        }
+        this.screenshotsGrid.revalidate();
+        this.screenshotsGrid.repaint();
+    }
+
+    private void copyAndOpenScreenshot(Path file) {
+        try {
+            if (!java.awt.GraphicsEnvironment.isHeadless()) {
+                var img = javax.imageio.ImageIO.read(file.toFile());
+                if (img != null) {
+                    java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(
+                            new java.awt.datatransfer.Transferable() {
+                                @Override
+                                public java.awt.datatransfer.DataFlavor[] getTransferDataFlavors() {
+                                    return new java.awt.datatransfer.DataFlavor[]{java.awt.datatransfer.DataFlavor.imageFlavor};
+                                }
+
+                                @Override
+                                public boolean isDataFlavorSupported(java.awt.datatransfer.DataFlavor flavor) {
+                                    return java.awt.datatransfer.DataFlavor.imageFlavor.equals(flavor);
+                                }
+
+                                @Override
+                                public Object getTransferData(java.awt.datatransfer.DataFlavor flavor) {
+                                    return img;
+                                }
+                            }, null);
+                }
+            }
+            status("Скриншот скопирован в буфер обмена: " + file.getFileName());
+            openDirectoryInSystem(file.getParent());
+        } catch (Exception e) {
+            status("Открытие папки скриншотов: " + file.getFileName());
+        }
+    }
+
+    private void toggleSelectedInstalledMod() {
+        if (this.installedModsTable == null || this.modManifest == null) {
+            return;
+        }
+        int row = this.installedModsTable.getSelectedRow();
+        List<ModInstaller.Manifest.Mod> list = this.modManifest.mods();
+        if (row < 0 || row >= list.size()) {
+            status("Выберите мод из таблицы «Оптимизационные моды» для переключения Вкл / Выкл");
+            return;
+        }
+        ModInstaller.Manifest.Mod mod = list.get(row);
+        Path activeFile = this.paths.mods().resolve(mod.fileName());
+        Path disabledFile = this.paths.mods().resolve(mod.fileName() + ".disabled");
+        try {
+            if (Files.isRegularFile(activeFile)) {
+                Files.move(activeFile, disabledFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                status("Мод отключён: " + mod.name() + " (.disabled)");
+            } else if (Files.isRegularFile(disabledFile)) {
+                Files.move(disabledFile, activeFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                status("Мод включён: " + mod.name());
+            } else {
+                status("Мод «" + mod.name() + "» ещё не скачан — нажмите «Установить / обновить»");
+            }
+            refreshModsTable();
+        } catch (IOException e) {
+            showError("Не удалось переключить мод: " + e.getMessage());
+        }
+    }
+
+    private void checkAndUpdateFromGitHub() {
+        if (this.busy) {
+            return;
+        }
+        setBusy(true);
+        status("Проверка обновлений на GitHub…");
+        new SwingWorker<Path, Void>() {
+            private AutoUpdater.ReleaseInfo release;
+            private String error;
+
+            @Override
+            protected Path doInBackground() {
+                try {
+                    this.release = AutoUpdater.checkLatestRelease();
+                    LauncherUi.this.cancelRequested.set(false);
+                    return AutoUpdater.downloadUpdate(
+                            this.release,
+                            LauncherUi.this.paths,
+                            new ProgressBridge()::onFile,
+                            LauncherUi.this.cancelRequested::get
+                    );
+                } catch (Exception e) {
+                    this.error = e.getMessage();
+                    return null;
+                }
+            }
+
+            @Override
+            protected void done() {
+                setBusy(false);
+                if (this.error != null || this.release == null) {
+                    status("Проверка обновлений: " + (this.error != null ? this.error : "нет соединения"));
+                    return;
+                }
+                Path downloaded = null;
+                try {
+                    downloaded = get();
+                } catch (Exception ignored) {
+                }
+                if (downloaded != null && Files.isRegularFile(downloaded)) {
+                    String msg = "Скачан релиз " + this.release.tagName()
+                            + " (" + downloaded.getFileName() + ").\nПерезапустить лаунчер сейчас для применения обновления?";
+                    if (java.awt.GraphicsEnvironment.isHeadless()) {
+                        status("Обновление " + this.release.tagName() + " готово: " + downloaded);
+                        return;
+                    }
+                    int ans = JOptionPane.showConfirmDialog(
+                            LauncherUi.this.dialogParent,
+                            msg,
+                            "Автообновление AetherGlass",
+                            JOptionPane.YES_NO_OPTION,
+                            JOptionPane.INFORMATION_MESSAGE
+                    );
+                    if (ans == JOptionPane.YES_OPTION) {
+                        try {
+                            AutoUpdater.applyAndRestart(downloaded);
+                        } catch (IOException ex) {
+                            showError("Не удалось перезапустить лаунчер: " + ex.getMessage());
+                        }
+                    } else {
+                        status("Обновление скачано в " + downloaded + " (применится при следующем запуске)");
+                    }
+                }
+            }
+        }.execute();
+    }
+
+    private void runCrashDoctorDialog() {
+        CrashDoctor.Diagnosis diag = CrashDoctor.analyze(this.paths, this.config);
+        log("[Доктор крашей] " + diag.title() + " — " + diag.summary());
+        status("Доктор крашей: " + diag.title());
+        if (java.awt.GraphicsEnvironment.isHeadless()) {
+            return;
+        }
+        String fullText = diag.title() + "\n\n" + diag.summary() + "\n\n" + diag.details();
+        if (diag.fixType() != CrashDoctor.FixType.NONE) {
+            Object[] options = {diag.fixType().label(), "Закрыть"};
+            int choice = JOptionPane.showOptionDialog(
+                    this.dialogParent,
+                    fullText,
+                    "Умный Доктор Крашей AetherGlass",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.WARNING_MESSAGE,
+                    null,
+                    options,
+                    options[0]
+            );
+            if (choice == 0) {
+                try {
+                    String fixed = CrashDoctor.applyFix(diag, this.config, this.paths);
+                    this.memorySlider.setValue(this.config.maxMemoryMb());
+                    refreshModsTable();
+                    status(fixed);
+                    log("[Доктор крашей] " + fixed);
+                } catch (IOException e) {
+                    showError("Не удалось применить исправление: " + e.getMessage());
+                }
+            }
+        } else {
+            JOptionPane.showMessageDialog(
+                    this.dialogParent,
+                    fullText,
+                    "Умный Доктор Крашей AetherGlass",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+        }
+    }
+
+    private void exportActiveModpack() {
+        ModpackProfile active = this.config.activeModpack();
+        if (active == null) {
+            return;
+        }
+        try {
+            Path exportsDir = this.paths.base().resolve("exports");
+            Files.createDirectories(exportsDir);
+            Path outZip = exportsDir.resolve(active.id() + ".zip");
+            ModpackArchive.exportModpack(active, this.paths, outZip);
+            status("Сборка экспортирована: " + outZip.getFileName());
+            log("Экспорт сборки завершён: " + outZip.toAbsolutePath());
+            openDirectoryInSystem(exportsDir);
+        } catch (IOException e) {
+            showError("Не удалось экспортировать сборку: " + e.getMessage());
+        }
+    }
+
+    private void importModpackDialog() {
+        if (java.awt.GraphicsEnvironment.isHeadless()) {
+            return;
+        }
+        JFileChooser chooser = new JFileChooser(this.paths.base().toFile());
+        chooser.setDialogTitle("Выберите архив сборки (.zip / .mrpack) или мод (.jar)");
+        if (chooser.showOpenDialog(this.dialogParent) == JFileChooser.APPROVE_OPTION) {
+            Path selected = chooser.getSelectedFile().toPath();
+            try {
+                String res = ModpackArchive.importSmartFile(selected, this.paths, this.config);
+                syncModpackControls();
+                refreshModsTable();
+                status(res);
+                log(res);
+            } catch (IOException e) {
+                showError("Ошибка импорта: " + e.getMessage());
+            }
+        }
+    }
+
+    private void backupWorldsInBackground() {
+        new SwingWorker<Path, Void>() {
+            private String err;
+
+            @Override
+            protected Path doInBackground() {
+                try {
+                    return ModpackArchive.backupWorldsAndConfigs(LauncherUi.this.paths);
+                } catch (IOException e) {
+                    this.err = e.getMessage();
+                    return null;
+                }
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    Path zip = get();
+                    if (zip != null) {
+                        status("Создан бэкап миров и настроек: " + zip.getFileName());
+                        log("Бэкап сохранён: " + zip.toAbsolutePath());
+                    } else if (this.err != null) {
+                        showError("Ошибка бэкапа: " + this.err);
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+        }.execute();
+    }
+
+    @SuppressWarnings("unchecked")
+    private void installDragAndDrop(JComponent component) {
+        if (java.awt.GraphicsEnvironment.isHeadless()) {
+            return;
+        }
+        try {
+            new java.awt.dnd.DropTarget(component, new java.awt.dnd.DropTargetAdapter() {
+                @Override
+                public void drop(java.awt.dnd.DropTargetDropEvent dtde) {
+                    try {
+                        dtde.acceptDrop(java.awt.dnd.DnDConstants.ACTION_COPY);
+                        Object data = dtde.getTransferable().getTransferData(
+                                java.awt.datatransfer.DataFlavor.javaFileListFlavor);
+                        if (data instanceof List<?> rawFiles) {
+                            for (Object obj : rawFiles) {
+                                if (obj instanceof java.io.File f) {
+                                    String msg = ModpackArchive.importSmartFile(
+                                            f.toPath(), LauncherUi.this.paths, LauncherUi.this.config);
+                                    status(msg);
+                                    log("[Drag & Drop] " + msg);
+                                }
+                            }
+                            syncModpackControls();
+                            refreshModsTable();
+                        }
+                        dtde.dropComplete(true);
+                    } catch (Exception e) {
+                        dtde.dropComplete(false);
+                        status("Ошибка Drag & Drop: " + e.getMessage());
+                    }
+                }
+            });
+        } catch (Throwable ignored) {
         }
     }
 

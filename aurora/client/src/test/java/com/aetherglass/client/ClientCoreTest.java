@@ -12,6 +12,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -253,9 +254,13 @@ final class ClientCoreTest {
         layout.resetAll();
 
         // Проверяем наличие всех ключевых панелей из Блока 4 и Блока 5
+        // Панель «Игроки рядом» удалена по просьбе: такого элемента HUD больше нет.
+        for (com.aetherglass.client.render.hud.HudElementType type
+                : com.aetherglass.client.render.hud.HudElementType.values()) {
+            assertFalse("friends".equals(type.settingsId()), "элемент «Игроки рядом» удалён");
+        }
         assertTrue(com.aetherglass.client.render.hud.HudElementType.WATERMARK.defaultEnabled());
         assertTrue(com.aetherglass.client.render.hud.HudElementType.PERFORMANCE.defaultEnabled());
-        assertTrue(com.aetherglass.client.render.hud.HudElementType.FRIENDS.defaultEnabled());
         assertTrue(com.aetherglass.client.render.hud.HudElementType.POTIONS.defaultEnabled());
         assertTrue(com.aetherglass.client.render.hud.HudElementType.COOLDOWNS.defaultEnabled());
         assertTrue(com.aetherglass.client.render.hud.HudElementType.COORDINATES.defaultEnabled());
@@ -320,10 +325,26 @@ final class ClientCoreTest {
         blocks.glowSetting().set(1.15F);
         assertEquals(1.15F, blocks.glow(), 0.001F);
 
-        // 4.2: HandsShader — модель предмета остаётся 100% видимой
+        // 4.2: HandsShader и ViewModel — включение и изменение ползунков не вызывают рекурсию и применяются к рендереру
         com.aetherglass.client.modules.impl.HandEffectsModule hands =
                 new com.aetherglass.client.modules.impl.HandEffectsModule();
         assertEquals(1.00F, hands.modelAlpha(), 0.001F);
+        hands.setEnabled(true);
+        assertTrue(hands.isEnabled(), "HandEffectsModule должен оставаться включённым после onEnable()");
+        assertTrue(com.aetherglass.client.render.hand.HandEffectRenderer.isActive(), "HandEffectRenderer должен быть активен");
+        assertTrue(com.aetherglass.client.render.hand.HandEffectRenderer.isShaderActive(), "HandsShader должен быть включён");
+        hands.setViewOffset(0.35F, -0.20F, 0.45F);
+        hands.setViewScale(1.20F);
+        hands.setViewRotation(10.0F, -20.0F, 10.0F);
+        assertTrue(hands.isEnabled(), "Изменение ползунков ViewModel не должно аварийно выключать модуль");
+        assertEquals(0.35F, com.aetherglass.client.render.hand.HandEffectRenderer.viewOffsetX(), 0.01F);
+        assertEquals(-0.20F, com.aetherglass.client.render.hand.HandEffectRenderer.viewOffsetY(), 0.01F);
+        assertEquals(0.45F, com.aetherglass.client.render.hand.HandEffectRenderer.viewOffsetZ(), 0.01F);
+        assertEquals(1.20F, com.aetherglass.client.render.hand.HandEffectRenderer.viewScale(), 0.01F);
+        assertEquals(10.0F, com.aetherglass.client.render.hand.HandEffectRenderer.viewRotX(), 0.01F);
+        assertEquals(-20.0F, com.aetherglass.client.render.hand.HandEffectRenderer.viewRotY(), 0.01F);
+        assertEquals(10.0F, com.aetherglass.client.render.hand.HandEffectRenderer.viewRotZ(), 0.01F);
+        hands.setEnabled(false);
 
         // 4.3: Crosshair — поддержка минимального размера в 1–2 пикселя
         assertEquals(5, com.aetherglass.client.render.crosshair.CrosshairStyle.values().length);
@@ -356,5 +377,35 @@ final class ClientCoreTest {
         } finally {
             com.aetherglass.client.gui.render.DrawUtil.setScramblePhaseOverride(-1.0F);
         }
+    }
+
+    @Test
+    @DisplayName("Discord RPC: валидный JSON SET_ACTIVITY (закрытые скобки), лого и IPC-фрейм")
+    void discordRpcPayloadAndFrame() {
+        com.aetherglass.client.modules.impl.DiscordRpcModule rpc =
+                new com.aetherglass.client.modules.impl.DiscordRpcModule();
+        String json = rpc.buildActivityJson("Одиночная игра", "del1very • 1.21.11", 1700000000L);
+
+        // Главное: payload обязан быть корректным JSON, иначе Discord молча его отбрасывает.
+        com.google.gson.JsonObject root = com.google.gson.JsonParser.parseString(json).getAsJsonObject();
+        assertEquals("SET_ACTIVITY", root.get("cmd").getAsString());
+        com.google.gson.JsonObject args = root.getAsJsonObject("args");
+        assertTrue(args.has("pid"));
+        com.google.gson.JsonObject activity = args.getAsJsonObject("activity");
+        assertEquals("Одиночная игра", activity.get("details").getAsString());
+        assertEquals("del1very • 1.21.11", activity.get("state").getAsString());
+        assertEquals(1700000000L, activity.getAsJsonObject("timestamps").get("start").getAsLong());
+
+        String logo = com.aetherglass.client.modules.impl.DiscordRpcModule.DEFAULT_LOGO_GIF;
+        assertTrue(logo.startsWith("https://") && logo.endsWith(".gif"), "лого — внешняя GIF-ссылка");
+        assertEquals(logo, activity.getAsJsonObject("assets").get("large_image").getAsString());
+        assertTrue(activity.getAsJsonObject("assets").get("large_text").getAsString().startsWith("AetherVisuals"));
+
+        // Бинарный IPC-фрейм: 8 байт заголовка (опкод + длина, little-endian) + UTF-8 JSON.
+        int bytes = json.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        byte[] frame = com.aetherglass.client.modules.impl.DiscordRpcModule.packIpcFrame(1, json);
+        assertEquals(8 + bytes, frame.length);
+        assertEquals(1, frame[0]);
+        assertEquals((byte) (bytes & 0xFF), frame[4]);
     }
 }

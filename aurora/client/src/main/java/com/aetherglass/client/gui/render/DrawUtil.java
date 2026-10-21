@@ -44,6 +44,35 @@ public final class DrawUtil {
     private static final int NINE_CORNER_TEX = 64;
     private static final int NINE_CENTER_TEX = NINE_TEX_SIZE - NINE_CORNER_TEX * 2; // 128
 
+    private static final int MAX_PRECOMPUTED_RADIUS = 32;
+    private static final int[][] CORNER_INSET = new int[MAX_PRECOMPUTED_RADIUS + 1][MAX_PRECOMPUTED_RADIUS + 1];
+
+    static {
+        for (int r = 2; r <= MAX_PRECOMPUTED_RADIUS; r++) {
+            for (int row = 0; row < r; row++) {
+                int dist = r - row;
+                double dy = dist - 0.5D;
+                double sq = (double) r * r - dy * dy;
+                CORNER_INSET[r][row] = sq <= 0.0D ? r : Math.max(0, (int) Math.round(r - Math.sqrt(sq)));
+            }
+        }
+    }
+
+    /** Кэши для исключения аллокаций Component и повторного измерения глифов TrueType в каждом кадре. */
+    private static final java.util.concurrent.ConcurrentHashMap<String, Component> COMP_MODERN_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>(256);
+    private static final java.util.concurrent.ConcurrentHashMap<String, Component> COMP_BOLD_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>(256);
+    private static final java.util.concurrent.ConcurrentHashMap<String, Component> COMP_SMALL_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>(256);
+
+    private static final java.util.concurrent.ConcurrentHashMap<String, Integer> WIDTH_MODERN_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>(256);
+    private static final java.util.concurrent.ConcurrentHashMap<String, Integer> WIDTH_BOLD_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>(256);
+    private static final java.util.concurrent.ConcurrentHashMap<String, Integer> WIDTH_SMALL_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>(256);
+
     /** Символы шифра при появлении текста (*!&#^!@^&#!@#(&!). */
     private static final char[] CIPHER_CHARS = "*!&#^!@^&#!@#(&!$%?+=~".toCharArray();
     private static final java.util.concurrent.ConcurrentHashMap<String, Long> SEEN_TEXT_NANOS =
@@ -97,9 +126,14 @@ public final class DrawUtil {
             progress = scramblePhaseOverride;
         } else {
             long start = scrambleStartNanos;
-            float globalElapsed = (now - start) * 1.0e-9F;
+            long globalDeltaNanos = now - start;
+            // Быстрый выход без обращений к ConcurrentHashMap после завершения анимации открытия
+            if (globalDeltaNanos > 1_300_000_000L) {
+                return text;
+            }
+            float globalElapsed = globalDeltaNanos * 1.0e-9F;
             long stringStart = start;
-            if (!isDynamicCounter(text) && SEEN_TEXT_NANOS.size() < 1024) {
+            if (!isDynamicCounter(text) && SEEN_TEXT_NANOS.size() < 512) {
                 Long prev = SEEN_TEXT_NANOS.putIfAbsent(text, now);
                 if (prev == null) {
                     stringStart = now;
@@ -198,10 +232,20 @@ public final class DrawUtil {
     }
 
     /**
-     * Идеально гладкий круглый SDF-бегунок для ползунков (без восьмиугольных ступенек).
+     * Идеально гладкий круглый бегунок для ползунков и индикаторов (батч без смены текстурного пайплайна для малых размеров).
      */
     public static void drawSliderKnob(GuiGraphics graphics, int x, int y, int size, int color) {
         if (graphics == null || size <= 0 || ColorUtil.alpha(color) <= 0) {
+            return;
+        }
+        if (size <= 3) {
+            graphics.fill(x, y, x + size, y + size, color);
+            return;
+        }
+        if (size <= 8) {
+            graphics.fill(x + 1, y, x + size - 1, y + size, color);
+            graphics.fill(x, y + 1, x + 1, y + size - 1, color);
+            graphics.fill(x + size - 1, y + 1, x + size, y + size - 1, color);
             return;
         }
         graphics.blit(RenderPipelines.GUI_TEXTURED, TEX_SLIDER_KNOB,
@@ -209,18 +253,13 @@ public final class DrawUtil {
     }
 
     /**
-     * Скруглённый прямоугольник через SDF 9-slice текстуру (идеально гладкие углы без ступенек).
+     * Быстрый скруглённый прямоугольник (без 9 текстурных blit-вызовов на каждую полоску/плашку).
      */
     public static void fillRounded(GuiGraphics graphics, int x, int y, int width, int height, int radius, int color) {
         if (graphics == null || width <= 0 || height <= 0 || ColorUtil.alpha(color) <= 0) {
             return;
         }
-        int r = limit(radius, width, height);
-        if (r <= 0) {
-            graphics.fill(x, y, x + width, y + height, color);
-            return;
-        }
-        drawNineSlice(graphics, TEX_NINE_FILL, x, y, width, height, r, NINE_CORNER_TEX, NINE_TEX_SIZE, color);
+        fillRoundedPixelExact(graphics, x, y, width, height, radius, color);
     }
 
     /**
@@ -331,13 +370,12 @@ public final class DrawUtil {
         float cfgGlow = AuroraTheme.borderGlow();
         float cfgWidth = AuroraTheme.borderWidth();
 
-        // 1. Деликатное внешнее свечение (регулируется «Свечение рамки» в модуле Оформление)
+        // 1. Деликатное внешнее свечение (без переключения на 9-slice текстуру — единый GPU-батч!)
         if (glow > 0.015F && cfgGlow > 0.01F) {
-            int haloAlpha = Math.round(95 * a * glow * cfgGlow);
+            int haloAlpha = Math.round(76 * a * glow * cfgGlow);
             if (haloAlpha > 2) {
-                drawNineSlice(graphics, TEX_NINE_SHADOW, x - 2, y - 2, width + 4, height + 4,
-                        Math.min(16, r + 2), NINE_CORNER_TEX, NINE_TEX_SIZE,
-                        ColorUtil.withAlpha(neonColor, haloAlpha));
+                drawThinRoundedOutline(graphics, x - 1, y - 1, width + 2, height + 2, r + 1,
+                        ColorUtil.withAlpha(neonColor, haloAlpha), 1);
             }
         }
 
@@ -359,86 +397,73 @@ public final class DrawUtil {
     }
 
     /**
-     * Заполняет прямоугольник со скруглёнными углами с субпиксельной точностью (0.5 GUI px = 1 физ. пиксель при guiScale=2).
+     * Заполняет прямоугольник со скруглёнными углами за минимальное число вызовов {@code graphics.fill}
+     * (объединяя строки с одинаковым отступом и используя предвычисленную таблицу {@code CORNER_INSET} без {@code Math.sqrt}).
      */
     public static void fillRoundedPixelExact(GuiGraphics graphics, int x, int y, int width, int height,
                                              int radius, int color) {
         if (graphics == null || width <= 0 || height <= 0 || ColorUtil.alpha(color) <= 0) {
             return;
         }
-        int sx = x * 2;
-        int sy = y * 2;
-        int sw = width * 2;
-        int sh = height * 2;
-        int sr = Math.max(0, Math.min(radius * 2, Math.min(sw / 2, sh / 2)));
-
-        graphics.pose().pushMatrix();
-        graphics.pose().scale(0.5F, 0.5F);
-        if (sr <= 1) {
-            graphics.fill(sx, sy, sx + sw, sy + sh, color);
-        } else {
-            graphics.fill(sx, sy + sr, sx + sw, sy + sh - sr, color);
-            for (int ry = 0; ry < sr; ry++) {
-                int inset = rowInset(ry, sh, sr);
-                if (sw - inset * 2 > 0) {
-                    graphics.fill(sx + inset, sy + ry, sx + sw - inset, sy + ry + 1, color);
-                    int botY = sy + sh - 1 - ry;
-                    graphics.fill(sx + inset, botY, sx + sw - inset, botY + 1, color);
+        int r = Math.max(0, Math.min(radius, Math.min(width / 2, Math.min(height / 2, MAX_PRECOMPUTED_RADIUS))));
+        if (r <= 1) {
+            graphics.fill(x, y, x + width, y + height, color);
+            return;
+        }
+        if (height > r * 2) {
+            graphics.fill(x, y + r, x + width, y + height - r, color);
+        }
+        int[] insets = CORNER_INSET[r];
+        int bandStart = 0;
+        int curInset = insets[0];
+        for (int ry = 1; ry <= r; ry++) {
+            int nextInset = (ry < r) ? insets[ry] : -1;
+            if (nextInset != curInset) {
+                int spanW = width - curInset * 2;
+                if (spanW > 0) {
+                    graphics.fill(x + curInset, y + bandStart, x + width - curInset, y + ry, color);
+                    graphics.fill(x + curInset, y + height - ry, x + width - curInset, y + height - bandStart, color);
                 }
+                bandStart = ry;
+                curInset = nextInset;
             }
         }
-        graphics.pose().popMatrix();
     }
 
     /**
-     * Отрисовывает ультра-тонкую чёткую рамку прямоугольника со скруглёнными углами
-     * с разрешением в 1 физический пиксель (0.5 GUI px).
+     * Отрисовывает тонкую чёткую рамку прямоугольника со скруглёнными углами всего за 4–8 вызовов {@code graphics.fill}
+     * без {@code pushMatrix/popMatrix} и без {@code Math.sqrt}.
      */
     public static void drawThinRoundedOutline(GuiGraphics graphics, int x, int y, int width, int height,
                                               int radius, int color, int thickness) {
         if (graphics == null || width <= 2 || height <= 2 || ColorUtil.alpha(color) <= 0) {
             return;
         }
-        int sx = x * 2;
-        int sy = y * 2;
-        int sw = width * 2;
-        int sh = height * 2;
-        int sr = Math.max(0, Math.min(radius * 2, Math.min(sw / 2, sh / 2)));
-        int bw = Math.max(1, Math.min(6, thickness));
+        int r = Math.max(0, Math.min(radius, Math.min(width / 2, Math.min(height / 2, MAX_PRECOMPUTED_RADIUS))));
+        int bw = Math.max(1, Math.min(3, thickness));
 
-        graphics.pose().pushMatrix();
-        graphics.pose().scale(0.5F, 0.5F);
-        if (sr <= 1) {
-            graphics.fill(sx, sy, sx + sw, sy + bw, color);
-            graphics.fill(sx, sy + sh - bw, sx + sw, sy + sh, color);
-            graphics.fill(sx, sy + bw, sx + bw, sy + sh - bw, color);
-            graphics.fill(sx + sw - bw, sy + bw, sx + sw, sy + sh - bw, color);
-        } else {
-            // Прямые участки сторон (верх, низ, лево, право) толщиной ровно bw физ. пикселей
-            graphics.fill(sx + sr, sy, sx + sw - sr, sy + bw, color);
-            graphics.fill(sx + sr, sy + sh - bw, sx + sw - sr, sy + sh, color);
-            graphics.fill(sx, sy + sr, sx + bw, sy + sh - sr, color);
-            graphics.fill(sx + sw - bw, sy + sr, sx + sw, sy + sh - sr, color);
-
-            // Гладкие субпиксельные дуги скруглённых углов
-            for (int ry = 0; ry < sr; ry++) {
-                int outerInset = rowInset(ry, sh, sr);
-                int spanEnd;
-                if (ry < bw) {
-                    spanEnd = sr;
-                } else {
-                    int prevOuter = rowInset(ry - bw, sh, sr);
-                    spanEnd = Math.max(outerInset + bw, prevOuter);
-                }
-                int topY = sy + ry;
-                int botY = sy + sh - 1 - ry;
-                graphics.fill(sx + outerInset, topY, sx + spanEnd, topY + 1, color);
-                graphics.fill(sx + sw - spanEnd, topY, sx + sw - outerInset, topY + 1, color);
-                graphics.fill(sx + outerInset, botY, sx + spanEnd, botY + 1, color);
-                graphics.fill(sx + sw - spanEnd, botY, sx + sw - outerInset, botY + 1, color);
-            }
+        if (r <= 1) {
+            graphics.fill(x, y, x + width, y + bw, color);
+            graphics.fill(x, y + height - bw, x + width, y + height, color);
+            graphics.fill(x, y + bw, x + bw, y + height - bw, color);
+            graphics.fill(x + width - bw, y + bw, x + width, y + height - bw, color);
+            return;
         }
-        graphics.pose().popMatrix();
+
+        int cut = (r <= 3) ? 1 : 2;
+        // 4 прямые стороны
+        graphics.fill(x + cut, y, x + width - cut, y + bw, color);
+        graphics.fill(x + cut, y + height - bw, x + width - cut, y + height, color);
+        graphics.fill(x, y + cut, x + bw, y + height - cut, color);
+        graphics.fill(x + width - bw, y + cut, x + width, y + height - cut, color);
+
+        // 4 угловых пикселя скругления
+        if (cut >= 2) {
+            graphics.fill(x + 1, y + 1, x + 1 + bw, y + 1 + bw, color);
+            graphics.fill(x + width - 1 - bw, y + 1, x + width - 1, y + 1 + bw, color);
+            graphics.fill(x + 1, y + height - 1 - bw, x + 1 + bw, y + height - 1, color);
+            graphics.fill(x + width - 1 - bw, y + height - 1 - bw, x + width - 1, y + height - 1, color);
+        }
     }
 
     /**
@@ -615,28 +640,66 @@ public final class DrawUtil {
     }
 
     public static Component modernComponent(String text, Style style) {
-        return Component.literal(text == null ? "" : text).withStyle(style);
+        if (text == null || text.isEmpty()) {
+            return Component.empty();
+        }
+        java.util.concurrent.ConcurrentHashMap<String, Component> cache =
+                style == STYLE_MODERN_BOLD ? COMP_BOLD_CACHE
+                        : (style == STYLE_MODERN_SMALL ? COMP_SMALL_CACHE : COMP_MODERN_CACHE);
+        Component cached = cache.get(text);
+        if (cached != null) {
+            return cached;
+        }
+        Component created = Component.literal(text).withStyle(style);
+        if (cache.size() < 1024) {
+            cache.put(text, created);
+        }
+        return created;
     }
 
     public static int modernWidth(Font font, String text) {
         if (font == null || text == null || text.isEmpty()) {
             return 0;
         }
-        return font.width(modernComponent(text, STYLE_MODERN));
+        Integer cached = WIDTH_MODERN_CACHE.get(text);
+        if (cached != null) {
+            return cached;
+        }
+        int w = font.width(modernComponent(text, STYLE_MODERN));
+        if (WIDTH_MODERN_CACHE.size() < 1024) {
+            WIDTH_MODERN_CACHE.put(text, w);
+        }
+        return w;
     }
 
     public static int modernBoldWidth(Font font, String text) {
         if (font == null || text == null || text.isEmpty()) {
             return 0;
         }
-        return font.width(modernComponent(text, STYLE_MODERN_BOLD));
+        Integer cached = WIDTH_BOLD_CACHE.get(text);
+        if (cached != null) {
+            return cached;
+        }
+        int w = font.width(modernComponent(text, STYLE_MODERN_BOLD));
+        if (WIDTH_BOLD_CACHE.size() < 1024) {
+            WIDTH_BOLD_CACHE.put(text, w);
+        }
+        return w;
     }
 
     public static int modernSmallWidth(Font font, String text) {
         if (font == null || text == null || text.isEmpty()) {
             return 0;
         }
-        return font.width(modernComponent(text, STYLE_MODERN_SMALL));
+        Integer cached = WIDTH_SMALL_CACHE.get(text);
+        if (cached != null) {
+            return cached;
+        }
+        int w = font.width(modernComponent(text, STYLE_MODERN_SMALL));
+        if (WIDTH_SMALL_CACHE.size() < 1024) {
+            WIDTH_SMALL_CACHE.put(text, w);
+        }
+        return w;
     }
 
     public static void drawModern(GuiGraphics graphics, Font font, String text, int x, int y, int color) {
@@ -682,24 +745,17 @@ public final class DrawUtil {
     }
 
     public static int rowInset(int row, int height, int radius) {
-        int r = Math.max(0, Math.min(radius, Math.min(height / 2, 32)));
+        int r = Math.max(0, Math.min(radius, Math.min(height / 2, MAX_PRECOMPUTED_RADIUS)));
         if (r <= 1) {
             return 0;
         }
-        int dist = -1;
-        if (row < r) {
-            dist = r - row;
-        } else if (row >= height - r) {
-            dist = row - (height - r - 1);
+        if (row >= 0 && row < r) {
+            return CORNER_INSET[r][row];
         }
-        if (dist <= 0) {
-            return 0;
+        int botIdx = height - 1 - row;
+        if (botIdx >= 0 && botIdx < r) {
+            return CORNER_INSET[r][botIdx];
         }
-        double dy = dist - 0.5D;
-        double sq = (double) r * r - dy * dy;
-        if (sq <= 0.0D) {
-            return r;
-        }
-        return Math.max(0, (int) Math.round(r - Math.sqrt(sq)));
+        return 0;
     }
 }

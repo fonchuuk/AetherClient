@@ -731,9 +731,9 @@ public final class UiKit {
 
     public static void styleTable(JTable table) {
         table.setOpaque(false);
-        table.setRowHeight(26);
+        table.setRowHeight(36);
         table.setShowGrid(false);
-        table.setIntercellSpacing(new Dimension(0, 2));
+        table.setIntercellSpacing(new Dimension(0, 4));
         table.setFont(UiTheme.BASE);
         table.setForeground(UiTheme.TEXT);
         table.setBackground(UiTheme.CARD_BOTTOM);
@@ -747,12 +747,15 @@ public final class UiKit {
         header.setForeground(UiTheme.TEXT_MUTED);
         header.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
         header.setPreferredSize(new Dimension(header.getPreferredSize().width, 28));
-        header.setDefaultRenderer(new CellRenderer() {
+        header.setDefaultRenderer(new DefaultTableCellRenderer() {
             @Override
             public Component getTableCellRendererComponent(JTable table2, Object value, boolean selected,
                                                            boolean focus, int row, int column) {
                 Component result = super.getTableCellRendererComponent(table2, value, selected, focus, row, column);
+                result.setFont(UiTheme.SMALL_BOLD);
+                result.setBackground(UiTheme.CARD_TOP);
                 result.setForeground(UiTheme.TEXT_MUTED);
+                setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 10));
                 return result;
             }
         });
@@ -969,27 +972,249 @@ public final class UiKit {
         }
     }
 
+    private static final java.util.Map<String, java.awt.image.BufferedImage> ICON_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Set<String> ICON_LOADING =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    public static void preloadModrinthIcon(String key, String iconUrl, Component repaintTarget) {
+        if (key == null || iconUrl == null || iconUrl.isBlank()
+                || ICON_CACHE.containsKey(key) || !ICON_LOADING.add(key)) {
+            return;
+        }
+        Thread loader = new Thread(() -> {
+            try (var in = java.net.URI.create(iconUrl).toURL().openStream()) {
+                var img = javax.imageio.ImageIO.read(in);
+                if (img != null) {
+                    ICON_CACHE.put(key, img);
+                    if (repaintTarget != null) {
+                        javax.swing.SwingUtilities.invokeLater(repaintTarget::repaint);
+                    }
+                }
+            } catch (Exception ignored) {
+            } finally {
+                ICON_LOADING.remove(key);
+            }
+        }, "modrinth-icon-" + key);
+        loader.setDaemon(true);
+        loader.start();
+    }
+
     private static class CellRenderer extends DefaultTableCellRenderer {
+        private int currentColumn;
+        private int currentRow;
+        private boolean isRowSelected;
+        private String cellText = "";
+
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value, boolean selected, boolean focus,
                                                        int row, int column) {
+            this.currentColumn = column;
+            this.currentRow = row;
+            this.isRowSelected = selected;
+            this.cellText = value == null ? "" : String.valueOf(value);
+
             Component result = super.getTableCellRendererComponent(table, value, selected, focus, row, column);
-            result.setFont(UiTheme.BASE);
+            result.setFont(column == 0 ? UiTheme.HEADING : UiTheme.BASE);
             result.setForeground(UiTheme.TEXT);
             if (!selected) {
                 result.setBackground(row % 2 == 0 ? new Color(0x0E, 0x10, 0x16) : UiTheme.CARD_BOTTOM);
             }
-            setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 10));
-            String text = String.valueOf(value);
-            if ("установлен".equals(text) || "готов".equals(text) || text.startsWith("Включён")) {
-                result.setForeground(UiTheme.ACCENT);
-            } else if ("отсутствует".equals(text) || "ошибка".equals(text)) {
+            setBorder(BorderFactory.createEmptyBorder(0, column == 0 ? 44 : 10, 0, 10));
+            String text = this.cellText;
+            if ("установлен".equals(text) || text.startsWith("готов") || text.startsWith("Включён")) {
+                result.setForeground(UiTheme.SUCCESS);
+                result.setFont(UiTheme.SMALL_BOLD);
+            } else if ("отсутствует".equals(text) || text.startsWith("ошибка") || text.startsWith("повреждён")) {
                 result.setForeground(UiTheme.DANGER);
-            } else if ("устарел".equals(text)) {
+                result.setFont(UiTheme.SMALL_BOLD);
+            } else if (text.startsWith("отключён") || "устарел".equals(text)) {
                 result.setForeground(UiTheme.WARNING);
+                result.setFont(UiTheme.SMALL_BOLD);
+            } else if (column == 2 && (text.endsWith("M") || text.endsWith("K"))) {
+                result.setForeground(UiTheme.ACCENT_3);
+                result.setFont(UiTheme.SMALL_BOLD);
             }
             return result;
         }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            if (this.currentColumn == 0 && !this.cellText.isEmpty()) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                int size = 26;
+                int ix = 10;
+                int iy = Math.max(2, (getHeight() - size) / 2);
+                paintProjectIconBadge(g2, this.cellText, ix, iy, size);
+                g2.dispose();
+            }
+        }
+    }
+
+    private static void paintProjectIconBadge(Graphics2D g2, String title, int x, int y, int size) {
+        String lower = title.toLowerCase(java.util.Locale.ROOT);
+        java.awt.image.BufferedImage cached = ICON_CACHE.get(lower);
+        if (cached != null) {
+            Shape oldClip = g2.getClip();
+            g2.setClip(new RoundRectangle2D.Float(x, y, size, size, 7, 7));
+            g2.drawImage(cached, x, y, size, size, null);
+            g2.setClip(oldClip);
+            g2.setColor(UiTheme.ACCENT);
+            g2.setStroke(new BasicStroke(1.1F));
+            g2.draw(new RoundRectangle2D.Float(x, y, size, size, 7, 7));
+            return;
+        }
+
+        // Определяем цветовую тему и пиктограмму для конкретного мода / ресурспака / шейдера
+        Color bgTop;
+        Color bgBot;
+        Color rim;
+        int iconType; // 0=cube(Sodium), 1=iris, 2=bolt(Lithium), 3=scroll(Fabric), 4=creeper(RP), 5=grass(Faithful), 6=shader(Sun), 7=aether(A), 8=chip(Ferrite), 9=eye(Culling)
+
+        if (lower.contains("aetherglass")) {
+            bgTop = new Color(0x24, 0x10, 0x3D);
+            bgBot = new Color(0x0E, 0x08, 0x1A);
+            rim = new Color(0xAA, 0x3D, 0xFF);
+            iconType = 7;
+        } else if (lower.contains("sodium") || lower.contains("reeses")) {
+            bgTop = new Color(0x09, 0x38, 0x28);
+            bgBot = new Color(0x06, 0x1F, 0x17);
+            rim = new Color(0x00, 0xF5, 0xA0);
+            iconType = 0;
+        } else if (lower.contains("iris") || lower.contains("complementary") || lower.contains("bsl")
+                || lower.contains("solas") || lower.contains("bliss") || lower.contains("shader")
+                || lower.contains("makeup") || lower.contains("voxels")) {
+            bgTop = new Color(0x2E, 0x14, 0x4D);
+            bgBot = new Color(0x12, 0x26, 0x4A);
+            rim = new Color(0x00, 0xF2, 0xFF);
+            iconType = lower.contains("iris") ? 1 : 6;
+        } else if (lower.contains("fabric")) {
+            bgTop = new Color(0x3D, 0x2E, 0x14);
+            bgBot = new Color(0x21, 0x18, 0x0A);
+            rim = new Color(0xFF, 0xC8, 0x57);
+            iconType = 3;
+        } else if (lower.contains("lithium") || lower.contains("immediatelyfast") || lower.contains("c2me")
+                || lower.contains("krypton") || lower.contains("dynamic") || lower.contains("badoptimizations")) {
+            bgTop = new Color(0x36, 0x15, 0x42);
+            bgBot = new Color(0x1A, 0x0B, 0x24);
+            rim = new Color(0xFF, 0x3D, 0xAE);
+            iconType = 2;
+        } else if (lower.contains("ferrite") || lower.contains("cloth") || lower.contains("mod menu") || lower.contains("modmenu")) {
+            bgTop = new Color(0x3B, 0x1D, 0x12);
+            bgBot = new Color(0x1F, 0x0E, 0x08);
+            rim = new Color(0xFF, 0x8A, 0x3D);
+            iconType = 8;
+        } else if (lower.contains("culling") || lower.contains("zoom") || lower.contains("continuity") || lower.contains("xaero")) {
+            bgTop = new Color(0x0C, 0x2D, 0x3E);
+            bgBot = new Color(0x07, 0x17, 0x22);
+            rim = new Color(0x00, 0xE5, 0xFF);
+            iconType = 9;
+        } else if (lower.contains("fresh") || lower.contains("animation") || lower.contains("skin")) {
+            bgTop = new Color(0x14, 0x3B, 0x1C);
+            bgBot = new Color(0x0B, 0x21, 0x10);
+            rim = new Color(0x4A, 0xDE, 0x80);
+            iconType = 4;
+        } else if (lower.contains("faithful") || lower.contains("stay true") || lower.contains("bare bones")
+                || lower.contains("vanilla") || lower.contains("reimagined") || lower.contains("dark") || lower.contains("fire") || lower.contains("fullbright")) {
+            bgTop = new Color(0x1E, 0x36, 0x18);
+            bgBot = new Color(0x2E, 0x1E, 0x12);
+            rim = new Color(0x86, 0xEF, 0xAC);
+            iconType = 5;
+        } else {
+            bgTop = new Color(0x1E, 0x16, 0x33);
+            bgBot = new Color(0x0F, 0x0C, 0x1C);
+            rim = UiTheme.ACCENT;
+            iconType = Math.abs(lower.hashCode()) % 7;
+        }
+
+        g2.setPaint(new GradientPaint(x, y, bgTop, x, y + size, bgBot));
+        g2.fill(new RoundRectangle2D.Float(x, y, size, size, 7, 7));
+
+        int cx = x + size / 2;
+        int cy = y + size / 2;
+        switch (iconType) {
+            case 0 -> { // Куб-кристалл Sodium
+                g2.setColor(rim);
+                int[] px = {cx, x + size - 5, cx, x + 5};
+                int[] py = {y + 4, cy, y + size - 4, cy};
+                g2.fillPolygon(px, py, 4);
+                g2.setColor(Color.WHITE);
+                g2.fillOval(cx - 2, cy - 2, 4, 4);
+            }
+            case 1 -> { // Линза Iris Shaders
+                g2.setColor(new Color(0xFF, 0x3D, 0xAE, 190));
+                g2.fillOval(x + 4, y + 4, size - 8, size - 8);
+                g2.setColor(rim);
+                g2.setStroke(new BasicStroke(1.8F));
+                g2.drawOval(x + 5, y + 5, size - 10, size - 10);
+                g2.setColor(Color.WHITE);
+                g2.fillOval(cx - 3, cy - 3, 6, 6);
+            }
+            case 2 -> { // Молния ускорения (Lithium / ImmediatelyFast)
+                g2.setColor(rim);
+                int[] bx = {cx + 2, x + 6, cx, cx - 2, x + size - 6, cx};
+                int[] by = {y + 3, cy + 1, cy + 1, y + size - 3, cy - 1, cy - 1};
+                g2.fillPolygon(bx, by, 6);
+            }
+            case 3 -> { // Эмблема свитка Fabric API
+                g2.setColor(new Color(0xFD, 0xE6, 0x8A));
+                g2.fillRoundRect(x + 6, y + 5, size - 12, size - 10, 4, 4);
+                g2.setColor(new Color(0x92, 0x40, 0x0E));
+                g2.drawLine(x + 9, y + 9, x + size - 9, y + 9);
+                g2.drawLine(x + 9, y + 13, x + size - 9, y + 13);
+                g2.drawLine(x + 9, y + 17, x + size - 11, y + 17);
+            }
+            case 4 -> { // Пиксель-арт Крипера (Fresh Animations)
+                g2.setColor(new Color(0x4A, 0xDE, 0x80));
+                g2.fillRect(x + 5, y + 5, size - 10, size - 10);
+                g2.setColor(new Color(0x07, 0x17, 0x0B));
+                g2.fillRect(x + 7, y + 8, 4, 4);
+                g2.fillRect(x + size - 11, y + 8, 4, 4);
+                g2.fillRect(cx - 2, y + 12, 4, 6);
+                g2.fillRect(cx - 4, y + 15, 2, 4);
+                g2.fillRect(cx + 2, y + 15, 2, 4);
+            }
+            case 5 -> { // Пиксель-арт блока травы (Faithful / Ресурспаки)
+                g2.setColor(new Color(0x85, 0x4D, 0x27));
+                g2.fillRect(x + 5, y + 10, size - 10, size - 15);
+                g2.setColor(new Color(0x4A, 0xDE, 0x80));
+                g2.fillRect(x + 5, y + 5, size - 10, 6);
+                g2.fillRect(x + 7, y + 11, 3, 2);
+                g2.fillRect(x + 14, y + 11, 4, 2);
+            }
+            case 6 -> { // Солнце и облака (Шейдерпак Iris)
+                g2.setColor(new Color(0xFF, 0xB8, 0x4D));
+                g2.fillOval(cx - 5, y + 5, 10, 10);
+                g2.setColor(new Color(0xE0, 0xF2, 0xFE));
+                g2.fillRoundRect(x + 5, y + 13, size - 10, 6, 5, 5);
+            }
+            case 7 -> { // Фирменная буква «A» AetherGlass
+                g2.setColor(rim);
+                g2.setStroke(new BasicStroke(2.2F, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.drawLine(cx, y + 5, x + 6, y + size - 5);
+                g2.drawLine(cx, y + 5, x + size - 6, y + size - 5);
+                g2.drawLine(x + 8, y + size - 9, x + size - 8, y + size - 9);
+            }
+            case 8 -> { // Чип ОЗУ (FerriteCore / Настройки)
+                g2.setColor(rim);
+                g2.fillRoundRect(x + 6, y + 6, size - 12, size - 12, 3, 3);
+                g2.setColor(bgBot);
+                g2.fillRect(x + 9, y + 9, size - 18, size - 18);
+            }
+            default -> { // Оптический радар (EntityCulling / Zoomify / Xaero)
+                g2.setColor(rim);
+                g2.setStroke(new BasicStroke(1.6F));
+                g2.drawOval(x + 5, y + 7, size - 10, size - 14);
+                g2.fillOval(cx - 3, cy - 3, 6, 6);
+            }
+        }
+
+        g2.setColor(rim);
+        g2.setStroke(new BasicStroke(1.15F));
+        g2.draw(new RoundRectangle2D.Float(x, y, size, size, 7, 7));
     }
 
     /** Анимированные вкладки узкой левой панели навигации со скользящим неоновым индикатором. */
@@ -1155,5 +1380,618 @@ public final class UiKit {
         public boolean isBorderOpaque() {
             return false;
         }
+    }
+
+    /**
+     * Фирменный 38×38 матовый чёрный бейдж со светящейся неоново-фиолетовой буквой «A» для шапки лаунчера.
+     */
+    public static JComponent neonLogoBadge() {
+        return new NeonLogoBadge();
+    }
+
+    private static final class NeonLogoBadge extends JComponent implements Animated {
+        NeonLogoBadge() {
+            setOpaque(false);
+            setPreferredSize(new Dimension(38, 38));
+            setMinimumSize(new Dimension(38, 38));
+            register(this);
+        }
+
+        @Override
+        public boolean tick() {
+            return isDisplayable();
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            int w = getWidth();
+            int h = getHeight();
+            if (w <= 0 || h <= 0) {
+                return;
+            }
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+
+            float t = seconds();
+            float pulse = 0.5F + 0.5F * (float) Math.sin(t * 2.2F);
+
+            // Внешнее мягкое неоновое свечение
+            int glowAlpha = Math.max(0, Math.min(255, Math.round(28 + pulse * 26)));
+            g2.setColor(new Color(UiTheme.ACCENT.getRed(), UiTheme.ACCENT.getGreen(), UiTheme.ACCENT.getBlue(), glowAlpha));
+            g2.fill(new RoundRectangle2D.Float(1.0F, 1.0F, w - 2.0F, h - 2.0F, 11, 11));
+
+            // Матовая чёрная основа (#0B0C10)
+            g2.setColor(UiTheme.CARD_TOP);
+            g2.fill(new RoundRectangle2D.Float(2.0F, 2.0F, w - 4.0F, h - 4.0F, 9, 9));
+
+            // Тонкая неоновая рамка (1.2px)
+            g2.setColor(mix(UiTheme.ACCENT, UiTheme.ACCENT_3, pulse * 0.45F));
+            g2.setStroke(new BasicStroke(1.25F));
+            g2.draw(new RoundRectangle2D.Float(2.0F, 2.0F, w - 4.0F, h - 4.0F, 9, 9));
+
+            // Силуэт неоновой буквы «A» с градиентом
+            float cx = w * 0.5F;
+            float topY = 8.5F;
+            float botY = h - 8.5F;
+            float leftX = 10.5F;
+            float rightX = w - 10.5F;
+
+            g2.setPaint(new GradientPaint(leftX, topY, UiTheme.ACCENT_3, rightX, botY, UiTheme.ACCENT));
+            g2.setStroke(new BasicStroke(3.0F, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.draw(new java.awt.geom.Line2D.Float(cx, topY, leftX, botY));
+            g2.draw(new java.awt.geom.Line2D.Float(cx, topY, rightX, botY));
+            float barY = topY + (botY - topY) * 0.62F;
+            g2.setStroke(new BasicStroke(2.4F, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.draw(new java.awt.geom.Line2D.Float(leftX + 3.2F, barY, rightX - 3.2F, barY));
+
+            g2.dispose();
+        }
+    }
+
+    /**
+     * Компактная информационная капсула (телеметрия ОЗУ / Диска / Профиля) для верхней панели лаунчера.
+     */
+    public static JPanel telemetryPill(String label, JLabel valueLabel, Color dotColor) {
+        JPanel pill = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 6, 3)) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(UiTheme.CARD_TOP);
+                g2.fill(new RoundRectangle2D.Float(0.5F, 0.5F, getWidth() - 1.0F, getHeight() - 1.0F, 8, 8));
+                g2.setColor(new Color(UiTheme.ACCENT.getRed(), UiTheme.ACCENT.getGreen(), UiTheme.ACCENT.getBlue(), 95));
+                g2.setStroke(new BasicStroke(1.0F));
+                g2.draw(new RoundRectangle2D.Float(0.5F, 0.5F, getWidth() - 1.0F, getHeight() - 1.0F, 8, 8));
+                g2.dispose();
+            }
+        };
+        pill.setOpaque(false);
+        JComponent dot = new JComponent() {
+            {
+                setPreferredSize(new Dimension(7, 7));
+                setOpaque(false);
+            }
+
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(dotColor);
+                g2.fill(new Ellipse2D.Float(0.5F, 0.5F, 6.0F, 6.0F));
+                g2.dispose();
+            }
+        };
+        JLabel keyLbl = new JLabel(label);
+        keyLbl.setFont(UiTheme.SMALL);
+        keyLbl.setForeground(UiTheme.TEXT_MUTED);
+        valueLabel.setFont(UiTheme.SMALL_BOLD);
+        valueLabel.setForeground(UiTheme.TEXT);
+        pill.add(dot);
+        pill.add(keyLbl);
+        pill.add(valueLabel);
+        return pill;
+    }
+
+    /**
+     * Переключатель неоновых тем в 1 клик (6 цветных кружков с подсветкой активной темы).
+     */
+    public static JPanel paletteSwitcher(java.util.function.Consumer<UiTheme.NeonPalette> onSelect) {
+        JPanel bar = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 5, 2));
+        bar.setOpaque(false);
+        for (UiTheme.NeonPalette palette : UiTheme.NeonPalette.values()) {
+            JComponent dot = new JComponent() {
+                {
+                    setPreferredSize(new Dimension(16, 16));
+                    setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+                    setToolTipText("Тема неона: " + palette.displayName() + " (синхронизируется с RSHIFT в игре)");
+                    addMouseListener(new MouseAdapter() {
+                        @Override
+                        public void mouseClicked(MouseEvent e) {
+                            UiTheme.applyPalette(palette);
+                            if (onSelect != null) {
+                                onSelect.accept(palette);
+                            }
+                            bar.repaint();
+                        }
+                    });
+                }
+
+                @Override
+                protected void paintComponent(Graphics g) {
+                    Graphics2D g2 = (Graphics2D) g.create();
+                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    boolean active = UiTheme.currentPalette() == palette;
+                    if (active) {
+                        g2.setColor(new Color(palette.accent().getRed(), palette.accent().getGreen(), palette.accent().getBlue(), 90));
+                        g2.fill(new Ellipse2D.Float(0.0F, 0.0F, 16.0F, 16.0F));
+                    }
+                    g2.setColor(palette.accent());
+                    g2.fill(new Ellipse2D.Float(3.0F, 3.0F, 10.0F, 10.0F));
+                    if (active) {
+                        g2.setColor(Color.WHITE);
+                        g2.setStroke(new BasicStroke(1.3F));
+                        g2.draw(new Ellipse2D.Float(1.5F, 1.5F, 13.0F, 13.0F));
+                    }
+                    g2.dispose();
+                }
+            };
+            bar.add(dot);
+        }
+        return bar;
+    }
+
+    /**
+     * 2D/3D-превью головы скина игрока с неоновой рамкой (генерирует стильный пиксель-арт аватар по нику).
+     */
+    public static JComponent skinAvatarBadge(java.util.function.Supplier<String> nickSupplier) {
+        return new JComponent() {
+            {
+                setPreferredSize(new Dimension(32, 32));
+                setMinimumSize(new Dimension(32, 32));
+                setOpaque(false);
+                setToolTipText("Превью скина текущего профиля");
+            }
+
+            @Override
+            protected void paintComponent(Graphics g) {
+                int w = getWidth();
+                int h = getHeight();
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+                g2.setColor(UiTheme.CARD_TOP);
+                g2.fill(new RoundRectangle2D.Float(0.5F, 0.5F, w - 1.0F, h - 1.0F, 8, 8));
+
+                String nick = nickSupplier != null ? nickSupplier.get() : "Player";
+                if (nick == null || nick.isBlank()) {
+                    nick = "Steve";
+                }
+                int hash = Math.abs(nick.hashCode());
+                Color hair = mix(UiTheme.ACCENT_2, new Color(0x28, 0x22, 0x38), 0.55F);
+                Color skin = new Color(0xE2, 0xB8, 0x9B);
+                Color eyes = UiTheme.ACCENT;
+
+                int ox = (w - 20) / 2;
+                int oy = (h - 20) / 2;
+                // Основа лица 8×8 в масштабе 2.5px
+                g2.setColor(skin);
+                g2.fillRect(ox, oy, 20, 20);
+                // Волосы / шлем
+                g2.setColor(hair);
+                g2.fillRect(ox, oy, 20, 6);
+                g2.fillRect(ox, oy + 6, 3, 4);
+                g2.fillRect(ox + 17, oy + 6, 3, 4);
+                // Светящиеся неоновые глаза
+                g2.setColor(Color.WHITE);
+                g2.fillRect(ox + 3, oy + 9, 5, 3);
+                g2.fillRect(ox + 12, oy + 9, 5, 3);
+                g2.setColor(eyes);
+                g2.fillRect(ox + 5, oy + 9, 3, 3);
+                g2.fillRect(ox + 12, oy + 9, 3, 3);
+                // Нос/рот
+                g2.setColor(new Color(0x9C, 0x6E, 0x54));
+                g2.fillRect(ox + 8, oy + 14, 4, 2);
+                if ((hash & 1) == 0) {
+                    // Неоновый визор/ободок
+                    g2.setColor(new Color(UiTheme.ACCENT.getRed(), UiTheme.ACCENT.getGreen(), UiTheme.ACCENT.getBlue(), 90));
+                    g2.fillRect(ox + 2, oy + 8, 16, 5);
+                }
+
+                g2.setColor(UiTheme.ACCENT);
+                g2.setStroke(new BasicStroke(1.2F));
+                g2.draw(new RoundRectangle2D.Float(1.0F, 1.0F, w - 2.0F, h - 2.0F, 8, 8));
+                g2.dispose();
+            }
+        };
+    }
+
+    /**
+     * Карточка-миниатюра скриншота с отрисовкой самого изображения внутри неоновой рамки.
+     */
+    public static JComponent screenshotThumbnailCard(java.nio.file.Path imageFile,
+                                                     String title,
+                                                     String subtitle,
+                                                     Runnable onClick) {
+        java.awt.image.BufferedImage loaded = null;
+        try {
+            loaded = javax.imageio.ImageIO.read(imageFile.toFile());
+        } catch (Exception ignored) {
+        }
+        final java.awt.image.BufferedImage previewImg = loaded;
+        return new JComponent() {
+            private float hover = 0.0F;
+
+            {
+                setPreferredSize(new Dimension(280, 195));
+                setMinimumSize(new Dimension(240, 175));
+                setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+                addMouseListener(new MouseAdapter() {
+                    @Override
+                    public void mouseEntered(MouseEvent e) {
+                        hover = 1.0F;
+                        repaint();
+                    }
+
+                    @Override
+                    public void mouseExited(MouseEvent e) {
+                        hover = 0.0F;
+                        repaint();
+                    }
+
+                    @Override
+                    public void mouseClicked(MouseEvent e) {
+                        if (onClick != null) {
+                            onClick.run();
+                        }
+                    }
+                });
+            }
+
+            @Override
+            protected void paintComponent(Graphics g) {
+                int w = getWidth();
+                int h = getHeight();
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+
+                g2.setColor(UiTheme.CARD_TOP);
+                g2.fill(new RoundRectangle2D.Float(1.0F, 1.0F, w - 2.0F, h - 2.0F, CARD_RADIUS, CARD_RADIUS));
+
+                if (previewImg != null) {
+                    int imgX = 8;
+                    int imgY = 8;
+                    int imgW = Math.max(10, w - 16);
+                    int imgH = Math.max(10, h - 54);
+                    Shape oldClip = g2.getClip();
+                    g2.setClip(new RoundRectangle2D.Float(imgX, imgY, imgW, imgH, 6, 6));
+                    g2.drawImage(previewImg, imgX, imgY, imgW, imgH, null);
+                    g2.setClip(oldClip);
+                }
+
+                g2.setFont(UiTheme.SMALL_BOLD);
+                g2.setColor(UiTheme.TEXT);
+                g2.drawString(title, 10, h - 24);
+
+                g2.setFont(UiTheme.SMALL);
+                g2.setColor(UiTheme.TEXT_MUTED);
+                g2.drawString(subtitle, 10, h - 9);
+
+                g2.setColor(hover > 0.5F ? UiTheme.ACCENT_3 : UiTheme.ACCENT);
+                g2.setStroke(new BasicStroke(hover > 0.5F ? 1.6F : 1.15F));
+                g2.draw(new RoundRectangle2D.Float(1.0F, 1.0F, w - 2.0F, h - 2.0F, CARD_RADIUS, CARD_RADIUS));
+                g2.dispose();
+            }
+        };
+    }
+
+    /**
+     * Кнопка профиля в правом верхнем углу: аватар Стива/Алекс + никнейм + треугольник вниз (▼).
+     */
+    public static JComponent profileDropdownButton(java.util.function.Supplier<String> nickSupplier,
+                                                   Runnable onToggleDropdown) {
+        return new JComponent() {
+            private float hover = 0.0F;
+
+            {
+                setPreferredSize(new Dimension(172, 36));
+                setMinimumSize(new Dimension(148, 36));
+                setOpaque(false);
+                setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+                setToolTipText("Профиль игрока · Нажмите для смены аккаунта");
+                addMouseListener(new MouseAdapter() {
+                    @Override
+                    public void mouseEntered(MouseEvent e) {
+                        hover = 1.0F;
+                        repaint();
+                    }
+
+                    @Override
+                    public void mouseExited(MouseEvent e) {
+                        hover = 0.0F;
+                        repaint();
+                    }
+
+                    @Override
+                    public void mousePressed(MouseEvent e) {
+                        if (onToggleDropdown != null) {
+                            onToggleDropdown.run();
+                        }
+                    }
+                });
+            }
+
+            @Override
+            protected void paintComponent(Graphics g) {
+                int w = getWidth();
+                int h = getHeight();
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+
+                Shape box = new RoundRectangle2D.Float(1.0F, 1.0F, w - 2.0F, h - 2.0F, 10.0F, 10.0F);
+                g2.setColor(new Color(12, 13, 20, 230));
+                g2.fill(box);
+
+                // Аватар Стива/Алекс 22x22 слева
+                int ax = 8;
+                int ay = (h - 22) / 2;
+                g2.setColor(new Color(0xE2, 0xB8, 0x9B));
+                g2.fillRoundRect(ax, ay, 22, 22, 6, 6);
+                g2.setColor(new Color(0x3B, 0x27, 0x1E));
+                g2.fillRect(ax, ay, 22, 6);
+                g2.fillRect(ax, ay + 6, 3, 4);
+                g2.fillRect(ax + 19, ay + 6, 3, 4);
+                g2.setColor(Color.WHITE);
+                g2.fillRect(ax + 3, ay + 10, 5, 3);
+                g2.fillRect(ax + 14, ay + 10, 5, 3);
+                g2.setColor(UiTheme.ACCENT);
+                g2.fillRect(ax + 5, ay + 10, 3, 3);
+                g2.fillRect(ax + 14, ay + 10, 3, 3);
+                g2.setColor(new Color(0x9C, 0x6E, 0x54));
+                g2.fillRect(ax + 9, ay + 15, 4, 2);
+
+                // Никнейм рядом с аватаркой
+                String rawNick = nickSupplier != null ? nickSupplier.get() : "Steve";
+                String nick = (rawNick == null || rawNick.isBlank()) ? "Steve" : rawNick.trim();
+                g2.setFont(UiTheme.SMALL_BOLD);
+                g2.setColor(UiTheme.TEXT);
+                FontMetrics fm = g2.getFontMetrics();
+                int ty = (h - fm.getHeight()) / 2 + fm.getAscent();
+                g2.drawString(nick, ax + 30, ty);
+
+                // Маленький треугольник (стрелочка вниз) справа
+                int cx = w - 16;
+                int cy = h / 2 - 2;
+                int[] xs = {cx - 4, cx + 4, cx};
+                int[] ys = {cy, cy, cy + 5};
+                g2.setColor(hover > 0.5F ? UiTheme.ACCENT : UiTheme.TEXT_MUTED);
+                g2.fillPolygon(xs, ys, 3);
+
+                g2.setColor(fade(UiTheme.ACCENT, 0.35F + 0.65F * hover));
+                g2.setStroke(new BasicStroke(1.15F));
+                g2.draw(box);
+                g2.dispose();
+            }
+        };
+    }
+
+    /**
+     * Карточка сборки в стиле Frosted Liquid Glass:
+     * слева — закруглённый квадрат-иконка с 1–2 буквами названия,
+     * справа — жирное название, серое описание и техническая строка через запятую,
+     * плюс аккуратная кнопка «Играть».
+     */
+    public static JComponent modpackCard(String initials,
+                                         String title,
+                                         String description,
+                                         String techInfo,
+                                         java.util.function.Supplier<Boolean> activeSupplier,
+                                         Runnable onSelect,
+                                         Runnable onPlay) {
+        return modpackCard(initials, title, description, techInfo, activeSupplier, onSelect, onPlay, null);
+    }
+
+    public static JComponent modpackCard(String initials,
+                                         String title,
+                                         String description,
+                                         String techInfo,
+                                         java.util.function.Supplier<Boolean> activeSupplier,
+                                         Runnable onSelect,
+                                         Runnable onPlay,
+                                         Runnable onGear) {
+        return new JComponent() {
+            private float hover = 0.0F;
+            private boolean playHover = false;
+            private boolean gearHover = false;
+
+            {
+                setPreferredSize(new Dimension(440, 88));
+                setMinimumSize(new Dimension(340, 88));
+                setMaximumSize(new Dimension(900, 92));
+                setOpaque(false);
+                setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+                MouseAdapter adapter = new MouseAdapter() {
+                    @Override
+                    public void mouseEntered(MouseEvent e) {
+                        hover = 1.0F;
+                        repaint();
+                    }
+
+                    @Override
+                    public void mouseExited(MouseEvent e) {
+                        hover = 0.0F;
+                        playHover = false;
+                        gearHover = false;
+                        repaint();
+                    }
+
+                    @Override
+                    public void mouseMoved(MouseEvent e) {
+                        boolean inPlay = isInsidePlayButton(e.getX(), e.getY());
+                        boolean inGear = isInsideGearButton(e.getX(), e.getY());
+                        if (inPlay != playHover || inGear != gearHover) {
+                            playHover = inPlay;
+                            gearHover = inGear;
+                            repaint();
+                        }
+                    }
+
+                    @Override
+                    public void mousePressed(MouseEvent e) {
+                        if (e.getButton() == MouseEvent.BUTTON3 || isInsideGearButton(e.getX(), e.getY())) {
+                            if (onSelect != null) {
+                                onSelect.run();
+                            }
+                            if (onGear != null) {
+                                onGear.run();
+                            }
+                        } else if (isInsidePlayButton(e.getX(), e.getY())) {
+                            if (onSelect != null) {
+                                onSelect.run();
+                            }
+                            if (onPlay != null) {
+                                onPlay.run();
+                            }
+                        } else if (onSelect != null) {
+                            onSelect.run();
+                        }
+                        repaint();
+                    }
+                };
+                addMouseListener(adapter);
+                addMouseMotionListener(adapter);
+            }
+
+            private boolean isInsidePlayButton(int mx, int my) {
+                int bw = 88;
+                int bh = 30;
+                int bx = getWidth() - bw - 14;
+                int by = (getHeight() - bh) / 2;
+                return mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
+            }
+
+            private boolean isInsideGearButton(int mx, int my) {
+                int gs = 30;
+                int gx = getWidth() - 88 - 14 - gs - 8;
+                int gy = (getHeight() - gs) / 2;
+                return mx >= gx && mx <= gx + gs && my >= gy && my <= gy + gs;
+            }
+
+            @Override
+            protected void paintComponent(Graphics g) {
+                int w = getWidth();
+                int h = getHeight();
+                boolean active = activeSupplier != null && Boolean.TRUE.equals(activeSupplier.get());
+
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+
+                // 1) Прямоугольник с закруглёнными углами (радиус 11px), матовый чёрный (Frosted Liquid Glass)
+                Shape cardShape = new RoundRectangle2D.Float(1.5F, 1.5F, w - 3.0F, h - 3.0F, 12.0F, 12.0F);
+                Color topBg = active || hover > 0.1F
+                        ? mix(new Color(14, 15, 22, 236), UiTheme.ACCENT, active ? 0.09F : 0.05F)
+                        : new Color(11, 12, 18, 228);
+                Color botBg = new Color(8, 9, 14, 238);
+                g2.setPaint(new GradientPaint(0, 0, topBg, 0, h, botBg));
+                g2.fill(cardShape);
+
+                // 2) Слева: закруглённый квадрат (как иконка приложения) с 1–2 буквами названия
+                int iconSize = 52;
+                int ix = 14;
+                int iy = (h - iconSize) / 2;
+                Shape iconShape = new RoundRectangle2D.Float(ix, iy, iconSize, iconSize, 11.0F, 11.0F);
+                g2.setPaint(new GradientPaint(ix, iy,
+                        mix(new Color(18, 16, 28), UiTheme.ACCENT, 0.28F),
+                        ix + iconSize, iy + iconSize,
+                        new Color(10, 10, 16)));
+                g2.fill(iconShape);
+                g2.setColor(fade(UiTheme.ACCENT, active ? 0.85F : 0.45F));
+                g2.setStroke(new BasicStroke(1.2F));
+                g2.draw(iconShape);
+
+                g2.setFont(UiTheme.HEADING);
+                g2.setColor(UiTheme.TEXT);
+                FontMetrics ifm = g2.getFontMetrics();
+                String badgeText = (initials == null || initials.isBlank()) ? "AG" : initials;
+                int itx = ix + (iconSize - ifm.stringWidth(badgeText)) / 2;
+                int ity = iy + (iconSize - ifm.getHeight()) / 2 + ifm.getAscent();
+                g2.drawString(badgeText, itx, ity);
+
+                // 3) Справа от иконки: Название (жирным), Описание (мелким серым), Тех. инфо через запятую
+                int tx = ix + iconSize + 14;
+                g2.setFont(UiTheme.HEADING);
+                g2.setColor(UiTheme.TEXT);
+                g2.drawString(title != null ? title : "", tx, iy + 17);
+
+                g2.setFont(UiTheme.SMALL);
+                g2.setColor(UiTheme.TEXT_MUTED);
+                g2.drawString(description != null ? description : "", tx, iy + 34);
+
+                g2.setFont(UiTheme.SMALL);
+                g2.setColor(mix(UiTheme.TEXT_MUTED, UiTheme.ACCENT, 0.55F));
+                g2.drawString(techInfo != null ? techInfo : "", tx, iy + 50);
+
+                // 4) Аккуратная компактная кнопка «Играть» справа внутри карточки
+                int bw = 88;
+                int bh = 30;
+                int bx = w - bw - 14;
+                int by = (h - bh) / 2;
+                Shape playShape = new RoundRectangle2D.Float(bx, by, bw, bh, 9.0F, 9.0F);
+                g2.setColor(playHover
+                        ? mix(new Color(22, 18, 36), UiTheme.ACCENT, 0.35F)
+                        : mix(new Color(16, 15, 26), UiTheme.ACCENT, active ? 0.22F : 0.12F));
+                g2.fill(playShape);
+                g2.setColor(fade(UiTheme.ACCENT, playHover ? 0.95F : (active ? 0.75F : 0.45F)));
+                g2.setStroke(new BasicStroke(1.15F));
+                g2.draw(playShape);
+
+                g2.setFont(UiTheme.SMALL_BOLD);
+                g2.setColor(UiTheme.TEXT);
+                String playLabel = "▶ Играть";
+                FontMetrics pfm = g2.getFontMetrics();
+                g2.drawString(playLabel, bx + (bw - pfm.stringWidth(playLabel)) / 2,
+                        by + (bh - pfm.getHeight()) / 2 + pfm.getAscent());
+
+                // 4b) Аккуратная кнопка «⚙» (настройка / ПКМ меню сборки) слева от «Играть»
+                if (onGear != null) {
+                    int gs = 30;
+                    int gx = bx - gs - 8;
+                    int gy = by;
+                    Shape gearBox = new RoundRectangle2D.Float(gx, gy, gs, gs, 8.0F, 8.0F);
+                    g2.setColor(gearHover
+                            ? mix(new Color(22, 18, 36), UiTheme.ACCENT, 0.30F)
+                            : new Color(15, 16, 24, 220));
+                    g2.fill(gearBox);
+                    g2.setColor(fade(UiTheme.ACCENT, gearHover ? 0.90F : 0.38F));
+                    g2.setStroke(new BasicStroke(1.1F));
+                    g2.draw(gearBox);
+                    // Векторная шестерёнка
+                    int gcx = gx + gs / 2;
+                    int gcy = gy + gs / 2;
+                    g2.setColor(gearHover ? UiTheme.TEXT : UiTheme.TEXT_MUTED);
+                    g2.setStroke(new BasicStroke(1.5F, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    for (int a = 0; a < 8; a++) {
+                        double rad = a * (Math.PI / 4.0);
+                        int x1 = gcx + (int) Math.round(Math.cos(rad) * 4.5);
+                        int y1 = gcy + (int) Math.round(Math.sin(rad) * 4.5);
+                        int x2 = gcx + (int) Math.round(Math.cos(rad) * 6.8);
+                        int y2 = gcy + (int) Math.round(Math.sin(rad) * 6.8);
+                        g2.drawLine(x1, y1, x2, y2);
+                    }
+                    g2.drawOval(gcx - 4, gcy - 4, 8, 8);
+                }
+
+                // 5) Неоновая обводка карточки при наведении или выборе
+                float borderAlpha = active ? 0.88F : (hover > 0.1F ? 0.72F : 0.24F);
+                g2.setColor(fade(UiTheme.ACCENT, borderAlpha));
+                g2.setStroke(new BasicStroke(active || hover > 0.1F ? 1.35F : 1.0F));
+                g2.draw(cardShape);
+                g2.dispose();
+            }
+        };
     }
 }

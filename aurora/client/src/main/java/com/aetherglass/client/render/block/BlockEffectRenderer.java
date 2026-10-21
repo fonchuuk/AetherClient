@@ -114,7 +114,7 @@ public final class BlockEffectRenderer {
                     }
                 }
 
-                int gridSteps = boxes <= 2 ? 4 : (boxes <= 6 ? 3 : 2);
+                int gridSteps = boxes <= 2 ? 2 : 1;
                 for (int index = 0; index < boxes; index++) {
                     if (!BlockOutlineGeometry.box(index, values)) {
                         break;

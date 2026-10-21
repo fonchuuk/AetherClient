@@ -23,27 +23,27 @@ public final class SkyEffectsModule extends Module {
     private final BooleanSetting auroraDome = register(new BooleanSetting("auroraDome",
             "Видео на 3D-куполе",
             "Проигрывает бесшовное видео и шейдерные волны прямо на куполе неба",
-            true, setting -> apply()));
+            true, this::onUserSettingChanged));
     private final FloatSetting speed = register(new FloatSetting("speed", "Скорость видео неба",
             "Скорость проигрывания и вращения видео-купола неба",
-            0.55F, 0.05F, 3.00F, 0.05F, setting -> apply()));
+            0.55F, 0.05F, 3.00F, 0.05F, this::onUserSettingChanged));
     private final FloatSetting intensity = register(new FloatSetting("intensity", "Интенсивность неба",
             "Насколько ярко видео-пресет окрашивает небосвод и горизонт",
-            0.82F, 0.10F, 1.20F, 0.05F, setting -> apply()));
+            0.82F, 0.10F, 1.20F, 0.05F, this::onUserSettingChanged));
     private final FloatSetting domeOpacity = register(new FloatSetting("domeOpacity",
             "Прозрачность видео-купола",
             "Плотность отображения видео-слоя на небесной сфере",
-            0.68F, 0.10F, 1.00F, 0.05F, setting -> apply()));
+            0.68F, 0.10F, 1.00F, 0.05F, this::onUserSettingChanged));
     private final EnumSetting<ShaderEffect> domeShader = register(new EnumSetting<>("domeShader",
             "Шейдер-фильтр купола",
             "Дополнительный шейдерный слой поверх видео-купола неба",
-            ShaderEffect.AURORA, ShaderEffect.values(), setting -> apply()));
+            ShaderEffect.AURORA, ShaderEffect.values(), this::onUserSettingChanged));
     private final ColorSetting first = register(new ColorSetting("colorA", "Цвет зенита",
-            "Первый цвет перелива неба", SkyPreset.AURORA.first(), setting -> apply()));
+            "Первый цвет перелива неба", SkyPreset.AURORA.first(), this::onUserSettingChanged));
     private final ColorSetting second = register(new ColorSetting("colorB", "Цвет сияния",
-            "Второй цвет перелива неба", SkyPreset.AURORA.second(), setting -> apply()));
+            "Второй цвет перелива неба", SkyPreset.AURORA.second(), this::onUserSettingChanged));
     private final ColorSetting third = register(new ColorSetting("colorC", "Цвет горизонта",
-            "Третий цвет перелива для плавной игры оттенков", SkyPreset.AURORA.third(), setting -> apply()));
+            "Третий цвет перелива для плавной игры оттенков", SkyPreset.AURORA.third(), this::onUserSettingChanged));
 
     public SkyEffectsModule() {
         super("sky", "Эффекты неба",
@@ -77,6 +77,13 @@ public final class SkyEffectsModule extends Module {
         );
     }
 
+    private void onUserSettingChanged(Setting<?> changed) {
+        apply();
+        if (changed != null) {
+            settingChanged(changed);
+        }
+    }
+
     @Override
     protected void onEnable() {
         apply();
@@ -85,13 +92,6 @@ public final class SkyEffectsModule extends Module {
     @Override
     public boolean enabledByDefault() {
         return true;
-    }
-
-    @Override
-    protected void onSettingChanged(Setting<?> setting) {
-        if (isEnabled()) {
-            apply();
-        }
     }
 
     public String activity() {

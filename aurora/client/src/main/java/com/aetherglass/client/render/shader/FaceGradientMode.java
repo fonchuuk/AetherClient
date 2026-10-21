@@ -4,6 +4,7 @@ package com.aetherglass.client.render.shader;
  * Режимы перелива и заполнения граней для {@code BlockShader} и {@code HandsShader}.
  */
 public enum FaceGradientMode {
+    INSIDE_SHADER("Шейдер внутри (заполнение)"),
     FULL_SHADER("Полный шейдер граней"),
     MENISCUS_DROP("Капля / Линза (Liquid Glass)"),
     SOLAR_GLINT("Скользящий солнечный блик"),

@@ -94,6 +94,9 @@ public final class GameLauncher {
         command.add("-Xms" + config.minMemoryMb() + "M");
         command.add("-Xmx" + config.maxMemoryMb() + "M");
         command.add("-Dfile.encoding=UTF-8");
+        if (config.jvmPreset() != null) {
+            command.addAll(config.jvmPreset().flags());
+        }
         if (installation.logConfigFile() != null && installation.logConfigArgument() != null) {
             command.add(substitute(installation.logConfigArgument(),
                     Map.of("path", installation.logConfigFile().toString())));

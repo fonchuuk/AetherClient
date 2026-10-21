@@ -24,7 +24,7 @@ import org.joml.Vector3f;
  */
 public final class ParticleSystem {
     private static final int MIN_CAPACITY = 16;
-    private static final int TRAIL_STEPS = 5;
+    private static final int TRAIL_STEPS = 3;
     private static final Identifier WHITE =
             Identifier.fromNamespaceAndPath("aetherglass", "textures/particle/circle.png");
     private static final PoseStack.Pose IDENTITY_POSE = new PoseStack().last();
@@ -57,6 +57,9 @@ public final class ParticleSystem {
     private int[] trailHead;
     private int[] trailCount;
     private float[] trailTimer;
+    private final Vector3f rightVec = new Vector3f();
+    private final Vector3f upVec = new Vector3f();
+    private final Vector3f viewDirVec = new Vector3f();
 
     public ParticleSystem(int initialCapacity) {
         allocate(Math.max(MIN_CAPACITY, initialCapacity));
@@ -279,9 +282,9 @@ public final class ParticleSystem {
             this.startColor[index] = this.startColor[last];
             this.endColor[index] = this.endColor[last];
             this.shape[index] = this.shape[last];
-            System.arraycopy(this.trailX[last], 0, this.trailX[index], 0, TRAIL_STEPS);
-            System.arraycopy(this.trailY[last], 0, this.trailY[index], 0, TRAIL_STEPS);
-            System.arraycopy(this.trailZ[last], 0, this.trailZ[index], 0, TRAIL_STEPS);
+            double[] tx = this.trailX[index]; this.trailX[index] = this.trailX[last]; this.trailX[last] = tx;
+            double[] ty = this.trailY[index]; this.trailY[index] = this.trailY[last]; this.trailY[last] = ty;
+            double[] tz = this.trailZ[index]; this.trailZ[index] = this.trailZ[last]; this.trailZ[last] = tz;
             this.trailHead[index] = this.trailHead[last];
             this.trailCount[index] = this.trailCount[last];
             this.trailTimer[index] = this.trailTimer[last];
@@ -302,9 +305,9 @@ public final class ParticleSystem {
         }
         Vec3 camPos = camera.position();
         Quaternionf rotation = camera.rotation();
-        Vector3f right = new Vector3f(1.0F, 0.0F, 0.0F).rotate(rotation);
-        Vector3f up = new Vector3f(0.0F, 1.0F, 0.0F).rotate(rotation);
-        Vector3f viewDir = new Vector3f(0.0F, 0.0F, -1.0F).rotate(rotation);
+        Vector3f right = this.rightVec.set(1.0F, 0.0F, 0.0F).rotate(rotation);
+        Vector3f up = this.upVec.set(0.0F, 1.0F, 0.0F).rotate(rotation);
+        Vector3f viewDir = this.viewDirVec.set(0.0F, 0.0F, -1.0F).rotate(rotation);
 
         // 1. Отрисовка плавных 3D-шлейфов ленточными квадами (со всеми атрибутами NEW_ENTITY)
         VertexConsumer trailConsumer = buffers.getBuffer(RenderTypes.entityTranslucentEmissive(WHITE));
@@ -369,8 +372,18 @@ public final class ParticleSystem {
             }
         }
 
-        // 2. Отрисовка билбордов частиц по формам (2-слойное свечение: мягкий ореол + яркое ядро)
+        // 2. Отрисовка билбордов частиц по формам (пропускаем формы, которых сейчас нет в пуле)
+        int presentMask = 0;
+        for (int i = 0; i < this.count; i++) {
+            ParticleShape sh = this.shape[i];
+            if (sh != null) {
+                presentMask |= (1 << sh.ordinal());
+            }
+        }
         for (ParticleShape targetShape : ParticleShape.values()) {
+            if ((presentMask & (1 << targetShape.ordinal())) == 0) {
+                continue;
+            }
             VertexConsumer consumer = null;
             for (int i = 0; i < this.count; i++) {
                 if (this.shape[i] != targetShape) {

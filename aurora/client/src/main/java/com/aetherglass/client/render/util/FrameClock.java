@@ -24,7 +24,11 @@ public final class FrameClock {
             previousNanos = now;
             deltaSeconds = 1.0F / 60.0F;
         } else {
-            deltaSeconds = Math.min(MAX_STEP_SECONDS, (now - previousNanos) / 1_000_000_000.0F);
+            long diff = now - previousNanos;
+            if (diff < 500_000L) {
+                return;
+            }
+            deltaSeconds = Math.min(MAX_STEP_SECONDS, diff / 1_000_000_000.0F);
             previousNanos = now;
         }
         elapsedSeconds += deltaSeconds;

@@ -23,6 +23,66 @@ public final class LauncherConfig {
     public static final int DEFAULT_LAUNCHER_WIDTH = 1280;
     public static final int DEFAULT_LAUNCHER_HEIGHT = 800;
 
+    public enum JvmPreset {
+        ZGC_LOW_LATENCY("ZGC Без фризов (Java 21)", List.of(
+                "-XX:+UseZGC",
+                "-XX:+ZGenerational",
+                "-XX:+AlwaysPreTouch",
+                "-XX:+DisableExplicitGC"
+        )),
+        AIKAR_FLAGS("Aikar's Flags (Стабильный FPS)", List.of(
+                "-XX:+UseG1GC",
+                "-XX:+ParallelRefProcEnabled",
+                "-XX:MaxGCPauseMillis=50",
+                "-XX:+UnlockExperimentalVMOptions",
+                "-XX:+DisableExplicitGC",
+                "-XX:G1NewSizePercent=20",
+                "-XX:G1ReservePercent=20",
+                "-XX:G1HeapRegionSize=32M"
+        )),
+        G1GC_BALANCED("G1GC Стандарт", List.of(
+                "-XX:+UseG1GC",
+                "-XX:MaxGCPauseMillis=50"
+        )),
+        ECO_LOW_RAM("Эко-режим (Слабый ПК)", List.of(
+                "-XX:+UseG1GC",
+                "-XX:MaxGCPauseMillis=35",
+                "-XX:+UseStringDeduplication"
+        ));
+
+        private final String displayName;
+        private final List<String> flags;
+
+        JvmPreset(String displayName, List<String> flags) {
+            this.displayName = displayName;
+            this.flags = flags;
+        }
+
+        public String displayName() {
+            return this.displayName;
+        }
+
+        public List<String> flags() {
+            return this.flags;
+        }
+
+        @Override
+        public String toString() {
+            return this.displayName;
+        }
+
+        public static JvmPreset fromName(String raw) {
+            if (raw != null) {
+                for (JvmPreset p : values()) {
+                    if (p.name().equalsIgnoreCase(raw.trim()) || p.displayName.equalsIgnoreCase(raw.trim())) {
+                        return p;
+                    }
+                }
+            }
+            return ZGC_LOW_LATENCY;
+        }
+    }
+
     private Path gameDirectory;
     private String javaExecutable;
     private int minMemoryMb = DEFAULT_MIN_MEMORY_MB;
@@ -36,7 +96,9 @@ public final class LauncherConfig {
     private int launcherHeight = DEFAULT_LAUNCHER_HEIGHT;
     private String clientId = MicrosoftClientId.DEFAULT_ID;
     private boolean installMods = true;
-    private String selectedModpackId = "aetherglass-1.21.11";
+    private String selectedModpackId = "aether-visuals";
+    private JvmPreset jvmPreset = JvmPreset.ZGC_LOW_LATENCY;
+    private String accentTheme = "PURPLE";
     private final List<ModpackProfile> modpacks = new ArrayList<>();
 
     public LauncherConfig(Path gameDirectory) {
@@ -86,6 +148,8 @@ public final class LauncherConfig {
             config.clientId = Json.string(data, "clientId", MicrosoftClientId.DEFAULT_ID);
             config.installMods = Json.boolValue(data, "installMods", true);
             config.selectedModpackId = Json.string(data, "selectedModpackId", "aetherglass-1.21.11");
+            config.jvmPreset = JvmPreset.fromName(Json.string(data, "jvmPreset", JvmPreset.ZGC_LOW_LATENCY.name()));
+            config.accentTheme = Json.string(data, "accentTheme", "PURPLE");
 
             if (data.get("modpacks") instanceof List<?> rawList && !rawList.isEmpty()) {
                 List<ModpackProfile> parsed = new ArrayList<>();
@@ -121,6 +185,8 @@ public final class LauncherConfig {
         data.put("clientId", this.clientId);
         data.put("installMods", this.installMods);
         data.put("selectedModpackId", this.selectedModpackId);
+        data.put("jvmPreset", this.jvmPreset.name());
+        data.put("accentTheme", this.accentTheme);
 
         List<Map<String, Object>> serializedPacks = new ArrayList<>(this.modpacks.size());
         for (ModpackProfile pack : this.modpacks) {
@@ -248,14 +314,19 @@ public final class LauncherConfig {
 
     public ModpackProfile addOrUpdateModpack(String name, String mcVersion, String loader,
                                              boolean installAetherClient, boolean autoOptimize) {
+        return addOrUpdateModpack(name, "", mcVersion, loader, installAetherClient, autoOptimize);
+    }
+
+    public ModpackProfile addOrUpdateModpack(String name, String description, String mcVersion, String loader,
+                                             boolean installAetherClient, boolean autoOptimize) {
         String cleanVer = (mcVersion == null || mcVersion.isBlank()) ? "1.21.11" : mcVersion.trim();
         String cleanLoader = ModpackProfile.normalizeLoader(loader);
         String cleanName = (name == null || name.isBlank())
-                ? "Сборка " + cleanVer + " (" + cleanLoader + ")"
+                ? cleanVer
                 : name.trim();
         String id = cleanName.toLowerCase().replaceAll("[^a-zа-я0-9._-]+", "-") + "-" + cleanVer;
         ModpackProfile created = new ModpackProfile(
-                id, cleanName, cleanVer, cleanLoader, installAetherClient, autoOptimize
+                id, cleanName, description, cleanVer, cleanLoader, installAetherClient, autoOptimize
         );
         int existingIdx = -1;
         for (int i = 0; i < this.modpacks.size(); i++) {
@@ -326,5 +397,34 @@ public final class LauncherConfig {
     public LauncherConfig installMods(boolean value) {
         this.installMods = value;
         return this;
+    }
+
+    public JvmPreset jvmPreset() {
+        return this.jvmPreset == null ? JvmPreset.ZGC_LOW_LATENCY : this.jvmPreset;
+    }
+
+    public LauncherConfig jvmPreset(JvmPreset preset) {
+        this.jvmPreset = preset == null ? JvmPreset.ZGC_LOW_LATENCY : preset;
+        return this;
+    }
+
+    public String accentTheme() {
+        return this.accentTheme == null || this.accentTheme.isBlank() ? "PURPLE" : this.accentTheme;
+    }
+
+    public LauncherConfig accentTheme(String themeName) {
+        this.accentTheme = (themeName == null || themeName.isBlank()) ? "PURPLE" : themeName.trim().toUpperCase();
+        return this;
+    }
+
+    public boolean removeModpack(String id) {
+        if (this.modpacks.size() <= 1 || id == null) {
+            return false;
+        }
+        boolean removed = this.modpacks.removeIf(p -> p.id().equals(id));
+        if (removed && id.equals(this.selectedModpackId) && !this.modpacks.isEmpty()) {
+            selectModpack(this.modpacks.get(0).id());
+        }
+        return removed;
     }
 }

@@ -17,6 +17,7 @@ import java.util.Map;
 public record ModpackProfile(
         String id,
         String name,
+        String description,
         String minecraftVersion,
         String loader,
         boolean installAetherGlassClient,
@@ -30,19 +31,81 @@ public record ModpackProfile(
     public static final String LOADER_QUILT = "Quilt";
 
     public static final List<String> SUPPORTED_LOADERS = List.of(
-            LOADER_FABRIC, LOADER_VANILLA, LOADER_FORGE, LOADER_NEOFORGE, LOADER_QUILT
+            LOADER_VANILLA, LOADER_FABRIC, LOADER_FORGE, LOADER_NEOFORGE
     );
+
+    public ModpackProfile(
+            String id,
+            String name,
+            String minecraftVersion,
+            String loader,
+            boolean installAetherGlassClient,
+            boolean autoOptimizeMods
+    ) {
+        this(id, name, defaultDescription(name, minecraftVersion, installAetherGlassClient, autoOptimizeMods),
+                minecraftVersion, loader, installAetherGlassClient, autoOptimizeMods);
+    }
 
     public ModpackProfile {
         id = (id == null || id.isBlank()) ? "pack-" + System.currentTimeMillis() : id.trim();
-        name = (name == null || name.isBlank()) ? "Сборка " + minecraftVersion : name.trim();
         minecraftVersion = (minecraftVersion == null || minecraftVersion.isBlank())
                 ? TARGET_AETHERGLASS_MC : minecraftVersion.trim();
+        name = (name == null || name.isBlank()) ? minecraftVersion : name.trim();
         loader = normalizeLoader(loader);
-        // Блок 5.2: AetherGlass Client доступен исключительно для 1.21.11 (Fabric)
         if (!isAetherGlassSupported(minecraftVersion, loader)) {
             installAetherGlassClient = false;
         }
+        description = (description == null || description.isBlank())
+                ? defaultDescription(name, minecraftVersion, installAetherGlassClient, autoOptimizeMods)
+                : description.trim();
+    }
+
+    private static String defaultDescription(String name, String mcVer, boolean aether, boolean opt) {
+        if (aether) {
+            return "Сборка для визуала (10 модов на оптимизацию + AetherGlass)";
+        }
+        if (opt) {
+            return "Версия " + mcVer + " и моды на оптимизацию";
+        }
+        return "Чистая сборка Minecraft " + mcVer;
+    }
+
+    /** Техническая строка через запятую, например: {@code 1.21.11, Fabric, AetherGlass}. */
+    public String technicalInfo() {
+        StringBuilder sb = new StringBuilder();
+        sb.append(this.minecraftVersion).append(", ").append(this.loader);
+        if (this.installAetherGlassClient) {
+            sb.append(", AetherGlass");
+        } else if (this.autoOptimizeMods) {
+            sb.append(", Оптимизация");
+        }
+        return sb.toString();
+    }
+
+    /** Первые 1–2 буквы названия сборки для иконки-аватарки. */
+    public String iconInitials() {
+        String clean = this.name == null ? "" : this.name.trim();
+        if (clean.isEmpty()) {
+            return "AG";
+        }
+        if (Character.isDigit(clean.charAt(0))) {
+            return clean.substring(0, Math.min(2, clean.length())).toUpperCase(Locale.ROOT);
+        }
+        String[] parts = clean.split("[\\s_-]+");
+        if (parts.length >= 2 && !parts[0].isEmpty() && !parts[1].isEmpty()) {
+            return ("" + parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase(Locale.ROOT);
+        }
+        StringBuilder caps = new StringBuilder();
+        for (int i = 0; i < clean.length() && caps.length() < 2; i++) {
+            char c = clean.charAt(i);
+            if (i == 0 || Character.isUpperCase(c)) {
+                caps.append(Character.toUpperCase(c));
+            }
+        }
+        if (caps.length() >= 2) {
+            return caps.toString();
+        }
+        return clean.substring(0, Math.min(2, clean.length())).toUpperCase(Locale.ROOT);
     }
 
     /** Проверяет, поддерживает ли выбранная комбинация версии и загрузчика установку AetherGlass Client. */
@@ -74,10 +137,24 @@ public record ModpackProfile(
 
     public static List<ModpackProfile> defaults() {
         return List.of(
-                new ModpackProfile("aetherglass-1.21.11", "AetherGlass 1.21.11", "1.21.11", LOADER_FABRIC, true, true),
-                new ModpackProfile("fabric-opt-1.20.1", "Sodium Boost 1.20.1", "1.20.1", LOADER_FABRIC, false, true),
-                new ModpackProfile("pvp-classic-1.19.4", "Classic PvP 1.19.4", "1.19.4", LOADER_VANILLA, false, false),
-                new ModpackProfile("forge-legacy-1.16.5", "Forge Mods 1.16.5", "1.16.5", LOADER_FORGE, false, false)
+                new ModpackProfile(
+                        "aether-visuals",
+                        "AetherVisuals",
+                        "Сборка для визуала",
+                        "1.21.11",
+                        LOADER_FABRIC,
+                        true,
+                        true
+                ),
+                new ModpackProfile(
+                        "mc-26.2",
+                        "26.2",
+                        "Версия 26.2 и моды на оптимизацию",
+                        "26.2",
+                        LOADER_FABRIC,
+                        false,
+                        true
+                )
         );
     }
 
@@ -85,6 +162,7 @@ public record ModpackProfile(
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("id", this.id);
         map.put("name", this.name);
+        map.put("description", this.description);
         map.put("minecraftVersion", this.minecraftVersion);
         map.put("loader", this.loader);
         map.put("installAetherGlassClient", this.installAetherGlassClient);
@@ -96,13 +174,17 @@ public record ModpackProfile(
         String version = Json.string(map, "minecraftVersion", TARGET_AETHERGLASS_MC);
         String loader = normalizeLoader(Json.string(map, "loader", LOADER_FABRIC));
         boolean defaultAether = isAetherGlassSupported(version, loader);
+        String name = Json.string(map, "name", version);
+        boolean aether = Json.boolValue(map, "installAetherGlassClient", defaultAether);
+        boolean opt = Json.boolValue(map, "autoOptimizeMods", LOADER_FABRIC.equalsIgnoreCase(loader));
         return new ModpackProfile(
                 Json.string(map, "id", "pack-" + version),
-                Json.string(map, "name", "Сборка " + version),
+                name,
+                Json.string(map, "description", defaultDescription(name, version, aether, opt)),
                 version,
                 loader,
-                Json.boolValue(map, "installAetherGlassClient", defaultAether),
-                Json.boolValue(map, "autoOptimizeMods", LOADER_FABRIC.equalsIgnoreCase(loader))
+                aether,
+                opt
         );
     }
 

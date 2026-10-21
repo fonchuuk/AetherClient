@@ -67,25 +67,23 @@ public abstract class AbstractContainerScreenMixin<T extends AbstractContainerMe
     @Unique
     private int aetherglass$lastLassoSlotIndex = -1;
 
-    @Inject(method = "renderBackground", at = @At("RETURN"))
-    private void aetherglass$renderInventoryTheme(GuiGraphics graphics, int mouseX, int mouseY,
-                                                  float partialTick, CallbackInfo info) {
+    @Inject(
+            method = "renderBackground",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/client/gui/screens/inventory/AbstractContainerScreen;renderBg(Lnet/minecraft/client/gui/GuiGraphics;FII)V"
+            )
+    )
+    private void aetherglass$renderContainerDropShadow(GuiGraphics graphics, int mouseX, int mouseY,
+                                                       float partialTick, CallbackInfo info) {
         InventoryModule module = ModuleManager.get().typed("inventory", InventoryModule.class);
         if (module == null || !module.isEnabled()) {
             return;
         }
         InventoryTheme theme = module.theme();
-        int pad = 8;
-        int x = this.leftPos - pad;
-        int y = this.topPos - pad;
-        int w = this.imageWidth + pad * 2;
-        int h = this.imageHeight + pad * 2;
-
-        if (theme == InventoryTheme.DARK) {
-            DrawUtil.drawSoftShadow(graphics, x, y, w, h, 12, 10, 0.55F);
-            DrawUtil.fillRoundedBordered(graphics, x, y, w, h, 12, 0xCC080D16, 0x446CA8FF);
-        } else if (theme == InventoryTheme.LIQUID_GLASS) {
-            DrawUtil.drawLiquidGlassPanel(graphics, x, y, w, h, 14, 0.88F);
+        if (theme != null && theme.replacesContainerTexture()) {
+            // Мягкая тень ПОД текстурой контейнера (сама текстура меняется в GuiGraphicsMixin)
+            DrawUtil.drawSoftShadow(graphics, this.leftPos, this.topPos, this.imageWidth, this.imageHeight, 6, 10, 0.52F);
         }
     }
 
@@ -98,13 +96,15 @@ public abstract class AbstractContainerScreenMixin<T extends AbstractContainerMe
         InventoryModule module = ModuleManager.get().typed("inventory", InventoryModule.class);
         if (module != null && module.isEnabled()) {
             InventoryTheme theme = module.theme();
-            if (theme == InventoryTheme.DARK) {
-                DrawUtil.fillRounded(graphics, slot.x, slot.y, 16, 16, 3, 0x58070B12);
-            } else if (theme == InventoryTheme.LIQUID_GLASS) {
+            if (theme != null && theme.replacesContainerTexture() && this.hoveredSlot == slot) {
                 int accent = ColorController.currentAccent();
-                boolean hovered = (this.hoveredSlot == slot);
-                int fill = hovered ? ColorUtil.fade(accent, 0.24F) : 0x2E101A2C;
-                DrawUtil.fillRounded(graphics, slot.x, slot.y, 16, 16, 4, fill);
+                int fill = ColorUtil.fade(accent, 0.22F);
+                int border = ColorUtil.fade(accent, 0.85F);
+                graphics.fill(slot.x, slot.y, slot.x + 16, slot.y + 16, fill);
+                graphics.fill(slot.x - 1, slot.y - 1, slot.x + 17, slot.y, border);
+                graphics.fill(slot.x - 1, slot.y + 16, slot.x + 17, slot.y + 17, border);
+                graphics.fill(slot.x - 1, slot.y, slot.x, slot.y + 16, border);
+                graphics.fill(slot.x + 16, slot.y, slot.x + 17, slot.y + 16, border);
             }
             if (module.shiftClickFlight() && InventoryTransferAnimator.isSlotInFlight(slot.index)) {
                 info.cancel();

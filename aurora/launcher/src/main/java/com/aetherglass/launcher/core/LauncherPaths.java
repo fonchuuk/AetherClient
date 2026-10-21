@@ -23,6 +23,8 @@ public final class LauncherPaths {
     private final Path versions;
     private final Path mods;
     private final Path resourcePacks;
+    private final Path shaderPacks;
+    private final Path screenshots;
 
     public LauncherPaths(Path base) {
         this.base = base.toAbsolutePath().normalize();
@@ -34,6 +36,8 @@ public final class LauncherPaths {
         this.versions = this.base.resolve("versions");
         this.mods = this.base.resolve("mods");
         this.resourcePacks = this.base.resolve("resourcepacks");
+        this.shaderPacks = this.base.resolve("shaderpacks");
+        this.screenshots = this.base.resolve("screenshots");
     }
 
     /** Каталог, в котором лежит игра (он же рабочий каталог Minecraft). */
@@ -71,6 +75,14 @@ public final class LauncherPaths {
 
     public Path resourcePacks() {
         return this.resourcePacks;
+    }
+
+    public Path shaderPacks() {
+        return this.shaderPacks;
+    }
+
+    public Path screenshots() {
+        return this.screenshots;
     }
 
     public Path versionDir(String versionId) {

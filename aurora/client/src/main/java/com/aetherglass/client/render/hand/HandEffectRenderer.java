@@ -12,10 +12,13 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ItemUseAnimation;
@@ -23,17 +26,19 @@ import net.minecraft.world.item.ItemUseAnimation;
 /**
  * Рендерер эффектов руки, ViewModel и анимаций рук от первого лица ({@code HandsShader} + {@code ViewModel}, Блок 4).
  *
- * <p>Все трансформации ViewModel и 5 процедурных анимаций (Swing, Equip, Walking Sway, Idle, Eating/Drinking)
- * применяются к {@link PoseStack} до передачи в ванильный {@code SubmitNodeStorage} и в {@code HandsShader},
- * поэтому шейдерная глазурь и контур всегда на 100% совпадают с новой позицией и поворотом предмета.</p>
+ * <p>Все трансформации ViewModel (позиция X/Y/Z, масштаб и поворот X/Y/Z вокруг точки хвата руки)
+ * и 5 процедурных анимаций (Swing, Equip, Walking Sway, Idle, Eating/Drinking) применяются к {@link PoseStack}
+ * в начале {@code renderArmWithItem}, поэтому и сама рука/предмет, и шейдерная оболочка {@code HandsShader}
+ * двигаются, вращаются и масштабируются синхронно с точностью до субпикселя.</p>
  */
 public final class HandEffectRenderer {
     public static final Identifier WHITE = Identifier.fromNamespaceAndPath("aetherglass",
             "textures/particle/white.png");
 
+    private static boolean moduleEnabled = true;
     private static HandStyle style = HandStyle.GLOW;
     private static HandAnimation animation = HandAnimation.SWING;
-    private static int color = 0xFF7FD4FF;
+    private static int color = 0xFFAA3DFF;
     private static float intensity = 0.6F;
     private static float appearSpeed = 6.5F;
     private static float swingStrength = 0.65F;
@@ -41,11 +46,11 @@ public final class HandEffectRenderer {
     private static boolean useShader = true;
     private static ShaderEffect shaderEffect = ShaderEffect.LIQUID_GLASS;
     private static FaceGradientMode faceGradientMode = FaceGradientMode.MENISCUS_DROP;
-    private static int shaderColor = ShaderEffect.LIQUID_GLASS.defaultColor();
-    private static float shaderIntensity = 1.0F;
+    private static int shaderColor = 0xFFAA3DFF;
+    private static float shaderIntensity = 1.15F;
     private static float shaderSpeed = 1.0F;
-    private static float shaderOpacity = 0.42F;
-    private static float outlineWidth = 0.012F;
+    private static float shaderOpacity = 0.46F;
+    private static float outlineWidth = 0.014F;
     private static float modelAlpha = 1.0F;
 
     // ── ViewModel & Hand Animations (Блок 4.1–4.2) ─────────────────────────────
@@ -72,13 +77,14 @@ public final class HandEffectRenderer {
     private static float walkAmplitude;
     private static float eatingProgress;
     private static boolean holdingMainItem;
-    private static boolean posePushed;
+    private static int pushedDepth;
 
     private HandEffectRenderer() {
     }
 
     public static void configure(HandStyle styleValue, HandAnimation animationValue, int colorValue,
                                  float intensityValue, float appearSpeedValue, float swingStrengthValue) {
+        moduleEnabled = true;
         style = styleValue == null ? HandStyle.NONE : styleValue;
         animation = animationValue == null ? HandAnimation.NONE : animationValue;
         color = colorValue;
@@ -95,6 +101,7 @@ public final class HandEffectRenderer {
     public static void configureShader(boolean enabled, ShaderEffect effect, FaceGradientMode modeValue,
                                        int colorValue, float intensityValue, float speedValue, float opacityValue,
                                        float outlineWidthValue, float modelAlphaValue) {
+        moduleEnabled = true;
         useShader = enabled;
         shaderEffect = effect == null ? ShaderEffect.LIQUID_GLASS : effect;
         faceGradientMode = modeValue == null ? FaceGradientMode.MENISCUS_DROP : modeValue;
@@ -110,6 +117,7 @@ public final class HandEffectRenderer {
                                           float rx, float ry, float rz, boolean hideOnEat,
                                           boolean swingOn, boolean equipOn, boolean walkOn,
                                           boolean idleOn, boolean eatOn) {
+        moduleEnabled = true;
         viewOffsetX = Math.max(-1.0F, Math.min(1.0F, offX));
         viewOffsetY = Math.max(-1.0F, Math.min(1.0F, offY));
         viewOffsetZ = Math.max(-1.0F, Math.min(1.0F, offZ));
@@ -126,6 +134,7 @@ public final class HandEffectRenderer {
     }
 
     public static void reset() {
+        moduleEnabled = false;
         appear = 1.0F;
         swing = 0.0F;
         walkPhase = 0.0F;
@@ -134,7 +143,7 @@ public final class HandEffectRenderer {
         lastItem = null;
         lastSelectedSlot = -1;
         holdingMainItem = false;
-        posePushed = false;
+        pushedDepth = 0;
     }
 
     public static void update(float deltaSeconds, LocalPlayer player) {
@@ -158,13 +167,11 @@ public final class HandEffectRenderer {
 
         if (player.swinging) {
             float rawAtk = player.getAttackAnim(1.0F);
-            // Резкий и красивый нелинейный импульс удара
             swing = (float) Math.sin(Math.pow(rawAtk, 0.72D) * Math.PI);
         } else {
             swing = Math.max(0.0F, swing - deltaSeconds * 7.5F);
         }
 
-        // Плавная интерполяция шага для Walking Sway
         double horizSpeed = player.getDeltaMovement().horizontalDistance();
         float targetWalk = (player.onGround() && horizSpeed > 0.015D)
                 ? (float) Math.min(1.0D, horizSpeed * 5.2D)
@@ -174,7 +181,6 @@ public final class HandEffectRenderer {
             walkPhase += deltaSeconds * (5.5F + 4.0F * walkAmplitude);
         }
 
-        // Проверка еды и питья
         boolean isEatingOrDrinking = false;
         if (player.isUsingItem()) {
             ItemStack useStack = player.getUseItem();
@@ -190,107 +196,136 @@ public final class HandEffectRenderer {
     }
 
     public static void transformPose(PoseStack pose, LocalPlayer player, float partialTick) {
-        posePushed = false;
-        if (pose == null) {
+        ItemStack held = player != null ? player.getMainHandItem() : ItemStack.EMPTY;
+        transformHandPose(pose, player, InteractionHand.MAIN_HAND, held, partialTick);
+    }
+
+    /**
+     * Трансформирует матрицу руки/предмета от первого лица вокруг естественного центра хвата
+     * {@code (pivotX, pivotY, pivotZ)}, чтобы масштаб и повороты крутили сам предмет/руку на месте,
+     * а смещение X/Y/Z двигало руку влево-вправо, вниз-вверх и ближе-дальше от камеры.
+     */
+    public static void transformHandPose(PoseStack pose, AbstractClientPlayer player,
+                                         InteractionHand hand, ItemStack item, float partialTick) {
+        if (pose == null || !moduleEnabled) {
             return;
         }
         pose.pushPose();
-        posePushed = true;
+        pushedDepth++;
+
+        HumanoidArm arm = HumanoidArm.RIGHT;
+        if (player != null) {
+            arm = (hand == InteractionHand.OFF_HAND)
+                    ? player.getMainArm().getOpposite()
+                    : player.getMainArm();
+        }
+        float side = (arm == HumanoidArm.RIGHT) ? 1.0F : -1.0F;
+        boolean emptyArm = (item == null || item.isEmpty());
+
+        // Точка вращения и масштабирования — естественная позиция руки/предмета в ванильном рендерере
+        float pivotX = side * (emptyArm ? 0.64F : 0.56F);
+        float pivotY = emptyArm ? -0.60F : -0.52F;
+        float pivotZ = -0.72F;
 
         float time = FrameClock.elapsedSeconds();
 
-        // 1. ViewModel: Базовое смещение X / Y / Z
-        float tx = viewOffsetX * 0.45F;
-        float ty = viewOffsetY * 0.45F;
-        float tz = viewOffsetZ * 0.45F;
+        // 1. ViewModel: Позиция X (влево/вправо), Y (вниз/вверх), Z (ближе/дальше вглубь экрана)
+        float tx = viewOffsetX * 0.28F * side;
+        float ty = viewOffsetY * 0.25F;
+        float tz = -viewOffsetZ * 0.35F;
 
         // 2. Equip Animation (Вынимание предмета снизу и чуть сбоку с Easing)
         if (equipAnimEnabled && appear < 0.999F) {
             float shown = Easing.easeOutCubic(appear);
             float inv = 1.0F - shown;
-            tx += inv * 0.14F;
-            ty -= inv * 0.34F;
-            tz += inv * 0.08F;
+            tx += inv * 0.14F * side;
+            ty -= inv * 0.32F;
+            tz -= inv * 0.08F;
         }
 
         // 3. Walking Sway (Покачивание в такт шагам как в шутерах)
         if (walkingSwayEnabled && walkAmplitude > 0.005F) {
             float amp = walkAmplitude * swingStrength;
-            tx += (float) Math.cos(walkPhase) * 0.032F * amp;
-            ty += (float) Math.abs(Math.sin(walkPhase)) * -0.026F * amp;
+            tx += (float) Math.cos(walkPhase) * 0.028F * amp;
+            ty += (float) Math.abs(Math.sin(walkPhase)) * -0.022F * amp;
         }
 
         // 4. Idle Animation (Лёгкое дыхание руки в покое)
         if (idleAnimEnabled) {
             float idleFactor = Math.max(0.15F, 1.0F - walkAmplitude);
-            tx += (float) Math.cos(time * 1.35D) * 0.007F * idleFactor;
-            ty += (float) Math.sin(time * 2.10D) * 0.011F * idleFactor;
+            tx += (float) Math.cos(time * 1.35D) * 0.005F * idleFactor;
+            ty += (float) Math.sin(time * 2.10D) * 0.008F * idleFactor;
         }
 
         // 5. NoClip при еде/питье + Eating/Drinking Animation
         if (eatingProgress > 0.005F) {
             float eatEased = Easing.easeInOutSine(eatingProgress);
             if (noClipEating) {
-                // Отодвигаем и опускаем руку с едой/зельем, чтобы не перекрывать прицел и центр экрана
-                tx += 0.22F * eatEased;
-                ty -= 0.28F * eatEased;
-                tz -= 0.12F * eatEased;
+                tx += 0.22F * eatEased * side;
+                ty -= 0.26F * eatEased;
+                tz -= 0.14F * eatEased;
             }
             if (eatingAnimEnabled) {
-                float sipWave = (float) Math.sin(time * 11.5D) * 0.022F * eatEased;
+                float sipWave = (float) Math.sin(time * 11.5D) * 0.020F * eatEased;
                 ty += sipWave;
             }
         }
 
-        pose.translate(tx, ty, tz);
-
-        // 6. ViewModel: Повороты по осям X, Y, Z + Swing Animation
+        // 6. Повороты по осям X, Y, Z + Swing Animation
         float rx = viewRotX;
-        float ry = viewRotY;
-        float rz = viewRotZ;
+        float ry = viewRotY * side;
+        float rz = viewRotZ * side;
 
-        if (swingAnimEnabled && swing > 0.002F) {
+        if (swingAnimEnabled && swing > 0.002F && hand == InteractionHand.MAIN_HAND) {
             float s = Easing.easeOutCubic(swing) * swingStrength;
-            rx -= s * 52.0F;
-            ry += s * 18.0F;
-            rz -= s * 14.0F;
+            rx -= s * 44.0F;
+            ry += s * 16.0F * side;
+            rz -= s * 12.0F * side;
         }
         if (equipAnimEnabled && appear < 0.999F) {
             float inv = 1.0F - Easing.easeOutCubic(appear);
-            rx -= inv * 22.0F;
-            rz += inv * 12.0F;
+            rx -= inv * 18.0F;
+            rz += inv * 10.0F * side;
         }
         if (eatingAnimEnabled && eatingProgress > 0.005F) {
             float eatEased = Easing.easeInOutSine(eatingProgress);
-            rx += (float) Math.sin(time * 11.5D) * 7.5F * eatEased;
-            ry -= 10.0F * eatEased;
+            rx += (float) Math.sin(time * 11.5D) * 6.5F * eatEased;
+            ry -= 9.0F * eatEased * side;
         }
 
-        if (Math.abs(rx) > 0.01F) {
-            pose.mulPose(Axis.XP.rotationDegrees(rx));
-        }
-        if (Math.abs(ry) > 0.01F) {
-            pose.mulPose(Axis.YP.rotationDegrees(ry));
-        }
-        if (Math.abs(rz) > 0.01F) {
-            pose.mulPose(Axis.ZP.rotationDegrees(rz));
-        }
-
-        // 7. ViewModel: Масштаб руки
+        // 7. Масштаб руки
         float finalScale = viewScale;
         if (equipAnimEnabled && appear < 0.999F) {
-            finalScale *= (0.86F + 0.14F * Easing.easeOutCubic(appear));
+            finalScale *= (0.88F + 0.12F * Easing.easeOutCubic(appear));
         }
-        if (Math.abs(finalScale - 1.0F) > 0.002F) {
-            pose.scale(finalScale, finalScale, finalScale);
+
+        boolean hasRot = Math.abs(rx) > 0.01F || Math.abs(ry) > 0.01F || Math.abs(rz) > 0.01F;
+        boolean hasScale = Math.abs(finalScale - 1.0F) > 0.002F;
+
+        pose.translate(tx, ty, tz);
+        if (hasRot || hasScale) {
+            pose.translate(pivotX, pivotY, pivotZ);
+            if (Math.abs(rx) > 0.01F) {
+                pose.mulPose(Axis.XP.rotationDegrees(rx));
+            }
+            if (Math.abs(ry) > 0.01F) {
+                pose.mulPose(Axis.YP.rotationDegrees(ry));
+            }
+            if (Math.abs(rz) > 0.01F) {
+                pose.mulPose(Axis.ZP.rotationDegrees(rz));
+            }
+            if (hasScale) {
+                pose.scale(finalScale, finalScale, finalScale);
+            }
+            pose.translate(-pivotX, -pivotY, -pivotZ);
         }
     }
 
     public static void restorePose(PoseStack pose) {
-        if (!posePushed || pose == null) {
+        if (pushedDepth <= 0 || pose == null) {
             return;
         }
-        posePushed = false;
+        pushedDepth--;
         pose.popPose();
     }
 
@@ -338,11 +373,11 @@ public final class HandEffectRenderer {
     }
 
     public static boolean isActive() {
-        return true;
+        return moduleEnabled;
     }
 
     public static boolean isShaderActive() {
-        return useShader && shaderOpacity > 0.01F;
+        return moduleEnabled && useShader && shaderOpacity > 0.01F;
     }
 
     public static ShaderEffect shaderEffect() {
@@ -375,5 +410,33 @@ public final class HandEffectRenderer {
 
     public static float modelAlpha() {
         return modelAlpha;
+    }
+
+    public static float viewOffsetX() {
+        return viewOffsetX;
+    }
+
+    public static float viewOffsetY() {
+        return viewOffsetY;
+    }
+
+    public static float viewOffsetZ() {
+        return viewOffsetZ;
+    }
+
+    public static float viewScale() {
+        return viewScale;
+    }
+
+    public static float viewRotX() {
+        return viewRotX;
+    }
+
+    public static float viewRotY() {
+        return viewRotY;
+    }
+
+    public static float viewRotZ() {
+        return viewRotZ;
     }
 }

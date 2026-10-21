@@ -3,8 +3,10 @@ package com.aetherglass.client;
 import com.aetherglass.client.gui.screen.AuroraMenuScreen;
 import com.aetherglass.client.modules.ModuleManager;
 import com.aetherglass.client.modules.ModuleRegistry;
+import com.aetherglass.client.modules.impl.CombatModule;
 import com.aetherglass.client.modules.impl.CrosshairModule;
 import com.aetherglass.client.modules.impl.HudModule;
+import com.aetherglass.client.modules.impl.MobInfoModule;
 import com.aetherglass.client.render.RenderResources;
 import com.aetherglass.client.render.WorldRenderDispatcher;
 import com.aetherglass.client.utils.AuroraLog;
@@ -69,6 +71,16 @@ public final class AetherGlassClient implements ClientModInitializer {
             CrosshairModule crosshair = ModuleManager.get().typed("crosshair", CrosshairModule.class);
             if (crosshair != null) {
                 crosshair.install();
+            }
+        });
+        step("бой и существа", () -> {
+            CombatModule combat = ModuleManager.get().typed("combat", CombatModule.class);
+            if (combat != null) {
+                combat.install();
+            }
+            MobInfoModule mobInfo = ModuleManager.get().typed("mob_info", MobInfoModule.class);
+            if (mobInfo != null) {
+                mobInfo.install();
             }
         });
         step("обработчики отрисовки мира", WorldRenderDispatcher::register);

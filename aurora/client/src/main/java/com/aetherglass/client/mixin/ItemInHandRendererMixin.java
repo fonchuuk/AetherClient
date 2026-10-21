@@ -8,9 +8,9 @@ import com.aetherglass.client.render.shader.ShaderEffect;
 import com.aetherglass.client.render.shader.WorldShaderRenderer;
 import com.aetherglass.client.render.util.FrameClock;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.player.AbstractClientPlayer;
-import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.ItemInHandRenderer;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.block.model.BakedQuad;
@@ -32,26 +32,55 @@ import org.spongepowered.asm.mixin.injection.callback.LocalCapture;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * Перехват отрисовки руки и удерживаемых предметов от первого лица ({@code HandsShader}, Блок 4.2).
+ * Перехват отрисовки руки и удерживаемых предметов от первого лица ({@code HandsShader} + {@code ViewModel}, Блок 4).
  *
  * <p>Ключевые гарантии:
  * <ol>
- *   <li>Оригинальный {@link SubmitNodeCollector} ({@code SubmitNodeStorage}) НЕ подменяется обёрткой
- *       и НЕ перехватывается через {@code @Redirect}: ванильный {@code ItemStackRenderState.submit}
- *       и Fabric Indigo отрабатывают на 100% штатно, поэтому предмет в руке всегда остаётся
- *       полностью видимым со своей оригинальной текстурой;</li>
- *   <li>Полупрозрачный шейдерный слой и контур добавляются через штатный
- *       {@link SubmitNodeCollector#submitCustomGeometry}, который {@code FeatureRenderDispatcher}
- *       выполняет в {@code CustomFeatureRenderer} строго ПОСЛЕ {@code ItemFeatureRenderer}
- *       поверх уже нарисованного предмета.</li>
+ *   <li>Трансформации {@code ViewModel} применяются в начале {@code renderArmWithItem} вокруг естественного
+ *       центра руки/предмета и снимаются в конце {@code renderArmWithItem};</li>
+ *   <li>Шейдерная оболочка пустой руки {@code renderPlayerArm} перехватывается ДО вызова {@code pose.popPose()}
+ *       и применяет смещение пивота {@code ModelPart} ({@code PartPose.offset(-5, 2, 0)} и {@code zRot = 0.1F}),
+ *       как это делает {@code ModelPartFeatureRenderer}, поэтому шейдер облегает саму руку игрока;</li>
+ *   <li>Оригинальный {@link SubmitNodeCollector} НЕ подменяется обёрткой: предмет в руке всегда остаётся
+ *       на 100% видимым со своей оригинальной текстурой.</li>
  * </ol>
  */
 @Mixin(ItemInHandRenderer.class)
 public abstract class ItemInHandRendererMixin {
+
+    @org.spongepowered.asm.mixin.Shadow
+    @org.spongepowered.asm.mixin.Final
+    private net.minecraft.client.renderer.entity.EntityRenderDispatcher entityRenderDispatcher;
+    private static final List<ModelPart.Cube> RIGHT_ARM_WIDE_CUBES = List.of(
+            new ModelPart.Cube(
+                    0, 0, -3.0F, -2.0F, -2.0F, 4.0F, 12.0F, 4.0F,
+                    0.0F, 0.0F, 0.0F, false, 64.0F, 64.0F, EnumSet.allOf(Direction.class)
+            )
+    );
+    private static final List<ModelPart.Cube> LEFT_ARM_WIDE_CUBES = List.of(
+            new ModelPart.Cube(
+                    0, 0, -1.0F, -2.0F, -2.0F, 4.0F, 12.0F, 4.0F,
+                    0.0F, 0.0F, 0.0F, false, 64.0F, 64.0F, EnumSet.allOf(Direction.class)
+            )
+    );
+    private static final List<ModelPart.Cube> RIGHT_ARM_SLIM_CUBES = List.of(
+            new ModelPart.Cube(
+                    0, 0, -2.0F, -2.0F, -2.0F, 3.0F, 12.0F, 4.0F,
+                    0.0F, 0.0F, 0.0F, false, 64.0F, 64.0F, EnumSet.allOf(Direction.class)
+            )
+    );
+    private static final List<ModelPart.Cube> LEFT_ARM_SLIM_CUBES = List.of(
+            new ModelPart.Cube(
+                    0, 0, -1.0F, -2.0F, -2.0F, 3.0F, 12.0F, 4.0F,
+                    0.0F, 0.0F, 0.0F, false, 64.0F, 64.0F, EnumSet.allOf(Direction.class)
+            )
+    );
+
     private static Field layersField;
     private static Field transformField;
     private static Field displayContextField;
@@ -103,58 +132,43 @@ public abstract class ItemInHandRendererMixin {
         }
     }
 
-    @Inject(method = "renderHandsWithItems", at = @At("HEAD"))
-    private void aetherglass$beforeHands(float partialTick, PoseStack pose, SubmitNodeCollector collector,
-                                         LocalPlayer player, int light, CallbackInfo info) {
+    @Inject(method = "renderArmWithItem", at = @At("HEAD"))
+    private void aetherglass$beforeArmWithItem(AbstractClientPlayer player, float partialTick, float pitch,
+                                               InteractionHand hand, float swingProgress, ItemStack item,
+                                               float equipProgress, PoseStack pose, SubmitNodeCollector collector,
+                                               int light, CallbackInfo info) {
         HandEffectsModule module = ModuleManager.get().typed("hands", HandEffectsModule.class);
         if (module == null || !module.isEnabled() || !HandEffectRenderer.isActive()) {
             return;
         }
-        HandEffectRenderer.transformPose(pose, player, partialTick);
+        HandEffectRenderer.transformHandPose(pose, player, hand, item, partialTick);
     }
 
-    @Inject(method = "renderPlayerArm", at = @At("RETURN"))
+    @Inject(method = "renderArmWithItem", at = @At("RETURN"))
+    private void aetherglass$afterArmWithItem(AbstractClientPlayer player, float partialTick, float pitch,
+                                              InteractionHand hand, float swingProgress, ItemStack item,
+                                              float equipProgress, PoseStack pose, SubmitNodeCollector collector,
+                                              int light, CallbackInfo info) {
+        HandEffectRenderer.restorePose(pose);
+    }
+
+    @Inject(method = "renderPlayerArm", at = @At("TAIL"))
     private void aetherglass$afterPlayerArm(PoseStack pose, SubmitNodeCollector collector, int light,
                                             float equipProgress, float swingProgress, HumanoidArm arm,
                                             CallbackInfo info) {
-        if (!HandEffectRenderer.isShaderActive()) {
-            return;
-        }
-        aetherglass$emitArmShaderBox(pose, collector);
+        aetherglass$emitArmShaderBox(pose, collector, arm);
     }
 
     @Inject(
-            method = "renderArmWithItem",
+            method = "renderMapHand",
             at = @At(
                     value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/entity/player/AvatarRenderer;renderRightHand(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;ILnet/minecraft/resources/Identifier;Z)V",
-                    shift = At.Shift.AFTER
+                    target = "Lcom/mojang/blaze3d/vertex/PoseStack;popPose()V"
             )
     )
-    private void aetherglass$afterRightHand(AbstractClientPlayer player, float partialTick, float pitch,
-                                            InteractionHand hand, float swingProgress, ItemStack item,
-                                            float equipProgress, PoseStack pose, SubmitNodeCollector collector,
-                                            int light, CallbackInfo info) {
-        if (HandEffectRenderer.isShaderActive()) {
-            aetherglass$emitArmShaderBox(pose, collector);
-        }
-    }
-
-    @Inject(
-            method = "renderArmWithItem",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/entity/player/AvatarRenderer;renderLeftHand(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;ILnet/minecraft/resources/Identifier;Z)V",
-                    shift = At.Shift.AFTER
-            )
-    )
-    private void aetherglass$afterLeftHand(AbstractClientPlayer player, float partialTick, float pitch,
-                                           InteractionHand hand, float swingProgress, ItemStack item,
-                                           float equipProgress, PoseStack pose, SubmitNodeCollector collector,
-                                           int light, CallbackInfo info) {
-        if (HandEffectRenderer.isShaderActive()) {
-            aetherglass$emitArmShaderBox(pose, collector);
-        }
+    private void aetherglass$beforeMapHandPop(PoseStack pose, SubmitNodeCollector collector, int light,
+                                              HumanoidArm arm, CallbackInfo info) {
+        aetherglass$emitArmShaderBox(pose, collector, arm);
     }
 
     @Inject(
@@ -166,7 +180,12 @@ public abstract class ItemInHandRendererMixin {
                                              ItemDisplayContext displayContext, PoseStack pose,
                                              SubmitNodeCollector collector, int light,
                                              CallbackInfo info, ItemStackRenderState state) {
-        if (!HandEffectRenderer.isShaderActive() || state == null || state.isEmpty() || collector == null) {
+        HandEffectsModule module = ModuleManager.get().typed("hands", HandEffectsModule.class);
+        if (module == null || !module.isEnabled() || !HandEffectRenderer.isShaderActive()
+                || state == null || state.isEmpty() || collector == null) {
+            return;
+        }
+        if (displayContext != null && !displayContext.firstPerson()) {
             return;
         }
         ensureReflection();
@@ -190,7 +209,6 @@ public abstract class ItemInHandRendererMixin {
             int activeColor = HandEffectRenderer.shaderColor();
             float activeIntensity = HandEffectRenderer.shaderIntensity();
             float activeSpeed = HandEffectRenderer.shaderSpeed();
-            // Ограничиваем альфу глазури поверх предмета, чтобы текстура предмета была 100% читаемой
             float activeOpacity = Math.min(0.68F, HandEffectRenderer.shaderOpacity());
             float activeOutlineW = HandEffectRenderer.outlineWidth();
             float time = FrameClock.elapsedSeconds();
@@ -217,11 +235,24 @@ public abstract class ItemInHandRendererMixin {
                 }
 
                 collector.submitCustomGeometry(layerPose, RenderTypes.entityTranslucentEmissive(HandEffectRenderer.WHITE),
-                        (poseMatrix, consumer) -> WorldShaderRenderer.renderItemQuadsShader3D(
-                                poseMatrix, consumer, extracted,
-                                activeEffect, gradMode, activeColor,
-                                activeIntensity, activeSpeed, activeOpacity, activeOutlineW, time
-                        ));
+                        (poseMatrix, consumer) -> {
+                            try {
+                                var mc = net.minecraft.client.Minecraft.getInstance();
+                                if (mc != null && mc.renderBuffers() != null) {
+                                    var bs = mc.renderBuffers().bufferSource();
+                                    bs.endBatch(net.minecraft.client.renderer.Sheets.cutoutBlockSheet());
+                                    bs.endBatch(net.minecraft.client.renderer.Sheets.solidBlockSheet());
+                                    bs.endBatch(net.minecraft.client.renderer.Sheets.translucentItemSheet());
+                                    bs.endBatch(net.minecraft.client.renderer.Sheets.translucentBlockItemSheet());
+                                }
+                            } catch (Throwable ignored) {
+                            }
+                            WorldShaderRenderer.renderItemQuadsShader3D(
+                                    poseMatrix, consumer, extracted,
+                                    activeEffect, gradMode, activeColor,
+                                    activeIntensity, activeSpeed, activeOpacity, activeOutlineW, time
+                            );
+                        });
             }
         } catch (Throwable ignored) {
         }
@@ -311,31 +342,73 @@ public abstract class ItemInHandRendererMixin {
         return result;
     }
 
-    @Inject(method = "renderHandsWithItems", at = @At("RETURN"))
-    private void aetherglass$afterHands(float partialTick, PoseStack pose, SubmitNodeCollector collector,
-                                        LocalPlayer player, int light, CallbackInfo info) {
-        HandEffectRenderer.restorePose(pose);
-    }
-
-    private static void aetherglass$emitArmShaderBox(PoseStack pose, SubmitNodeCollector collector) {
+    private void aetherglass$emitArmShaderBox(PoseStack pose, SubmitNodeCollector collector, HumanoidArm arm) {
+        HandEffectsModule module = ModuleManager.get().typed("hands", HandEffectsModule.class);
+        if (module == null || !module.isEnabled() || !HandEffectRenderer.isShaderActive()
+                || pose == null || collector == null) {
+            return;
+        }
         final ShaderEffect activeEffect = HandEffectRenderer.shaderEffect();
         final FaceGradientMode gradMode = HandEffectRenderer.faceGradientMode();
         final int activeColor = HandEffectRenderer.shaderColor();
         final float activeIntensity = HandEffectRenderer.shaderIntensity();
         final float activeSpeed = HandEffectRenderer.shaderSpeed();
-        final float activeOpacity = Math.min(0.68F, HandEffectRenderer.shaderOpacity());
+        final float activeOpacity = Math.min(0.75F, HandEffectRenderer.shaderOpacity());
         final float activeOutlineW = HandEffectRenderer.outlineWidth();
         final float time = FrameClock.elapsedSeconds();
 
-        ModelPart.Cube armCube = new ModelPart.Cube(
-                0, 0, -2.0F, -2.0F, -2.0F, 4.0F, 12.0F, 4.0F,
-                0.08F, 0.08F, 0.08F, false, 64.0F, 64.0F, Direction.stream().collect(java.util.stream.Collectors.toSet())
-        );
-        List<ModelPart.Cube> cubes = List.of(armCube);
+        boolean left = (arm == HumanoidArm.LEFT);
+        net.minecraft.client.player.LocalPlayer localPlayer = net.minecraft.client.Minecraft.getInstance().player;
+        ModelPart liveArmPart = null;
+        if (localPlayer != null && this.entityRenderDispatcher != null) {
+            var avatarRenderer = this.entityRenderDispatcher.getPlayerRenderer(localPlayer);
+            if (avatarRenderer != null && avatarRenderer.getModel() != null) {
+                var playerModel = avatarRenderer.getModel();
+                playerModel.leftSleeve.visible = false;
+                playerModel.rightSleeve.visible = false;
+                liveArmPart = left ? playerModel.leftArm : playerModel.rightArm;
+            }
+        }
 
-        collector.submitCustomGeometry(pose, RenderTypes.entityTranslucentEmissive(HandEffectRenderer.WHITE), (poseMatrix, consumer) -> {
+        if (liveArmPart != null) {
+            final boolean[] emitted = {false};
+            liveArmPart.visit(pose, (cubePose, path, index, cube) -> {
+                if (emitted[0]) {
+                    return;
+                }
+                emitted[0] = true;
+                PoseStack captured = new PoseStack();
+                captured.last().pose().set(cubePose.pose());
+                captured.last().normal().set(cubePose.normal());
+                List<ModelPart.Cube> singleCube = List.of(cube);
+                collector.submitCustomGeometry(captured, RenderTypes.entityTranslucentEmissive(HandEffectRenderer.WHITE), (poseMatrix, consumer) -> {
+                    WorldShaderRenderer.renderHandPartShader3D(
+                            poseMatrix, consumer, singleCube,
+                            activeEffect, gradMode, activeColor,
+                            activeIntensity, activeSpeed, activeOpacity, activeOutlineW,
+                            time
+                    );
+                });
+            });
+            return;
+        }
+
+        float pivotX = (left ? 5.0F : -5.0F) / 16.0F;
+        float pivotY = 2.0F / 16.0F;
+        PoseStack armPose = new PoseStack();
+        armPose.last().pose().set(pose.last().pose());
+        armPose.last().normal().set(pose.last().normal());
+        armPose.translate(pivotX, pivotY, 0.0F);
+        armPose.mulPose(Axis.ZP.rotation(0.1F));
+
+        boolean slim = localPlayer != null && localPlayer.getSkin() != null
+                && localPlayer.getSkin().model() == net.minecraft.world.entity.player.PlayerModelType.SLIM;
+        List<ModelPart.Cube> armCubes = left
+                ? (slim ? LEFT_ARM_SLIM_CUBES : LEFT_ARM_WIDE_CUBES)
+                : (slim ? RIGHT_ARM_SLIM_CUBES : RIGHT_ARM_WIDE_CUBES);
+        collector.submitCustomGeometry(armPose, RenderTypes.entityTranslucentEmissive(HandEffectRenderer.WHITE), (poseMatrix, consumer) -> {
             WorldShaderRenderer.renderHandPartShader3D(
-                    poseMatrix, consumer, cubes,
+                    poseMatrix, consumer, armCubes,
                     activeEffect, gradMode, activeColor,
                     activeIntensity, activeSpeed, activeOpacity, activeOutlineW,
                     time

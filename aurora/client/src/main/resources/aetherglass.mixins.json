@@ -12,6 +12,9 @@
     "KeyboardHandlerMixin",
     "MouseHandlerMixin",
     "AbstractContainerScreenMixin",
+    "GuiGraphicsMixin",
+    "AbstractClientPlayerMixin",
+    "AvatarRendererMixin",
     "AdvancementToastMixin"
   ]
 }

@@ -14,7 +14,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.multiplayer.PlayerInfo;
-import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.Holder;
 import net.minecraft.resources.Identifier;
@@ -66,6 +65,28 @@ public final class HudPainter {
     private static final float[] COOLDOWN_MAX_SECONDS = {
             1.0F, 2.0F, 1.0F, 0.5F, 5.0F
     };
+    private static ItemStack[] cachedCooldownStacks;
+    private static long lastClockRefreshMs;
+    private static String cachedClockText = "00:00";
+
+    private static ItemStack[] cooldownStacks() {
+        if (cachedCooldownStacks == null) {
+            cachedCooldownStacks = new ItemStack[COOLDOWN_ITEMS.length];
+            for (int i = 0; i < COOLDOWN_ITEMS.length; i++) {
+                cachedCooldownStacks[i] = new ItemStack(COOLDOWN_ITEMS[i]);
+            }
+        }
+        return cachedCooldownStacks;
+    }
+
+    private static String currentClockText() {
+        long now = System.currentTimeMillis();
+        if (now - lastClockRefreshMs >= 1000L) {
+            lastClockRefreshMs = now;
+            cachedClockText = LocalTime.now().format(CLOCK_FORMAT);
+        }
+        return cachedClockText;
+    }
 
     private static final Map<HudElementType, Box> LAST_BOXES = new EnumMap<>(HudElementType.class);
     private static final List<QuickButtonRect> QUICK_BUTTONS = new ArrayList<>(6);
@@ -116,7 +137,6 @@ public final class HudPainter {
             Box drawn = switch (type) {
                 case WATERMARK -> drawTopInfoBar(graphics, font, client, layout, screenWidth, screenHeight, glass);
                 case PERFORMANCE -> drawServerPerfBar(graphics, font, client, layout, screenWidth, screenHeight, glass);
-                case FRIENDS -> drawFriendsPanel(graphics, font, client, layout, screenWidth, screenHeight, glass, preview);
                 case POTIONS -> drawPotionsPanel(graphics, font, client, layout, screenWidth, screenHeight, glass, preview);
                 case COOLDOWNS -> drawCooldownsPanel(graphics, font, client, layout, screenWidth, screenHeight, glass, preview);
                 case COORDINATES -> drawCoordinatesCluster(graphics, font, client, layout, screenWidth, screenHeight, glass);
@@ -131,7 +151,7 @@ public final class HudPainter {
                 case FPS -> drawSingleBadge(graphics, font, layout, type, screenWidth, screenHeight, glass,
                         "FPS", PerformanceProbe.fps() + " fps");
                 case CLOCK -> drawSingleBadge(graphics, font, layout, type, screenWidth, screenHeight, glass,
-                        "Время", LocalTime.now().format(CLOCK_FORMAT));
+                        "Время", currentClockText());
                 case DIRECTION -> drawSingleBadge(graphics, font, layout, type, screenWidth, screenHeight, glass,
                         "Курс", directionLabel(client.player));
                 case BIOME -> drawSingleBadge(graphics, font, layout, type, screenWidth, screenHeight, glass,
@@ -163,7 +183,7 @@ public final class HudPainter {
         String player = client.player != null ? client.player.getGameProfile().name() : client.getUser().getName();
         String fps = PerformanceProbe.fps() + " fps";
         String ping = getPlayerPing(client) + " ms";
-        String clock = LocalTime.now().format(CLOCK_FORMAT);
+        String clock = currentClockText();
 
         String[] segments = {brand, player, fps, ping, clock};
         int padX = 7;
@@ -230,76 +250,6 @@ public final class HudPainter {
                 ColorUtil.fade(AuroraTheme.textSecondary(), cleanAlpha), false);
 
         return new Box(x, y, totalW, h);
-    }
-
-    // ─────────────────── 2. Левая панель: Игроки рядом / Друзья (image-2.png) ───────────────────
-
-    private static Box drawFriendsPanel(GuiGraphics graphics, Font font, Minecraft client, HudLayout layout,
-                                        int sw, int sh, boolean glass, boolean preview) {
-        List<String> rows = new ArrayList<>();
-        List<String> badges = new ArrayList<>();
-
-        if (client.level != null && client.player != null) {
-            for (AbstractClientPlayer other : client.level.players()) {
-                if (other == client.player) {
-                    continue;
-                }
-                int dist = Math.round(other.distanceTo(client.player));
-                int hp = Math.round(other.getHealth());
-                rows.add(other.getGameProfile().name());
-                badges.add(hp + "hp · " + dist + "m");
-                if (rows.size() >= 5) {
-                    break;
-                }
-            }
-        }
-        if (rows.isEmpty()) {
-            String selfName = client.player != null ? client.player.getGameProfile().name() : client.getUser().getName();
-            rows.add(selfName);
-            badges.add("online · " + getPlayerPing(client) + "ms");
-            if (preview) {
-                rows.add("AuroraFriend");
-                badges.add("20hp · 6m");
-            }
-        }
-
-        String header = "👥 Игроки рядом";
-        String countBadge = Integer.toString(rows.size());
-        int width = Math.max(126, font.width(header) + 38);
-        for (int i = 0; i < rows.size(); i++) {
-            int rowW = font.width(rows.get(i)) + font.width(badges.get(i)) + 26;
-            width = Math.max(width, rowW);
-        }
-        int rowH = 14;
-        int height = 22 + rows.size() * rowH + 4;
-        int x = layout.pixelX(HudElementType.FRIENDS, sw, width);
-        int y = layout.pixelY(HudElementType.FRIENDS, sh, height);
-        float cleanAlpha = KeybindManager.get().hudVisibility();
-
-        drawGlassPlate(graphics, x, y, width, height, glass);
-        int accent = ColorController.accent();
-        graphics.drawString(font, header, x + 7, y + 6,
-                ColorUtil.fade(AuroraTheme.textPrimary(), cleanAlpha), false);
-        int cbW = font.width(countBadge) + 8;
-        DrawUtil.fillRounded(graphics, x + width - cbW - 6, y + 4, cbW, 12, 4,
-                ColorUtil.fade(accent, 0.20F * cleanAlpha));
-        graphics.drawString(font, countBadge, x + width - cbW - 2, y + 6,
-                ColorUtil.fade(accent, cleanAlpha), false);
-        graphics.fill(x + 7, y + 18, x + width - 7, y + 19,
-                ColorUtil.withAlpha(0xFFE4F4FF, Math.round(24 * cleanAlpha)));
-
-        int ry = y + 22;
-        for (int i = 0; i < rows.size(); i++) {
-            DrawUtil.fillRounded(graphics, x + 7, ry + 3, 5, 5, 2,
-                    ColorUtil.fade(AuroraTheme.success(), cleanAlpha));
-            graphics.drawString(font, rows.get(i), x + 16, ry + 2,
-                    ColorUtil.fade(AuroraTheme.textPrimary(), cleanAlpha), false);
-            String b = badges.get(i);
-            graphics.drawString(font, b, x + width - font.width(b) - 7, ry + 2,
-                    ColorUtil.fade(AuroraTheme.textSecondary(), cleanAlpha), false);
-            ry += rowH;
-        }
-        return new Box(x, y, width, height);
     }
 
     // ─────────────────── 3. Правая панель: Зелья и Перезарядки (image-2.png) ───────────────────
@@ -376,10 +326,11 @@ public final class HudPainter {
         List<Float> shownProgress = new ArrayList<>();
         List<String> shownTimers = new ArrayList<>();
 
+        ItemStack[] stacks = cooldownStacks();
         if (player != null) {
             for (int i = 0; i < COOLDOWN_ITEMS.length; i++) {
                 Item item = COOLDOWN_ITEMS[i];
-                ItemStack stack = new ItemStack(item);
+                ItemStack stack = stacks[i];
                 float cd = player.getCooldowns().getCooldownPercent(stack, 0.0F);
                 boolean hasInInv = hasItemInInventory(player, item);
                 if (cd > 0.005F) {
@@ -398,17 +349,17 @@ public final class HudPainter {
         }
 
         if (shownStacks.isEmpty()) {
-            shownStacks.add(new ItemStack(Items.ENDER_PEARL));
+            shownStacks.add(stacks[0]);
             shownNames.add("Эндер-жемчуг");
             shownProgress.add(preview ? 0.65F : 0.0F);
             shownTimers.add(preview ? "9.8с" : "Готово");
 
-            shownStacks.add(new ItemStack(Items.GOLDEN_APPLE));
+            shownStacks.add(stacks[1]);
             shownNames.add("Золотое яблоко");
             shownProgress.add(preview ? 0.35F : 0.0F);
             shownTimers.add(preview ? "1.4с" : "Готово");
 
-            shownStacks.add(new ItemStack(Items.CHORUS_FRUIT));
+            shownStacks.add(stacks[2]);
             shownNames.add("Плод хоруса");
             shownProgress.add(preview ? 0.80F : 0.0F);
             shownTimers.add(preview ? "0.8с" : "Готово");

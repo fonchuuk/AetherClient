@@ -21,6 +21,7 @@ public final class ModrinthCatalog {
     public static final String API_BASE = "https://api.modrinth.com/v2";
     public static final String TYPE_MOD = "mod";
     public static final String TYPE_RESOURCEPACK = "resourcepack";
+    public static final String TYPE_SHADER = "shader";
 
     private static final List<Hit> BUILTIN_MODS = List.of(
             new Hit("P7dR8mSH", "fabric-api", "Fabric API",
@@ -130,6 +131,33 @@ public final class ModrinthCatalog {
                     "Reijvi", 9_400_000L, TYPE_RESOURCEPACK)
     );
 
+    private static final List<Hit> BUILTIN_SHADERS = List.of(
+            new Hit("HVnmMxH1", "complementary-reimagined", "Complementary Reimagined",
+                    "Эталонные шейдеры для Iris: атмосферный свет, отражения, облака в стиле Minecraft",
+                    "EminGT", 68_400_000L, TYPE_SHADER),
+            new Hit("R6NEzAwj", "complementary-unbound", "Complementary Unbound",
+                    "Реалистичные волны воды, мягкие объёмные облака и кинематографичное освещение",
+                    "EminGT", 54_200_000L, TYPE_SHADER),
+            new Hit("Q1vvjJYV", "bsl-shaders", "BSL Shaders",
+                    "Тёплое мягкое освещение, глубокие тени и высокая производительность",
+                    "Capttatsu", 49_100_000L, TYPE_SHADER),
+            new Hit("izsIPI7a", "makeup-ultra-fast", "MakeUp - Ultra Fast",
+                    "Сверхлёгкие шейдеры для слабых ПК: высокий FPS с красивыми тенями и бликами",
+                    "XavierFST", 22_800_000L, TYPE_SHADER),
+            new Hit("EpQFjzrQ", "solas-shader", "Solas Shader",
+                    "Фэнтезийное небо с туманностями, северным сиянием и цветным освещением",
+                    "Septonomic", 18_500_000L, TYPE_SHADER),
+            new Hit("ZP7xHXtw", "bliss-shader", "Bliss Shaders",
+                    "Динамическая погода, объёмный туман и реалистичное рассеивание света",
+                    "X0nk", 14_900_000L, TYPE_SHADER),
+            new Hit("kmWfB62a", "rethinking-voxels", "Rethinking Voxels",
+                    "Воксельная трассировка цветного света от факелов, лавы и неона",
+                    "gri573", 11_300_000L, TYPE_SHADER),
+            new Hit("LMIZZNxZ", "super-duper-vanilla", "Super Duper Vanilla",
+                    "Яркая фэнтези-палитра и кристально чистая вода в духе официального демо",
+                    "Eldeston", 9_700_000L, TYPE_SHADER)
+    );
+
     private static final Map<String, VersionFile> FALLBACK_FILES = Map.ofEntries(
             Map.entry("P7dR8mSH", new VersionFile(
                     "https://cdn.modrinth.com/data/P7dR8mSH/versions/6qAuTtLR/fabric-api-0.141.6%2B1.21.11.jar",
@@ -198,8 +226,13 @@ public final class ModrinthCatalog {
             String description,
             String author,
             long downloads,
-            String projectType
+            String projectType,
+            String iconUrl
     ) {
+        public Hit(String projectId, String slug, String title, String description,
+                   String author, long downloads, String projectType) {
+            this(projectId, slug, title, description, author, downloads, projectType, "");
+        }
     }
 
     public record SearchPage(List<Hit> hits, long totalHits, int offset) {
@@ -221,12 +254,26 @@ public final class ModrinthCatalog {
         return String.valueOf(count);
     }
 
+    private static String normalizeType(String projectType) {
+        if (TYPE_RESOURCEPACK.equalsIgnoreCase(projectType)) {
+            return TYPE_RESOURCEPACK;
+        }
+        if (TYPE_SHADER.equalsIgnoreCase(projectType)) {
+            return TYPE_SHADER;
+        }
+        return TYPE_MOD;
+    }
+
     /**
      * Мгновенная выдача встроенного каталога (работает за 0 мс при открытии вкладки и при недоступности API).
      */
     public static SearchPage builtinPage(String projectType, String query, int offset) {
-        String type = TYPE_RESOURCEPACK.equalsIgnoreCase(projectType) ? TYPE_RESOURCEPACK : TYPE_MOD;
-        List<Hit> source = TYPE_RESOURCEPACK.equals(type) ? BUILTIN_RESOURCEPACKS : BUILTIN_MODS;
+        String type = normalizeType(projectType);
+        List<Hit> source = switch (type) {
+            case TYPE_RESOURCEPACK -> BUILTIN_RESOURCEPACKS;
+            case TYPE_SHADER -> BUILTIN_SHADERS;
+            default -> BUILTIN_MODS;
+        };
         String q = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
         List<Hit> filtered = new ArrayList<>();
         for (Hit hit : source) {
@@ -245,22 +292,26 @@ public final class ModrinthCatalog {
 
     public static SearchPage search(String projectType, String query, String gameVersion,
                                     int limit, int offset) throws IOException, InterruptedException {
-        String type = TYPE_RESOURCEPACK.equalsIgnoreCase(projectType) ? TYPE_RESOURCEPACK : TYPE_MOD;
+        String type = normalizeType(projectType);
         String ver = (gameVersion == null || gameVersion.isBlank()) ? "1.21.11" : gameVersion.trim();
         int safeLimit = Math.max(1, Math.min(50, limit));
         int safeOffset = Math.max(0, offset);
         String q = query == null ? "" : query.trim();
 
         try {
-            String facetsWithVer = TYPE_RESOURCEPACK.equals(type)
-                    ? "[[\"project_type:resourcepack\"],[\"versions:" + ver + "\"]]"
-                    : "[[\"project_type:mod\"],[\"categories:fabric\"],[\"versions:" + ver + "\"]]";
+            String facetsWithVer = switch (type) {
+                case TYPE_RESOURCEPACK -> "[[\"project_type:resourcepack\"],[\"versions:" + ver + "\"]]";
+                case TYPE_SHADER -> "[[\"project_type:shader\"],[\"versions:" + ver + "\"]]";
+                default -> "[[\"project_type:mod\"],[\"categories:fabric\"],[\"versions:" + ver + "\"]]";
+            };
             SearchPage page = fetchSearchPage(type, q, safeLimit, safeOffset, facetsWithVer);
             if (page.hits().isEmpty() && safeOffset == 0) {
-                // Если под конкретную подверсию 1.21.11 фильтр пуст, ищем по всем версиям Fabric/Resourcepack
-                String relaxedFacets = TYPE_RESOURCEPACK.equals(type)
-                        ? "[[\"project_type:resourcepack\"]]"
-                        : "[[\"project_type:mod\"],[\"categories:fabric\"]]";
+                // Если под конкретную подверсию 1.21.11 фильтр пуст, ищем по всем версиям
+                String relaxedFacets = switch (type) {
+                    case TYPE_RESOURCEPACK -> "[[\"project_type:resourcepack\"]]";
+                    case TYPE_SHADER -> "[[\"project_type:shader\"]]";
+                    default -> "[[\"project_type:mod\"],[\"categories:fabric\"]]";
+                };
                 page = fetchSearchPage(type, q, safeLimit, safeOffset, relaxedFacets);
             }
             if (!page.hits().isEmpty()) {
@@ -298,7 +349,8 @@ public final class ModrinthCatalog {
                     Json.string(obj, "description", ""),
                     Json.string(obj, "author", ""),
                     Json.longValue(obj, "downloads", 0L),
-                    Json.string(obj, "project_type", type)
+                    Json.string(obj, "project_type", type),
+                    Json.string(obj, "icon_url", "")
             ));
         }
         return new SearchPage(List.copyOf(hits), total, offset + hits.size());
@@ -309,7 +361,7 @@ public final class ModrinthCatalog {
         if (projectId == null || projectId.isBlank()) {
             throw new IOException("не выбран проект Modrinth");
         }
-        String type = TYPE_RESOURCEPACK.equalsIgnoreCase(projectType) ? TYPE_RESOURCEPACK : TYPE_MOD;
+        String type = normalizeType(projectType);
         String ver = (gameVersion == null || gameVersion.isBlank()) ? "1.21.11" : gameVersion.trim();
 
         // Если это встроенный мок-идентификатор (например AANobbMI_rp1), ищем по slug
@@ -317,7 +369,7 @@ public final class ModrinthCatalog {
 
         try {
             String url;
-            if (TYPE_RESOURCEPACK.equals(type)) {
+            if (TYPE_RESOURCEPACK.equals(type) || TYPE_SHADER.equals(type)) {
                 url = API_BASE + "/project/" + encode(lookupId)
                         + "/version?game_versions=" + encode("[\"" + ver + "\"]");
             } else {
@@ -328,8 +380,8 @@ public final class ModrinthCatalog {
             Object parsed = Http.getJson(url);
             List<Object> versions = parsed instanceof List<?> list ? new ArrayList<>(list) : List.of();
             if (versions.isEmpty()) {
-                // Запасной запрос: последняя доступная версия под Fabric (для модов) или любая версия (для ресурспаков)
-                String fallbackUrl = TYPE_RESOURCEPACK.equals(type)
+                // Запасной запрос: последняя доступная версия под Fabric (для модов) или любая версия (для ресурспаков/шейдеров)
+                String fallbackUrl = (TYPE_RESOURCEPACK.equals(type) || TYPE_SHADER.equals(type))
                         ? API_BASE + "/project/" + encode(lookupId) + "/version"
                         : API_BASE + "/project/" + encode(lookupId) + "/version?loaders=" + encode("[\"fabric\"]");
                 Object fallback = Http.getJson(fallbackUrl);
@@ -372,13 +424,17 @@ public final class ModrinthCatalog {
     public static Path installOneClick(LauncherPaths paths, String projectType, String projectId,
                                        String gameVersion, Http.ProgressListener progress,
                                        Http.CancelFlag cancelled) throws IOException, InterruptedException {
-        String type = TYPE_RESOURCEPACK.equalsIgnoreCase(projectType) ? TYPE_RESOURCEPACK : TYPE_MOD;
+        String type = normalizeType(projectType);
         VersionFile file = resolveLatestFile(type, projectId, gameVersion);
         String safeName = sanitizeFilename(type, file.filename());
         if (safeName.isEmpty()) {
             throw new IOException("недопустимое имя файла: " + file.filename());
         }
-        Path dir = TYPE_RESOURCEPACK.equals(type) ? paths.resourcePacks() : paths.mods();
+        Path dir = switch (type) {
+            case TYPE_RESOURCEPACK -> paths.resourcePacks();
+            case TYPE_SHADER -> paths.shaderPacks();
+            default -> paths.mods();
+        };
         Files.createDirectories(dir);
         Path target = dir.resolve(safeName);
         Http.download(file.url(), target, file.size() > 0 ? file.size() : null,
@@ -397,7 +453,7 @@ public final class ModrinthCatalog {
             return "";
         }
         String lower = base.toLowerCase(Locale.ROOT);
-        if (TYPE_RESOURCEPACK.equalsIgnoreCase(projectType)) {
+        if (TYPE_RESOURCEPACK.equalsIgnoreCase(projectType) || TYPE_SHADER.equalsIgnoreCase(projectType)) {
             return (lower.endsWith(".zip") || lower.endsWith(".jar")) ? base : "";
         }
         return lower.endsWith(".jar") ? base : "";

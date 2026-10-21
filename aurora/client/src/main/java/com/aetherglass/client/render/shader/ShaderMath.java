@@ -103,6 +103,16 @@ public final class ShaderMath {
         float edgeDist = Math.min(Math.min(safeU, 1.0F - safeU), Math.min(safeV, 1.0F - safeV));
 
         return switch (mode) {
+            case INSIDE_SHADER -> {
+                // Режим «Шейдер внутри»: насыщенное анимированное свечение и перелив внутри силуэта руки и предмета
+                float centerWeight = smoothstep(0.0F, 0.28F, edgeDist);
+                float wave = 0.5F + 0.5F * (float) Math.sin(t * 2.4F + (safeU * 4.2F - safeV * 3.6F) + (wx + wy + wz) * 1.5F);
+                int innerGlow = ColorUtil.lerp(raw, 0xFFF2D6FF, clamp01(wave * 0.36F * safeIntensity + centerWeight * 0.22F));
+                // Непрозрачность заливки намеренно ограничена сверху: внутри силуэта видно перелив,
+                // но оригинальная текстура руки и предмета остаётся читаемой (никакой «полной заливки»).
+                float alphaFactor = clamp(0.40F + centerWeight * 0.18F + wave * 0.10F, 0.30F, 0.68F);
+                yield ColorUtil.withAlpha(innerGlow, clampInt(Math.round(alpha * alphaFactor), 40, 176));
+            }
             case MENISCUS_DROP -> {
                 // Эффект капли/линзы: прозрачный центр с натяжением мениска у краёв и скользящим солнечным бликом
                 float meniscus = smoothstep(0.32F, 0.0F, edgeDist);

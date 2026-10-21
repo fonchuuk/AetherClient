@@ -273,8 +273,12 @@ public final class GameInstaller {
         Map<String, Object> assetIndex = Json.asObject(Json.parse(Files.readString(indexFile, StandardCharsets.UTF_8)));
         Map<String, Object> objects = Json.asObject(assetIndex.get("objects"));
 
+        boolean skipSounds = Boolean.getBoolean("aetherglass.skipSounds");
         List<AssetTask> pending = new ArrayList<>();
         for (Map.Entry<String, Object> entry : objects.entrySet()) {
+            if (skipSounds && entry.getKey().endsWith(".ogg")) {
+                continue;
+            }
             Map<String, Object> object = Json.asObject(entry.getValue());
             String hash = Json.requireString(object, "hash");
             Path target = this.paths.assetObject(hash);
@@ -294,7 +298,7 @@ public final class GameInstaller {
             return;
         }
 
-        int threads = Math.max(2, Math.min(16, Runtime.getRuntime().availableProcessors() * 2));
+        int threads = Math.max(8, Math.min(24, Runtime.getRuntime().availableProcessors() * 4));
         ExecutorService pool = Executors.newFixedThreadPool(threads);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         List<Future<?>> futures = new ArrayList<>(pending.size());

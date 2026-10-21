@@ -99,6 +99,9 @@ public final class KeybindManager {
         if (keyCode <= 0 || keyCode == GLFW.GLFW_KEY_UNKNOWN) {
             return;
         }
+        if (Boolean.getBoolean("aetherglass.autoWorld")) {
+            handleAutoWorldTestKey(keyCode);
+        }
         if (keyCode == this.cleanScreenKeybind) {
             toggleCleanScreen();
         }
@@ -111,6 +114,59 @@ public final class KeybindManager {
                     triggerSettingBind(module, setting);
                 }
             }
+        }
+    }
+
+    private void handleAutoWorldTestKey(int keyCode) {
+        com.aetherglass.client.modules.impl.HandEffectsModule hands =
+                ModuleManager.get().typed("hands", com.aetherglass.client.modules.impl.HandEffectsModule.class);
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+        if (hands == null || mc == null) {
+            return;
+        }
+        if (keyCode == GLFW.GLFW_KEY_F9) {
+            hands.setEnabled(true);
+            hands.setUseShaderEffect(true);
+            hands.setShaderEffect(com.aetherglass.client.render.shader.ShaderEffect.LIQUID_GLASS);
+            hands.setShaderOpacity(0.55F);
+            hands.setViewOffset(0.0F, 0.0F, 0.0F);
+            hands.setViewScale(1.0F);
+            hands.setViewRotation(0.0F, 0.0F, 0.0F);
+            if (mc.player != null) {
+                mc.player.getInventory().setItem(0, net.minecraft.world.item.ItemStack.EMPTY);
+            }
+        } else if (keyCode == GLFW.GLFW_KEY_F10) {
+            hands.setEnabled(true);
+            hands.setUseShaderEffect(true);
+            hands.setShaderEffect(com.aetherglass.client.render.shader.ShaderEffect.LIQUID_GLASS);
+            hands.setShaderOpacity(0.58F);
+            hands.setViewOffset(1.00F, 1.00F, 1.00F);
+            hands.setViewScale(1.00F);
+            hands.setViewRotation(0.0F, 0.0F, 0.0F);
+            if (mc.player != null) {
+                mc.player.getInventory().setItem(0, net.minecraft.world.item.ItemStack.EMPTY);
+            }
+        } else if (keyCode == GLFW.GLFW_KEY_F12) {
+            hands.setEnabled(true);
+            hands.setUseShaderEffect(true);
+            hands.setShaderEffect(com.aetherglass.client.render.shader.ShaderEffect.NEON_PULSE);
+            hands.setShaderOpacity(0.60F);
+            hands.setViewOffset(-0.25F, 0.15F, 0.40F);
+            hands.setViewScale(1.20F);
+            hands.setViewRotation(10.0F, -20.0F, 10.0F);
+            if (mc.player != null) {
+                mc.player.getInventory().setItem(0, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.DIAMOND_SWORD));
+            }
+            if (mc.getSingleplayerServer() != null && mc.player != null) {
+                var srvPlayer = mc.getSingleplayerServer().getPlayerList().getPlayer(mc.player.getUUID());
+                if (srvPlayer != null) {
+                    srvPlayer.getInventory().setItem(0, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.DIAMOND_SWORD));
+                }
+            }
+        } else if (keyCode == GLFW.GLFW_KEY_F7) {
+            com.aetherglass.client.gui.screen.AuroraInlineMenuScreen screen =
+                    new com.aetherglass.client.gui.screen.AuroraInlineMenuScreen(null, hands, com.aetherglass.client.modules.ModuleCategory.VISUAL);
+            mc.setScreen(screen);
         }
     }
 

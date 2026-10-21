@@ -21,8 +21,8 @@ import java.nio.file.Path;
  * <p>Запуск: {@code java -cp <classes> com.aetherglass.launcher.ui.UiPreview <каталог>}</p>
  */
 public final class UiPreview {
-    private static final int WIDTH = 940;
-    private static final int HEIGHT = 640;
+    private static final int WIDTH = 1280;
+    private static final int HEIGHT = 760;
 
     private UiPreview() {
     }
@@ -33,8 +33,16 @@ public final class UiPreview {
 
         // Тот же порядок, что и при обычном запуске: сначала тема, потом интерфейс.
         UiTheme.install();
-        LauncherConfig config = LauncherConfig.defaults()
-                .gameDirectory(Path.of(System.getProperty("java.io.tmpdir"), "aurora-preview"));
+        Path previewDir = Path.of(System.getProperty("java.io.tmpdir"), "aurora-preview");
+        Path previewShots = previewDir.resolve("screenshots");
+        Files.createDirectories(previewShots);
+        for (String sample : new String[]{"01_clean_hand_shader.png", "03_clean_sword_shader.png", "08_clean_rshift_menu.png"}) {
+            Path src = directory.resolve(sample);
+            if (Files.isRegularFile(src)) {
+                Files.copy(src, previewShots.resolve(sample), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+        LauncherConfig config = LauncherConfig.defaults().gameDirectory(previewDir);
         LauncherUi ui = new LauncherUi(config, null);
         JComponent root = ui.root();
         root.setDoubleBuffered(false);
@@ -53,19 +61,55 @@ public final class UiPreview {
         int tabs = ui.tabs().getTabCount();
         for (int index = 0; index < tabs; index++) {
             ui.tabs().setSelectedIndex(index);
-            root.doLayout();
+            layoutTree(root);
             BufferedImage image = render(root);
             String name = "launcher-" + switch (index) {
-                case 0 -> "game";
+                case 0 -> "modpacks";
                 case 1 -> "mods";
-                case 2 -> "settings";
+                case 2 -> "game";
+                case 3 -> "screenshots";
+                case 4 -> "settings";
                 default -> "logs";
             } + ".png";
             Path file = directory.resolve(name);
             ImageIO.write(image, "png", file.toFile());
             System.out.println("сохранено: " + file + " (" + nonBlankPixels(image) + " непустых пикселей)");
         }
+
+        // 1) Главный экран со сборками (AetherVisuals и 26.2)
+        ui.tabs().setSelectedIndex(0);
+        ui.toggleProfileDropdown(false);
+        ui.openAccountSwitchModal(false);
+        ui.openCreateModpackModal(false);
+        layoutTree(root);
+        ImageIO.write(render(root), "png", directory.resolve("launcher-1-main-modpacks.png").toFile());
+
+        // 2) Раскрытое меню профиля «Сменить аккаунт» + окно смены ника
+        ui.toggleProfileDropdown(true);
+        layoutTree(root);
+        BufferedImage dropdownShot = render(root);
+        ImageIO.write(dropdownShot, "png", directory.resolve("launcher-2a-profile-dropdown.png").toFile());
+
+        ui.openAccountSwitchModal(true);
+        layoutTree(root);
+        ImageIO.write(render(root), "png", directory.resolve("launcher-2-account-modal.png").toFile());
+
+        // 3) Модальное окно «Добавить новую сборку» (с проверкой блокировки галочки AetherGlass на версии != 1.21.11)
+        ui.selectVersionAndLoader("26.2", "Fabric");
+        ui.openCreateModpackModal(true);
+        layoutTree(root);
+        ImageIO.write(render(root), "png", directory.resolve("launcher-3-create-modpack-modal.png").toFile());
+
         System.exit(0);
+    }
+
+    private static void layoutTree(java.awt.Component comp) {
+        comp.doLayout();
+        if (comp instanceof java.awt.Container container) {
+            for (java.awt.Component child : container.getComponents()) {
+                layoutTree(child);
+            }
+        }
     }
 
     /** Рисует компонент в изображение фиксированного размера. */

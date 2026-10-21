@@ -26,8 +26,9 @@ import org.joml.Matrix4f;
  */
 public final class SkyEffectBlender {
     private static final int LIGHT_FULLBRIGHT = 0x00F000F0;
-    private static final int AZ_STEPS = 24;
-    private static final int EL_BANDS = 6;
+    private static final int AZ_STEPS = 16;
+    private static final int EL_BANDS = 4;
+    private static final int GRID_VERTS = (EL_BANDS + 1) * (AZ_STEPS + 1);
     private static final float DOME_RADIUS = 78.0F;
     private static final float MIN_EL = -0.10F;
     private static final float MAX_EL = 1.48F;
@@ -38,6 +39,13 @@ public final class SkyEffectBlender {
     private static final float[] EL_SIN = new float[EL_BANDS + 1];
     private static final float[] EL_T = new float[EL_BANDS + 1];
     private static final float[] EL_FADE = new float[EL_BANDS + 1];
+
+    private static final float[] VX = new float[GRID_VERTS];
+    private static final float[] VY = new float[GRID_VERTS];
+    private static final float[] VZ = new float[GRID_VERTS];
+    private static final float[] VU = new float[GRID_VERTS];
+    private static final float[] VV = new float[GRID_VERTS];
+    private static final int[] VCOL = new int[GRID_VERTS];
 
     static {
         for (int a = 0; a <= AZ_STEPS; a++) {
@@ -172,45 +180,77 @@ public final class SkyEffectBlender {
             int c2 = ColorController.resolve(second);
             int c3 = ColorController.resolve(third);
 
-            for (int b = 0; b < EL_BANDS; b++) {
-                float t0 = EL_T[b];
-                float t1 = EL_T[b + 1];
-                float cosEl0 = EL_COS[b];
-                float sinEl0 = EL_SIN[b];
-                float cosEl1 = EL_COS[b + 1];
-                float sinEl1 = EL_SIN[b + 1];
-                float fade0 = EL_FADE[b];
-                float fade1 = EL_FADE[b + 1];
+            int stride = AZ_STEPS + 1;
+            float shaderInt = 0.85F + Math.min(1.0F, intensity) * 0.65F;
+            float shaderSpd = speed * 1.35F;
 
-                int bandColor0 = ColorUtil.lerp(c3, c2, t0);
-                int bandColor1 = ColorUtil.lerp(c2, c1, t1);
+            for (int b = 0; b <= EL_BANDS; b++) {
+                float tEl = EL_T[b];
+                float cosEl = EL_COS[b];
+                float sinEl = EL_SIN[b];
+                float bandFade = EL_FADE[b];
+                int baseColor = (b == 0) ? c3 : (b < EL_BANDS ? ColorUtil.lerp(c3, c2, tEl) : ColorUtil.lerp(c2, c1, tEl));
+                float effOpacity = Math.min(1.0F, domeOpacity * intensity * bandFade);
+                float polarR = 0.42F * (1.0F - tEl * 0.58F);
+                int rowBase = b * stride;
 
                 for (int a = 0; a < AZ_STEPS; a++) {
-                    float cosAz0 = AZ_COS[a];
-                    float sinAz0 = AZ_SIN[a];
-                    float cosAz1 = AZ_COS[a + 1];
-                    float sinAz1 = AZ_SIN[a + 1];
+                    float cosAz = AZ_COS[a];
+                    float sinAz = AZ_SIN[a];
 
-                    // Все 4 вершины вычисляются одной непрерывной функцией от (cosAz, sinAz, t),
-                    // поэтому соседние квады имеют на 100% идентичные координаты, UV и цвета без швов!
-                    emitSeamlessCorner(consumer, matrix, cosAz0, sinAz0, cosEl0, sinEl0, t0, fade0,
-                            bandColor0, cosRot, sinRot, time);
-                    emitSeamlessCorner(consumer, matrix, cosAz1, sinAz1, cosEl0, sinEl0, t0, fade0,
-                            bandColor0, cosRot, sinRot, time);
-                    emitSeamlessCorner(consumer, matrix, cosAz1, sinAz1, cosEl1, sinEl1, t1, fade1,
-                            bandColor1, cosRot, sinRot, time);
-                    emitSeamlessCorner(consumer, matrix, cosAz0, sinAz0, cosEl1, sinEl1, t1, fade1,
-                            bandColor1, cosRot, sinRot, time);
+                    float wave = 2.4F * ShaderMath.sin(cosAz * 2.0F + sinAz * 2.0F + time * speed * 1.8F + tEl * 2.2F);
+                    float x = cosAz * cosEl * DOME_RADIUS;
+                    float z = sinAz * cosEl * DOME_RADIUS;
+                    float y = sinEl * DOME_RADIUS + wave * (1.0F - tEl * 0.6F);
 
-                    // Обратная сторона для видимости изнутри сферы при любом cull-режиме
-                    emitSeamlessCorner(consumer, matrix, cosAz0, sinAz0, cosEl1, sinEl1, t1, fade1,
-                            bandColor1, cosRot, sinRot, time);
-                    emitSeamlessCorner(consumer, matrix, cosAz1, sinAz1, cosEl1, sinEl1, t1, fade1,
-                            bandColor1, cosRot, sinRot, time);
-                    emitSeamlessCorner(consumer, matrix, cosAz1, sinAz1, cosEl0, sinEl0, t0, fade0,
-                            bandColor0, cosRot, sinRot, time);
-                    emitSeamlessCorner(consumer, matrix, cosAz0, sinAz0, cosEl0, sinEl0, t0, fade0,
-                            bandColor0, cosRot, sinRot, time);
+                    float rx = cosAz * cosRot - sinAz * sinRot;
+                    float rz = sinAz * cosRot + cosAz * sinRot;
+                    float u = 0.5F + rx * polarR;
+                    float v = 0.5F + rz * polarR;
+
+                    int col = ShaderMath.sampleSurface(domeShader, baseColor,
+                            shaderInt, shaderSpd, effOpacity,
+                            u, v, 0.0F, 1.0F, 0.0F, u * 2.5F, v * 2.5F, 0.0F, time);
+                    int alpha = Math.max(0, Math.min(255, Math.round(ColorUtil.alpha(col) * bandFade * 0.78F)));
+                    int packedCol = (alpha << 24) | (col & 0x00FFFFFF);
+
+                    int idx = rowBase + a;
+                    VX[idx] = x;
+                    VY[idx] = y;
+                    VZ[idx] = z;
+                    VU[idx] = u;
+                    VV[idx] = v;
+                    VCOL[idx] = packedCol;
+                }
+                // Замыкаем шов 360° -> 0° без повторного вычисления шейдера
+                int firstIdx = rowBase;
+                int lastIdx = rowBase + AZ_STEPS;
+                VX[lastIdx] = VX[firstIdx];
+                VY[lastIdx] = VY[firstIdx];
+                VZ[lastIdx] = VZ[firstIdx];
+                VU[lastIdx] = VU[firstIdx];
+                VV[lastIdx] = VV[firstIdx];
+                VCOL[lastIdx] = VCOL[firstIdx];
+            }
+
+            for (int b = 0; b < EL_BANDS; b++) {
+                int r0 = b * stride;
+                int r1 = (b + 1) * stride;
+                for (int a = 0; a < AZ_STEPS; a++) {
+                    int i00 = r0 + a;
+                    int i10 = r0 + a + 1;
+                    int i11 = r1 + a + 1;
+                    int i01 = r1 + a;
+
+                    emitCachedVertex(consumer, matrix, i00);
+                    emitCachedVertex(consumer, matrix, i10);
+                    emitCachedVertex(consumer, matrix, i11);
+                    emitCachedVertex(consumer, matrix, i01);
+
+                    emitCachedVertex(consumer, matrix, i01);
+                    emitCachedVertex(consumer, matrix, i11);
+                    emitCachedVertex(consumer, matrix, i10);
+                    emitCachedVertex(consumer, matrix, i00);
                 }
             }
             buffers.endBatch(layer);
@@ -219,37 +259,10 @@ public final class SkyEffectBlender {
         }
     }
 
-    private static void emitSeamlessCorner(VertexConsumer consumer, Matrix4f matrix,
-                                           float cosAz, float sinAz, float cosEl, float sinEl,
-                                           float tEl, float bandFade, int baseColor,
-                                           float cosRot, float sinRot, float time) {
-        // Непрерывная гармоническая волна от (cosAz, sinAz) — 0 разрывов на 0°/360°
-        float wave = 2.4F * ShaderMath.sin(cosAz * 2.0F + sinAz * 2.0F + time * speed * 1.8F + tEl * 2.2F);
-        float x = cosAz * cosEl * DOME_RADIUS;
-        float z = sinAz * cosEl * DOME_RADIUS;
-        float y = sinEl * DOME_RADIUS + wave * (1.0F - tEl * 0.6F);
-
-        // Полярные UV-координаты вокруг зенита (плавно вращаются по времени без шва)
-        float rx = cosAz * cosRot - sinAz * sinRot;
-        float rz = sinAz * cosRot + cosAz * sinRot;
-        float polarR = 0.42F * (1.0F - tEl * 0.58F);
-        float u = 0.5F + rx * polarR;
-        float v = 0.5F + rz * polarR;
-
-        int col = ShaderMath.sampleSurface(domeShader, baseColor,
-                0.85F + Math.min(1.0F, intensity) * 0.65F,
-                speed * 1.35F,
-                Math.min(1.0F, domeOpacity * intensity * bandFade),
-                u, v, 0.0F, 1.0F, 0.0F, u * 2.5F, v * 2.5F, 0.0F, time);
-
-        int a = Math.max(0, Math.min(255, Math.round(ColorUtil.alpha(col) * bandFade * 0.78F)));
-        int r = (col >>> 16) & 0xFF;
-        int g = (col >>> 8) & 0xFF;
-        int b = col & 0xFF;
-
-        consumer.addVertex(matrix, x, y, z)
-                .setColor(r, g, b, a)
-                .setUv(u, v)
+    private static void emitCachedVertex(VertexConsumer consumer, Matrix4f matrix, int idx) {
+        consumer.addVertex(matrix, VX[idx], VY[idx], VZ[idx])
+                .setColor(VCOL[idx])
+                .setUv(VU[idx], VV[idx])
                 .setOverlay(OverlayTexture.NO_OVERLAY)
                 .setLight(LIGHT_FULLBRIGHT)
                 .setNormal(0.0F, 1.0F, 0.0F);

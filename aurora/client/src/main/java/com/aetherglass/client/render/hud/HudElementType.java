@@ -14,8 +14,7 @@ public enum HudElementType {
     WATERMARK("watermark", "Инфо-бар (Лого · Ник · FPS · Пинг · Время)", 0.012F, 0.018F, Alignment.LEFT, true),
     PERFORMANCE("performance", "Сервер · TPS · CPU / RAM", 0.012F, 0.062F, Alignment.LEFT, true),
 
-    // 2. Слева: список игроков рядом / друзей (Friends) и клавиатура Keystrokes + CPS
-    FRIENDS("friends", "Игроки рядом (Friends)", 0.012F, 0.135F, Alignment.LEFT, true),
+    // 2. Слева: клавиатура Keystrokes + CPS
     KEYSTROKES("keystrokes", "Клавиши (WASD + LMB/RMB)", 0.012F, 0.340F, Alignment.LEFT, true),
     CPS("cps", "Частота кликов (CPS)", 0.012F, 0.520F, Alignment.LEFT, true),
 

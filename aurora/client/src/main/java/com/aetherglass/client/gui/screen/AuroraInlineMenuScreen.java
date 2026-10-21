@@ -68,6 +68,8 @@ public final class AuroraInlineMenuScreen extends Screen {
             0xFFAA3DFF, 0xFFC084FC, 0xFF00F2FF, 0xFF38B6FF,
             0xFFFF5CE1, 0xFFFF9A3C, 0xFF00F5A0, 0xFFFFFFFF
     };
+    private static final Identifier TEX_LOGO =
+            Identifier.fromNamespaceAndPath("aetherglass", "textures/gui/menu_glass_logo.png");
 
     private final Screen parent;
     private final BackdropGallery backdrop = new BackdropGallery();
@@ -94,9 +96,11 @@ public final class AuroraInlineMenuScreen extends Screen {
     private Setting<?> draggingSlider;
     private int activeSliderX;
     private int activeSliderW;
+    private int lastDragMouseX = Integer.MIN_VALUE;
     private ColorSetting draggingColor;
     private int draggingColorChannel = -1;
     private Object listeningBindTarget;
+    private final Map<String, String> trimCache = new HashMap<>();
 
     private final List<HitZone> hitZones = new ArrayList<>();
 
@@ -146,6 +150,12 @@ public final class AuroraInlineMenuScreen extends Screen {
 
     public void setAccountsTab(boolean active) {
         this.accountsTabActive = active;
+    }
+
+    public void setColumnScroll(int colIdx, float scroll) {
+        if (colIdx >= 0 && colIdx < NUM_COLS) {
+            this.colScroll[colIdx] = Math.max(0.0F, scroll);
+        }
     }
 
     public void expandOnly(Module module) {
@@ -248,9 +258,8 @@ public final class AuroraInlineMenuScreen extends Screen {
         DrawUtil.drawLiquidGlassPanel(graphics, x, y, width, height, 7, alpha);
 
         // Неоново-фиолетовый логотип «A» + современный заголовок Montserrat Bold
-        Identifier texLogo = Identifier.fromNamespaceAndPath("aetherglass", "textures/gui/menu_glass_logo.png");
         int logoTint = ColorUtil.argb(Math.round(255 * alpha), 255, 255, 255);
-        graphics.blit(RenderPipelines.GUI_TEXTURED, texLogo,
+        graphics.blit(RenderPipelines.GUI_TEXTURED, TEX_LOGO,
                 x + 4, y + 3, 0.0F, 0.0F,
                 12, 12, 426, 426, 426, 426, logoTint);
         DrawUtil.drawModernBold(graphics, this.font, "AETHERGLASS", x + 19, y + 5,
@@ -296,20 +305,65 @@ public final class AuroraInlineMenuScreen extends Screen {
             renderTopBarButton(graphics, rightX, btnY, 48, btnH, "Одиночная", true, false, mouseX, mouseY, alpha,
                     () -> this.minecraft.setScreen(new SelectWorldScreen(host)));
         } else {
-            String hint = "ЛКМ: Вкл · ПКМ: Настройки · СКМ: Бинд";
-            int hintW = DrawUtil.modernSmallWidth(this.font, hint);
             int closeX = x + width - 15;
             int closeY = y + 3;
-            if (closeX - hintW - 6 > searchX + searchW + 5) {
-                DrawUtil.drawModernSmall(graphics, this.font, hint, closeX - hintW - 6, y + 6,
-                        ColorUtil.fade(0xFF7A8396, alpha));
-            }
+            int btnH = height - 6;
+            int rx = closeX - 4;
+            rx = renderTopBarButton(graphics, rx, closeY, 44, btnH, "Вставить", false, false, mouseX, mouseY, alpha,
+                    this::importConfigFromClipboard) - 3;
+            rx = renderTopBarButton(graphics, rx, closeY, 38, btnH, "Копия", false, false, mouseX, mouseY, alpha,
+                    this::exportConfigToClipboard) - 3;
+            rx = renderTopBarButton(graphics, rx, closeY, 34, btnH, "Кибер", false, false, mouseX, mouseY, alpha,
+                    () -> applyThemePreset(0xFF00F2FF, 0xFF38B6FF, "Кибер-Циан")) - 3;
+            renderTopBarButton(graphics, rx, closeY, 32, btnH, "Неон", true, false, mouseX, mouseY, alpha,
+                    () -> applyThemePreset(0xFFAA3DFF, 0xFFD946EF, "Неон-Фиолет"));
+
             boolean closeHov = inside(mouseX, mouseY, closeX, closeY, 12, height - 6);
             DrawUtil.drawMatteNeonCard(graphics, closeX, closeY, 12, height - 6, 4, alpha,
                     closeHov ? 0.90F : 0.0F, AuroraTheme.danger());
             DrawUtil.drawCenteredTextScaled(graphics, this.font, "×", closeX + 6, closeY + 2,
                     ColorUtil.fade(closeHov ? AuroraTheme.danger() : 0xFF9AA4B8, alpha), 0.72F, false);
             this.hitZones.add(new HitZone(closeX, closeY, 12, height - 6, this::onClose, null, null));
+        }
+    }
+
+    private void applyThemePreset(int accent, int accent2, String name) {
+        AuroraTheme.borderColor(accent);
+        com.aetherglass.client.modules.impl.InterfaceModule look =
+                ModuleManager.get().typed("interface", com.aetherglass.client.modules.impl.InterfaceModule.class);
+        if (look != null) {
+            for (Setting<?> s : look.settings()) {
+                if (s instanceof ColorSetting cs && "borderColor".equals(cs.id())) {
+                    cs.setRgb(accent);
+                }
+            }
+        }
+        ModuleManager.get().saveNow();
+        NotificationManager.get().push("Пресет", "Активирован профиль: " + name, NotificationManager.Type.INFO);
+    }
+
+    private void exportConfigToClipboard() {
+        try {
+            ModuleManager.get().saveNow();
+            String data = java.nio.file.Files.readString(ModConfig.get().file());
+            if (this.minecraft != null) {
+                this.minecraft.keyboardHandler.setClipboard(data);
+                NotificationManager.get().push("Конфиг", "Настройки скопированы в буфер обмена", NotificationManager.Type.INFO);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void importConfigFromClipboard() {
+        try {
+            if (this.minecraft == null) return;
+            String clip = this.minecraft.keyboardHandler.getClipboard();
+            if (clip != null && clip.contains("=")) {
+                java.nio.file.Files.writeString(ModConfig.get().file(), clip);
+                ModuleManager.get().loadFromConfig();
+                NotificationManager.get().push("Конфиг", "Настройки загружены из буфера обмена", NotificationManager.Type.INFO);
+            }
+        } catch (Exception ignored) {
         }
     }
 
@@ -856,7 +910,8 @@ public final class AuroraInlineMenuScreen extends Screen {
         DrawUtil.drawSliderKnob(graphics, knobX + 1, knobY + 1, knobSize - 2,
                 ColorUtil.fade(0xFFFFFFFF, alpha));
 
-        if (this.draggingSlider == setting) {
+        if (this.draggingSlider == setting && mouseX != this.lastDragMouseX) {
+            this.lastDragMouseX = mouseX;
             updateSliderFromMouse(setting, mouseX, trackX, trackW);
         }
 
@@ -866,6 +921,7 @@ public final class AuroraInlineMenuScreen extends Screen {
                         this.draggingSlider = setting;
                         this.activeSliderX = trackX;
                         this.activeSliderW = trackW;
+                        this.lastDragMouseX = mouseX;
                         updateSliderFromMouse(setting, mouseX, trackX, trackW);
                     },
                     setting::reset,
@@ -1283,14 +1339,38 @@ public final class AuroraInlineMenuScreen extends Screen {
         if (text == null || maxW <= 4) {
             return "";
         }
-        if (this.font.width(DrawUtil.modernComponent(text, style)) <= maxW) {
+        int styleTag = style == DrawUtil.STYLE_MODERN_BOLD ? 1 : (style == DrawUtil.STYLE_MODERN_SMALL ? 2 : 0);
+        String cacheKey = styleTag + ":" + maxW + ":" + text;
+        String cached = this.trimCache.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+        int fullW = styleTag == 1 ? DrawUtil.modernBoldWidth(this.font, text)
+                : (styleTag == 2 ? DrawUtil.modernSmallWidth(this.font, text) : DrawUtil.modernWidth(this.font, text));
+        if (fullW <= maxW) {
+            if (this.trimCache.size() < 1024) {
+                this.trimCache.put(cacheKey, text);
+            }
             return text;
         }
         int len = text.length();
-        while (len > 1 && this.font.width(DrawUtil.modernComponent(text.substring(0, len) + "..", style)) > maxW) {
+        while (len > 1) {
+            String candidate = text.substring(0, len) + "..";
+            int cw = styleTag == 1 ? DrawUtil.modernBoldWidth(this.font, candidate)
+                    : (styleTag == 2 ? DrawUtil.modernSmallWidth(this.font, candidate) : DrawUtil.modernWidth(this.font, candidate));
+            if (cw <= maxW) {
+                if (this.trimCache.size() < 1024) {
+                    this.trimCache.put(cacheKey, candidate);
+                }
+                return candidate;
+            }
             len--;
         }
-        return text.substring(0, Math.max(1, len)) + "..";
+        String fallback = text.substring(0, 1) + "..";
+        if (this.trimCache.size() < 1024) {
+            this.trimCache.put(cacheKey, fallback);
+        }
+        return fallback;
     }
 
     private static String formatFloat(float val, float step) {

@@ -19,8 +19,8 @@ import java.util.List;
  * </ul>
  */
 public final class WorldShaderRenderer {
-    public static final int DEFAULT_GRID_STEPS = 4;
-    public static final int DEFAULT_EDGE_SEGMENTS = 6;
+    public static final int DEFAULT_GRID_STEPS = 2;
+    public static final int DEFAULT_EDGE_SEGMENTS = 2;
     private static final float SURFACE_OFFSET = 0.0020F;
 
     /**
@@ -74,8 +74,10 @@ public final class WorldShaderRenderer {
         float y1 = maxY + SURFACE_OFFSET;
         float z1 = maxZ + SURFACE_OFFSET;
 
-        // Ограничиваем плотность граней (20–34%), чтобы блок всегда оставался прозрачным стеклом, а не глухим кубом
-        float glazeOpacity = Math.max(0.05F, Math.min(0.36F, opacity * 0.42F));
+        // Ограничиваем плотность граней, чтобы блок/рука оставались прозрачными с ярким внутренним шейдером
+        float glazeOpacity = (mode == FaceGradientMode.INSIDE_SHADER || mode == FaceGradientMode.FULL_SHADER)
+                ? Math.max(0.24F, Math.min(0.64F, opacity * 0.76F))
+                : Math.max(0.05F, Math.min(0.36F, opacity * 0.42F));
 
         // 1. Верхняя грань (+Y)
         renderFaceGrid(pose, consumer, x0, y1, z0, x0, y1, z1, x1, y1, z1, x1, y1, z0,
@@ -192,11 +194,92 @@ public final class WorldShaderRenderer {
         float cz = (minZ + maxZ) * 0.5F;
         float spanX = Math.max(0.05F, maxX - minX);
         float spanY = Math.max(0.05F, maxY - minY);
+        float spanZ = Math.max(0.005F, maxZ - minZ);
 
-        // Тонкая стеклянная глазурь (15–22% альфа), чтобы текстура предмета была видна на 100%
-        float glazeOpacity = Math.max(0.04F, Math.min(0.22F, opacity * 0.25F));
-        float edgeOpacity = Math.max(0.18F, Math.min(0.76F, opacity * 0.80F));
-        float contourScale = 1.0F + Math.max(0.004F, Math.min(0.036F, outlineWidth * 1.15F));
+        // Проверяем, является ли предмет плоским 2D-спрайтом (меч, яблоко, жемчуг и т.д., где толщина Z ~ 1/16)
+        boolean isFlatSpriteItem = (spanZ <= 0.085F && quads.size() >= 6);
+
+        float glazeOpacity = (mode == FaceGradientMode.INSIDE_SHADER || mode == FaceGradientMode.FULL_SHADER)
+                ? Math.max(0.32F, Math.min(0.68F, opacity * 0.82F))
+                : Math.max(0.18F, Math.min(0.48F, opacity * 0.62F));
+        float edgeOpacity = Math.max(0.48F, Math.min(0.96F, opacity * 1.15F));
+        float outShift = Math.max(0.0045F, Math.min(0.026F, outlineWidth * 0.85F));
+
+        if (isFlatSpriteItem && mode != FaceGradientMode.OUTLINE_ONLY) {
+            // Для 2D-предметов (алмазный меч, золотое яблоко и т.д.) НЕ рисуем полный квадрат 16x16 NORTH/SOUTH,
+            // чтобы вокруг меча не было прямоугольного фона. Вместо этого заполняем только непрозрачные
+            // полосы между боковыми гранями WEST/EAST строго ВНУТРИ пиксельного силуэта предмета!
+            float frontZ = minZ - 0.0022F;
+            float backZ = maxZ + 0.0022F;
+            float[] xBounds = new float[16];
+            for (int row = 0; row < 16; row++) {
+                float ry0 = row / 16.0F;
+                float ry1 = (row + 1) / 16.0F;
+                float rMid = (ry0 + ry1) * 0.5F;
+                int bCount = 0;
+                for (int i = 0; i < quads.size(); i++) {
+                    ItemQuad q = quads.get(i);
+                    Direction dir = q.direction();
+                    float qMinX = Math.min(Math.min(q.x0(), q.x1()), Math.min(q.x2(), q.x3()));
+                    float qMaxX = Math.max(Math.max(q.x0(), q.x1()), Math.max(q.x2(), q.x3()));
+                    boolean isVerticalXWall = (dir == Direction.WEST || dir == Direction.EAST)
+                            || (Math.abs(qMaxX - qMinX) <= 0.002F);
+                    if (!isVerticalXWall) {
+                        continue;
+                    }
+                    float qMinY = Math.min(Math.min(q.y0(), q.y1()), Math.min(q.y2(), q.y3()));
+                    float qMaxY = Math.max(Math.max(q.y0(), q.y1()), Math.max(q.y2(), q.y3()));
+                    if (rMid > qMinY + 0.001F && rMid < qMaxY - 0.001F && bCount < xBounds.length) {
+                        xBounds[bCount++] = (qMinX + qMaxX) * 0.5F;
+                    }
+                }
+                int pairs = bCount / 2;
+                if (pairs <= 0) {
+                    continue;
+                }
+                java.util.Arrays.sort(xBounds, 0, bCount);
+                for (int p = 0; p < pairs; p++) {
+                    float spanL = xBounds[p * 2];
+                    float spanR = xBounds[p * 2 + 1];
+                    if (spanR <= spanL + 0.001F) {
+                        continue;
+                    }
+                    int subCols = Math.max(1, Math.min(16, Math.round((spanR - spanL) * 16.0F)));
+                    float stepX = (spanR - spanL) / subCols;
+                    for (int c = 0; c < subCols; c++) {
+                        float xL = spanL + c * stepX;
+                        float xR = (c == subCols - 1) ? spanR : (xL + stepX);
+                        float uL = clamp01((xL - minX) / spanX);
+                        float uR = clamp01((xR - minX) / spanX);
+                        float v0 = clamp01((ry0 - minY) / spanY);
+                        float v1 = clamp01((ry1 - minY) / spanY);
+
+                        int c0 = ShaderMath.sampleSurfaceWithMode(active, mode, baseColor, intensity, speed, glazeOpacity,
+                                uL, v0, 0.0F, 0.0F, 1.0F, xL, ry0, backZ, timeSeconds);
+                        int c1 = ShaderMath.sampleSurfaceWithMode(active, mode, baseColor, intensity, speed, glazeOpacity,
+                                uR, v0, 0.0F, 0.0F, 1.0F, xR, ry0, backZ, timeSeconds);
+                        int c2 = ShaderMath.sampleSurfaceWithMode(active, mode, baseColor, intensity, speed, glazeOpacity,
+                                uR, v1, 0.0F, 0.0F, 1.0F, xR, ry1, backZ, timeSeconds);
+                        int c3 = ShaderMath.sampleSurfaceWithMode(active, mode, baseColor, intensity, speed, glazeOpacity,
+                                uL, v1, 0.0F, 0.0F, 1.0F, xL, ry1, backZ, timeSeconds);
+
+                        // Двусторонние ячейки шейдера ВНУТРИ силуэта предмета (frontZ и backZ)
+                        ShapeBuffer.addShadedQuad(pose, consumer,
+                                xL, ry0, backZ, c0, xR, ry0, backZ, c1, xR, ry1, backZ, c2, xL, ry1, backZ, c3,
+                                0.0F, 0.0F, 1.0F);
+                        ShapeBuffer.addShadedQuad(pose, consumer,
+                                xL, ry1, backZ, c3, xR, ry1, backZ, c2, xR, ry0, backZ, c1, xL, ry0, backZ, c0,
+                                0.0F, 0.0F, -1.0F);
+                        ShapeBuffer.addShadedQuad(pose, consumer,
+                                xL, ry0, frontZ, c0, xR, ry0, frontZ, c1, xR, ry1, frontZ, c2, xL, ry1, frontZ, c3,
+                                0.0F, 0.0F, 1.0F);
+                        ShapeBuffer.addShadedQuad(pose, consumer,
+                                xL, ry1, frontZ, c3, xR, ry1, frontZ, c2, xR, ry0, frontZ, c1, xL, ry0, frontZ, c0,
+                                0.0F, 0.0F, -1.0F);
+                    }
+                }
+            }
+        }
 
         for (int i = 0; i < quads.size(); i++) {
             ItemQuad q = quads.get(i);
@@ -208,13 +291,12 @@ public final class WorldShaderRenderer {
             boolean isFrontOrBack = (dir == Direction.NORTH || dir == Direction.SOUTH);
 
             if (isFrontOrBack) {
-                if (mode == FaceGradientMode.OUTLINE_ONLY) {
+                if (isFlatSpriteItem || mode == FaceGradientMode.OUTLINE_ONLY) {
                     continue;
                 }
-                // Лёгкий сдвиг вдоль нормали (0.0012F), чтобы глазурь лежала поверх текстуры без Z-fighting
-                float offX = nx * 0.0012F;
-                float offY = ny * 0.0012F;
-                float offZ = nz * 0.0012F;
+                float offX = nx * 0.0020F;
+                float offY = ny * 0.0020F;
+                float offZ = nz * 0.0020F;
 
                 float u0 = clamp01((q.x0() - minX) / spanX);
                 float v0 = clamp01((q.y0() - minY) / spanY);
@@ -241,35 +323,32 @@ public final class WorldShaderRenderer {
                         q.x3() + offX, q.y3() + offY, q.z3() + offZ, c3,
                         nx, ny, nz);
             } else {
-                // Боковая грань силуэта предмета: масштабируем ТОЛЬКО относительно центра (cx, cy, cz)
-                // без смещения вдоль нормали грани, чтобы соседние ступеньки 1/16 пикселя имели
-                // строго общие углы и никогда не распадались на отдельные квадраты!
-                float sx0 = cx + (q.x0() - cx) * contourScale;
-                float sy0 = cy + (q.y0() - cy) * contourScale;
-                float sz0 = cz + (q.z0() - cz) * contourScale;
-
-                float sx1 = cx + (q.x1() - cx) * contourScale;
-                float sy1 = cy + (q.y1() - cy) * contourScale;
-                float sz1 = cz + (q.z1() - cz) * contourScale;
-
-                float sx2 = cx + (q.x2() - cx) * contourScale;
-                float sy2 = cy + (q.y2() - cy) * contourScale;
-                float sz2 = cz + (q.z2() - cz) * contourScale;
-
-                float sx3 = cx + (q.x3() - cx) * contourScale;
-                float sy3 = cy + (q.y3() - cy) * contourScale;
-                float sz3 = cz + (q.z3() - cz) * contourScale;
+                // Боковая грань силуэта предмета: сдвигаем наружу вдоль нормали (nx, ny) на outShift
+                // и слегка расширяем по Z, рисуя с двусторонним обходом вершин
+                float ox = nx * outShift;
+                float oy = ny * outShift;
+                float zPad = 0.0025F;
+                float z0 = q.z0() + (q.z0() < cz ? -zPad : zPad);
+                float z1 = q.z1() + (q.z1() < cz ? -zPad : zPad);
+                float z2 = q.z2() + (q.z2() < cz ? -zPad : zPad);
+                float z3 = q.z3() + (q.z3() < cz ? -zPad : zPad);
 
                 float edgeT = clamp01(((q.x0() - minX) / spanX + (q.y0() - minY) / spanY) * 0.5F);
                 int rimCol = ShaderMath.sampleEdge(active, baseColor, intensity, speed, edgeOpacity,
                         edgeT, q.x0(), q.y0(), q.z0(), timeSeconds);
 
                 ShapeBuffer.addQuad(pose, consumer,
-                        sx0, sy0, sz0,
-                        sx1, sy1, sz1,
-                        sx2, sy2, sz2,
-                        sx3, sy3, sz3,
+                        q.x0() + ox, q.y0() + oy, z0,
+                        q.x1() + ox, q.y1() + oy, z1,
+                        q.x2() + ox, q.y2() + oy, z2,
+                        q.x3() + ox, q.y3() + oy, z3,
                         nx, ny, nz, rimCol);
+                ShapeBuffer.addQuad(pose, consumer,
+                        q.x3() + ox, q.y3() + oy, z3,
+                        q.x2() + ox, q.y2() + oy, z2,
+                        q.x1() + ox, q.y1() + oy, z1,
+                        q.x0() + ox, q.y0() + oy, z0,
+                        -nx, -ny, -nz, rimCol);
             }
         }
     }
@@ -286,10 +365,11 @@ public final class WorldShaderRenderer {
             return;
         }
         float scale = 1.0F / 16.0F;
-        float pad = 0.0025F;
-        float armGlazeOpacity = Math.max(0.04F, Math.min(0.24F, opacity * 0.28F));
-        float armEdgeOpacity = Math.max(0.18F, Math.min(0.72F, opacity * 0.78F));
-        float edgeThick = Math.max(0.003F, Math.min(0.022F, outlineWidth * 0.85F));
+        float pad = 0.0020F;
+        // Заливка внутри руки: держим её заметной, но полупрозрачной — ванильная текстура руки остаётся видимой
+        float armGlazeOpacity = Math.max(0.40F, Math.min(0.66F, 0.34F + opacity * 0.42F));
+        float armEdgeOpacity = Math.max(0.55F, Math.min(0.96F, opacity * 1.15F));
+        float edgeThick = Math.max(0.004F, Math.min(0.018F, outlineWidth * 0.75F));
 
         for (int i = 0; i < cubes.size(); i++) {
             ModelPart.Cube cube = cubes.get(i);
@@ -368,44 +448,42 @@ public final class WorldShaderRenderer {
                                        ShaderEffect effect, FaceGradientMode mode,
                                        int baseColor, float intensity, float speed, float opacity,
                                        float timeSeconds, int steps) {
-        float inv = 1.0F / steps;
-        for (int iu = 0; iu < steps; iu++) {
-            float u0 = iu * inv;
-            float u1 = (iu + 1) * inv;
-            for (int iv = 0; iv < steps; iv++) {
-                float v0 = iv * inv;
-                float v1 = (iv + 1) * inv;
+        int s = Math.max(1, Math.min(4, steps));
+        int n = s + 1;
+        float inv = 1.0F / s;
 
-                float p00x = bilerp(ax, bx, cx, dx, u0, v0);
-                float p00y = bilerp(ay, by, cy, dy, u0, v0);
-                float p00z = bilerp(az, bz, cz, dz, u0, v0);
+        int[] gridColors = new int[n * n];
+        float[] gx = new float[n * n];
+        float[] gy = new float[n * n];
+        float[] gz = new float[n * n];
 
-                float p01x = bilerp(ax, bx, cx, dx, u0, v1);
-                float p01y = bilerp(ay, by, cy, dy, u0, v1);
-                float p01z = bilerp(az, bz, cz, dz, u0, v1);
+        for (int iu = 0; iu <= s; iu++) {
+            float u = iu * inv;
+            int rowOff = iu * n;
+            for (int iv = 0; iv <= s; iv++) {
+                float v = iv * inv;
+                int idx = rowOff + iv;
+                gx[idx] = bilerp(ax, bx, cx, dx, u, v);
+                gy[idx] = bilerp(ay, by, cy, dy, u, v);
+                gz[idx] = bilerp(az, bz, cz, dz, u, v);
+                gridColors[idx] = ShaderMath.sampleSurfaceWithMode(effect, mode, baseColor, intensity, speed, opacity,
+                        u, v, nx, ny, nz, wx + u, wy + v, wz + (u + v) * 0.5F, timeSeconds);
+            }
+        }
 
-                float p11x = bilerp(ax, bx, cx, dx, u1, v1);
-                float p11y = bilerp(ay, by, cy, dy, u1, v1);
-                float p11z = bilerp(az, bz, cz, dz, u1, v1);
-
-                float p10x = bilerp(ax, bx, cx, dx, u1, v0);
-                float p10y = bilerp(ay, by, cy, dy, u1, v0);
-                float p10z = bilerp(az, bz, cz, dz, u1, v0);
-
-                int c00 = ShaderMath.sampleSurfaceWithMode(effect, mode, baseColor, intensity, speed, opacity,
-                        u0, v0, nx, ny, nz, wx + u0, wy + v0, wz + (u0 + v0) * 0.5F, timeSeconds);
-                int c01 = ShaderMath.sampleSurfaceWithMode(effect, mode, baseColor, intensity, speed, opacity,
-                        u0, v1, nx, ny, nz, wx + u0, wy + v1, wz + (u0 + v1) * 0.5F, timeSeconds);
-                int c11 = ShaderMath.sampleSurfaceWithMode(effect, mode, baseColor, intensity, speed, opacity,
-                        u1, v1, nx, ny, nz, wx + u1, wy + v1, wz + (u1 + v1) * 0.5F, timeSeconds);
-                int c10 = ShaderMath.sampleSurfaceWithMode(effect, mode, baseColor, intensity, speed, opacity,
-                        u1, v0, nx, ny, nz, wx + u1, wy + v0, wz + (u1 + v0) * 0.5F, timeSeconds);
-
+        for (int iu = 0; iu < s; iu++) {
+            int r0 = iu * n;
+            int r1 = (iu + 1) * n;
+            for (int iv = 0; iv < s; iv++) {
+                int i00 = r0 + iv;
+                int i01 = r0 + iv + 1;
+                int i11 = r1 + iv + 1;
+                int i10 = r1 + iv;
                 ShapeBuffer.addShadedQuad(pose, consumer,
-                        p00x, p00y, p00z, c00,
-                        p01x, p01y, p01z, c01,
-                        p11x, p11y, p11z, c11,
-                        p10x, p10y, p10z, c10,
+                        gx[i00], gy[i00], gz[i00], gridColors[i00],
+                        gx[i01], gy[i01], gz[i01], gridColors[i01],
+                        gx[i11], gy[i11], gz[i11], gridColors[i11],
+                        gx[i10], gy[i10], gz[i10], gridColors[i10],
                         nx, ny, nz);
             }
         }

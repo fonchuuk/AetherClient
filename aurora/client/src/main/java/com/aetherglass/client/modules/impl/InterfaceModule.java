@@ -71,6 +71,8 @@ public final class InterfaceModule extends Module {
             "Движущийся градиент и сияние за панелями", true, setting -> settingChanged(setting)));
     private final BooleanSetting hudBackground = register(new BooleanSetting("hudGlass", "Стеклянные панели экрана",
             "Плашки элементов экрана в виде стекла", true, setting -> settingChanged(setting)));
+    private final BooleanSetting capeAndBadge = register(new BooleanSetting("capeAndBadge", "Плащ и бейдж [A]",
+            "Неоновый плащ AetherGlass на спине персонажа и значок [A] возле ника", true, setting -> settingChanged(setting)));
 
     public InterfaceModule() {
         super("interface", "Оформление", "Палитра, плотность стекла, радиус и скорость анимаций",
@@ -150,6 +152,10 @@ public final class InterfaceModule extends Module {
 
     public boolean hudGlass() {
         return this.hudBackground.isEnabled();
+    }
+
+    public boolean capeAndBadge() {
+        return this.capeAndBadge.isEnabled();
     }
 
     /** Строка состояния для списка модулей. */
