@@ -19,7 +19,6 @@ import com.aetherglass.client.modules.settings.IntSetting;
 import com.aetherglass.client.modules.settings.Setting;
 import com.aetherglass.client.render.particle.ParticlePreset;
 import com.aetherglass.client.render.particle.ParticleShape;
-import com.aetherglass.client.render.util.AnimationTimer;
 import com.aetherglass.client.render.util.ColorUtil;
 import com.aetherglass.client.render.util.Easing;
 import com.aetherglass.client.render.util.FrameClock;
@@ -73,7 +72,13 @@ public final class AuroraInlineMenuScreen extends Screen {
 
     private final Screen parent;
     private final BackdropGallery backdrop = new BackdropGallery();
-    private final AnimationTimer openAnimation = new AnimationTimer(0.0F);
+    /**
+     * Раскрытие меню по реальному времени, а не экспоненциальным сглаживанием:
+     * у открытия и закрытия свои кривые и своя длительность.
+     */
+    private static final float OPEN_SECONDS = 0.18F;
+    private static final float CLOSE_SECONDS = 0.15F;
+    private float openT;
     private final Map<Module, Float> expandAnims = new IdentityHashMap<>();
     private final Map<Module, Float> toggleAnims = new IdentityHashMap<>();
     private final Set<Module> expandedModules = new HashSet<>();
@@ -122,7 +127,6 @@ public final class AuroraInlineMenuScreen extends Screen {
         super(Component.literal("ClickGUI AetherGlass"));
         this.parent = parent;
         this.selectedCategory = initialCategory;
-        this.openAnimation.setTarget(1.0F);
         for (Module m : ModuleManager.get().modules()) {
             this.toggleAnims.put(m, m.isEnabled() ? 1.0F : 0.0F);
             boolean exp = (initialExpanded != null && m == initialExpanded);
@@ -190,14 +194,14 @@ public final class AuroraInlineMenuScreen extends Screen {
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
         FrameClock.tick();
         float dt = FrameClock.deltaSeconds();
-        // Открытие — плавное, закрытие — быстрое: 34 вместо 9 даёт ~0,12 с
-        // (экспоненциальное сглаживание доходит до нуля за ln(1/0.02)/скорость).
-        this.openAnimation.speed((this.closing ? 34.0F : 9.0F) * AuroraTheme.motion());
-        this.openAnimation.update(dt);
-        float raw = this.openAnimation.current();
-        float progress = Easing.easeOutCubic(raw);
+        // Открытие — easeOutCubic 0,18 с (быстрый старт, мягкая остановка).
+        // Закрытие — easeInCubic 0,15 с: уход «втягивается» и не задерживает игрока.
+        float motion = Math.max(0.25F, AuroraTheme.motion());
+        float step = Math.max(0.0F, dt) / (this.closing ? CLOSE_SECONDS : OPEN_SECONDS) * motion;
+        this.openT = Math.max(0.0F, Math.min(1.0F, this.openT + (this.closing ? -step : step)));
+        float progress = this.closing ? Easing.easeInCubic(this.openT) : Easing.easeOutCubic(this.openT);
 
-        if (this.closing && raw <= 0.06F) {
+        if (this.closing && this.openT <= 0.001F) {
             // Запись конфига — на диск и в отдельном потоке: раньше она шла прямо
             // в потоке отрисовки и закрытие меню ощущалось как фриз.
             ModuleManager.get().saveAsync();
@@ -269,7 +273,7 @@ public final class AuroraInlineMenuScreen extends Screen {
         DrawUtil.drawModernBold(graphics, this.font, "AETHERGLASS", x + 19, y + 5,
                 ColorUtil.fade(0xFFFFFFFF, alpha));
         int logoW = DrawUtil.modernBoldWidth(this.font, "AETHERGLASS");
-        DrawUtil.drawModernSmall(graphics, this.font, "v1.0.8", x + 22 + logoW, y + 6,
+        DrawUtil.drawModernSmall(graphics, this.font, "v" + com.aetherglass.client.AetherGlassClient.VERSION, x + 22 + logoW, y + 6,
                 ColorUtil.fade(AuroraTheme.accent(), alpha));
 
         // Компактное поле поиска
@@ -1330,7 +1334,6 @@ public final class AuroraInlineMenuScreen extends Screen {
     public void onClose() {
         if (!this.closing) {
             this.closing = true;
-            this.openAnimation.setTarget(0.0F);
         }
     }
 

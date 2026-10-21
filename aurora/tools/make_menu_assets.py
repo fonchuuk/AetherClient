@@ -255,8 +255,30 @@ def _make_glass():
     return written
 
 
+def _artwork_complete() -> bool:
+    """Все фоны меню уже на месте?
+
+    Скрипт умеет рисовать только процедурный «жидкий» фон. Художественные
+    фоны меню (неоновый пурпурный пейзаж из референса) лежат в репозитории и
+    перерисовываться не должны: иначе каждая сборка молча подменяла
+    утверждённый вид на градиент. Принудительная перерисовка — только с
+    MENU_ASSETS_FORCE=1.
+    """
+    if os.environ.get("MENU_ASSETS_FORCE") == "1":
+        return False
+    for name in BACKDROP_NAMES:
+        for level in range(len(BACKDROP_SIZES)):
+            if not os.path.isfile(os.path.join(GUI, f"{name}_b{level}.png")):
+                return False
+    return True
+
+
 def main():
     os.makedirs(GUI, exist_ok=True)
+    if _artwork_complete():
+        print("=== ресурсы главного меню на месте, перерисовка не нужна ===")
+        print("    (принудительно: MENU_ASSETS_FORCE=1 python3 tools/make_menu_assets.py)")
+        return
     written = _make_backdrops() + _make_glass()
 
     print("=== ресурсы главного меню ===")

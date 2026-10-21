@@ -14,6 +14,7 @@
     "MouseHandlerMixin",
     "AbstractContainerScreenMixin",
     "GuiGraphicsMixin",
+    "GuiMixin",
     "AbstractClientPlayerMixin",
     "AvatarRendererMixin",
     "AdvancementToastMixin"

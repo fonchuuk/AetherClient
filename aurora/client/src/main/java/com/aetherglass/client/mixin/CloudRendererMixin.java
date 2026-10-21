@@ -2,6 +2,7 @@ package com.aetherglass.client.mixin;
 
 import com.aetherglass.client.modules.ModuleManager;
 import com.aetherglass.client.modules.impl.SkyEffectsModule;
+import com.aetherglass.client.render.sky.SkyEffectBlender;
 import net.minecraft.client.CloudStatus;
 import net.minecraft.client.renderer.CloudRenderer;
 import net.minecraft.world.phys.Vec3;
@@ -27,7 +28,10 @@ public abstract class CloudRendererMixin {
                                                Vec3 cameraPos, long gameTime, float cloudHeight,
                                                CallbackInfo info) {
         SkyEffectsModule module = ModuleManager.get().typed("sky", SkyEffectsModule.class);
-        if (module != null && module.isEnabled() && module.hidesVanillaClouds()) {
+        // Купол закрывает весь свод: облака, нарисованные поверх него, читаются как
+        // чёрные ромбы. Поэтому гасим их и по тумблеру, и всегда при активном куполе.
+        boolean dome = SkyEffectBlender.domeActive();
+        if (module != null && module.isEnabled() && (module.hidesVanillaClouds() || dome)) {
             info.cancel();
         }
     }

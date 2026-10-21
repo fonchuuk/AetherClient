@@ -38,7 +38,7 @@ public final class ParticleModule extends Module {
             ParticleShape.STAR, ParticleShape.values(), setting -> settingChanged(setting)));
     private final IntSetting rate = register(new IntSetting("rate", "Частота появления",
             "Сколько новых частиц в секунду появляется в координатах мира вокруг игрока",
-            24, 1, 100, setting -> settingChanged(setting)));
+            16, 1, 100, setting -> settingChanged(setting)));
     private final FloatSetting radius = register(new FloatSetting("radius", "Радиус спавна в мире",
             "Радиус в блоках (X, Z), в котором вокруг игрока появляются мировые частицы",
             12.0F, 3.0F, 28.0F, 0.5F, setting -> settingChanged(setting)));
@@ -68,7 +68,7 @@ public final class ParticleModule extends Module {
     private final ColorSetting colorTo = register(new ColorSetting("colorB", "Конечный цвет",
             "Цвет частицы перед растворением", 0xFFB98CFF, setting -> settingChanged(setting)));
     private final IntSetting limit = register(new IntSetting("limit", "Максимум частиц в мире",
-            "Предел одновременных мировых частиц", 360, 64, 1200, setting -> applyLimit()));
+            "Предел одновременных мировых частиц", 160, 64, 1200, setting -> applyLimit()));
     private final BooleanSetting trail = register(new BooleanSetting("trail", "Спавн в мировом радиусе",
             "Постоянно спавнит частицы в мировых координатах (X, Y, Z) вокруг игрока",
             true, setting -> settingChanged(setting)));
@@ -79,7 +79,7 @@ public final class ParticleModule extends Module {
             "Оставляет частицы в мировых координатах позади идущего игрока",
             true, setting -> settingChanged(setting)));
 
-    private final ParticleSystem system = new ParticleSystem(360);
+    private final ParticleSystem system = new ParticleSystem(160);
     private float spawnAccumulator;
     private float stepAccumulator;
     private boolean prevAttackDown;

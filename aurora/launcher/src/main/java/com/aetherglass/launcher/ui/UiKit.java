@@ -517,6 +517,110 @@ public final class UiKit {
         }
     }
 
+    /**
+     * Карточка «вопрос — ответ» для FAQ: вопрос жирным сверху, ответ мелким
+     * шрифтом под ним. Никаких аккордеонов — всё видно сразу, карточки только
+     * подсвечиваются при наведении.
+     */
+    public static JPanel faqCard(String question, String answer) {
+        JPanel card = card(null, new JPanel(), false);
+        card.removeAll();
+        card.setLayout(new BorderLayout(0, 5));
+        card.setBorder(BorderFactory.createEmptyBorder(11, 13, 12, 14));
+
+        JLabel questionLabel = new JLabel(question);
+        questionLabel.setFont(UiTheme.FAQ_QUESTION);
+        questionLabel.setForeground(UiTheme.TEXT);
+
+        WrappingText answerLabel = new WrappingText(answer);
+        answerLabel.setFont(UiTheme.SMALL);
+        answerLabel.setForeground(UiTheme.TEXT_MUTED);
+        answerLabel.setAlignmentY(Component.TOP_ALIGNMENT);
+
+        JPanel questionRow = new JPanel(new BorderLayout(0, 0));
+        questionRow.setOpaque(false);
+        questionRow.add(neonDot(), BorderLayout.WEST);
+        questionRow.add(questionLabel, BorderLayout.CENTER);
+
+        card.add(questionRow, BorderLayout.NORTH);
+        card.add(answerLabel, BorderLayout.CENTER);
+        return card;
+    }
+
+    /**
+     * Текст с переносом по фактической ширине карточки.
+     *
+     * <p>Почему не {@code JLabel} с HTML: HTML-метка сообщает «мне нужно 900 px»,
+     * и горизонтальная прокрутка в ленте FAQ появляется из-за самого же переноса.
+     * Здесь ширина в {@code getPreferredSize()} жёстко маленькая — родитель
+     * растягивает текст на всю карточку, а высота считается по числу строк при
+     * этой ширине. Ничего не «прыгает» и не появляется лишних полос прокрутки.</p>
+     */
+    private static final class WrappingText extends javax.swing.JTextArea {
+        WrappingText(String text) {
+            super(text);
+            setEditable(false);
+            setFocusable(false);
+            setOpaque(false);
+            setLineWrap(true);
+            setWrapStyleWord(true);
+            setBorder(BorderFactory.createEmptyBorder());
+            setRows(1);
+        }
+
+        @Override
+        public Dimension getPreferredSize() {
+            int width = getWidth() > 40 ? getWidth() : 640;
+            return new Dimension(80, measureHeight(getText(), getFontMetrics(getFont()), width));
+        }
+
+        @Override
+        public Dimension getMinimumSize() {
+            return getPreferredSize();
+        }
+
+        /** Число строк при переносе по словам × высота строки. */
+        static int measureHeight(String text, java.awt.FontMetrics metrics, int width) {
+            int lineHeight = metrics.getHeight();
+            int lines = 0;
+            for (String paragraph : text.split("\n", -1)) {
+                int current = 0;
+                int count = 1;
+                for (String word : paragraph.split(" ")) {
+                    int wordWidth = metrics.stringWidth(word + " ");
+                    if (current > 0 && current + wordWidth > width) {
+                        count++;
+                        current = wordWidth;
+                    } else {
+                        current += wordWidth;
+                    }
+                }
+                lines += count;
+            }
+            return Math.max(lineHeight, lines * lineHeight + 2);
+        }
+    }
+
+    /** Маленькая неоновая точка-маркер для строк FAQ. */
+    private static JComponent neonDot() {
+        JComponent dot = new JComponent() {
+            @Override
+            protected void paintComponent(Graphics graphics) {
+                Graphics2D g = (Graphics2D) graphics.create();
+                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                int cy = (getHeight() - 6) / 2;
+                g.setColor(fade(UiTheme.ACCENT, 0.30F));
+                g.fillOval(0, cy - 3, 10, 10);
+                g.setColor(UiTheme.ACCENT);
+                g.fillOval(2, cy, 5, 5);
+                g.dispose();
+            }
+        };
+        dot.setOpaque(false);
+        dot.setPreferredSize(new Dimension(14, 16));
+        return dot;
+    }
+
     // ─────────────────────────── Текст ───────────────────────────
 
     public static JLabel heading(String text) {

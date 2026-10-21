@@ -4,6 +4,7 @@ import com.aetherglass.launcher.auth.AuthSession;
 import com.aetherglass.launcher.auth.AuthStore;
 import com.aetherglass.launcher.auth.MicrosoftAuth;
 import com.aetherglass.launcher.core.AutoUpdater;
+import com.aetherglass.launcher.core.CrashAssistant;
 import com.aetherglass.launcher.core.CrashDoctor;
 import com.aetherglass.launcher.core.GameInstaller;
 import com.aetherglass.launcher.core.GameLauncher;
@@ -19,6 +20,8 @@ import com.aetherglass.launcher.core.VersionIndex;
 import com.aetherglass.launcher.util.Http;
 
 import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.DefaultComboBoxModel;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
@@ -33,12 +36,14 @@ import javax.swing.JScrollPane;
 import javax.swing.JSlider;
 import javax.swing.JTabbedPane;
 import javax.swing.JTable;
+import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.table.DefaultTableModel;
 import java.awt.BorderLayout;
 import java.awt.Component;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -93,6 +98,13 @@ public final class LauncherUi {
 
     private final LauncherConfig config;
     private final Component dialogParent;
+
+    // ── Вкладка «Помощник» ──
+    private JButton assistantRunButton;
+    private JLabel assistantSourceChip;
+    private JLabel assistantEvidenceLabel;
+    private JTextArea assistantAnswerArea;
+    private JScrollPane assistantAnswerScroll;
     private LauncherPaths paths;
     private AuthStore authStore;
     private AuthSession session;
@@ -181,7 +193,7 @@ public final class LauncherUi {
         JLabel title = new JLabel("AETHERGLASS");
         title.setFont(UiTheme.TITLE);
         title.setForeground(UiTheme.TEXT);
-        JLabel subtitle = UiKit.muted("Matte Black · Neon Launcher · v1.0.8 · 1.21.11");
+        JLabel subtitle = UiKit.muted("Matte Black · Neon Launcher · v1.1.2 · 1.21.11");
         JPanel titles = new JPanel(new BorderLayout(0, 2));
         titles.setOpaque(false);
         titles.add(title, BorderLayout.NORTH);
@@ -234,6 +246,7 @@ public final class LauncherUi {
         this.tabs.addTab("Аккаунты", gameTab());
         this.tabs.addTab("Скриншоты", screenshotsTab());
         this.tabs.addTab("Настройки", settingsTab());
+        this.tabs.addTab("Помощник", assistantTab());
         this.tabs.addTab("Логи", this.logPanel);
         this.tabs.addChangeListener(e -> {
             if (this.tabs.getSelectedIndex() == 1 && !java.awt.GraphicsEnvironment.isHeadless()) {
@@ -2137,6 +2150,220 @@ public final class LauncherUi {
         } catch (IOException exception) {
             return "не проверен: " + exception.getMessage();
         }
+    }
+
+    // ─────────────────────────── Вкладка «Помощник» ───────────────────────────
+    /** Вопросы, которые видны сразу — без аккордеонов и раскрывающихся списков. */
+    private static final String[][] FAQ = {
+            {"Сколько памяти выделить сборке?",
+                    "Ванилла — 2–3 ГБ. Сборка 30–80 модов — 4 ГБ. Сборка 100+ модов — 6–8 ГБ. Больше не значит лучше: лишний мусор в памяти замедлит систему."},
+            {"Где найти лог запуска и краш-репорты?",
+                    "Логи лежат в папке «.minecraft/logs/latest.log», краши — в «.minecraft/crash-reports/». Лаунчер сам подтягивает их при нажатии на кнопку проверки."},
+            {"OptiFine или Sodium?",
+                    "Sodium + Iris для шейдеров. OptiFine устарел и хуже совместим с модами. Sodium даёт больше FPS и стабильности."},
+            {"Почему вылетает игра с моей сборкой?",
+                    "Основные причины: несовместимость версий модов, нехватка оперативной памяти, конфликт загрузчиков (Forge vs Fabric) или битые файлы игры. Нажми «Проверить краш-репорт» — нейросеть укажет точную причину."},
+            {"Какой загрузчик выбрать — Fabric, Forge или NeoForge?",
+                    "Fabric — для лёгких сборок и высокой производительности (наш клиент работает на нём). Forge/NeoForge — для тяжёлых модовых сборок (техномагия, индустрия). Quilt — экспериментальный, лучше не трогать без опыта."},
+            {"Как обновить моды без потери мира?",
+                    "Не удаляй папку «saves». Просто замени «.jar»-файлы модов на новые версии. Если игра крашится после обновления — откати мод на старую версию."},
+            {"Почему лагает, хотя FPS высокий?",
+                    "Это «микро-фризы» (stutters) из-за аллокации памяти или плохой оптимизации модов. Попробуй добавить аргументы JVM («-XX:+UseG1GC») или мод «FerriteCore» для экономии памяти."},
+            {"Как перенести сборку на другой компьютер?",
+                    "В разделе «Сборки» есть кнопка «Экспорт (.zip)» — она упакует моды, конфиги и настройки в архив. Или скопируй папку «.minecraft» целиком."},
+    };
+
+
+    /**
+     * Вкладка «Помощник»: одна большая кнопка AI-разбора краша и сразу видимый FAQ
+     * в стеклянных карточках. Никаких полей для API-ключей — модель работает сама.
+     */
+    private JPanel assistantTab() {
+        JPanel panel = new JPanel(new BorderLayout(0, 12));
+        panel.setOpaque(false);
+        panel.setBorder(BorderFactory.createEmptyBorder(12, 16, 16, 16));
+
+        JPanel hero = new JPanel(new BorderLayout(0, 9));
+        hero.setOpaque(false);
+
+        JPanel titles = new JPanel(new BorderLayout(0, 2));
+        titles.setOpaque(false);
+        JLabel title = new JLabel("Помощник");
+        title.setFont(UiTheme.TITLE);
+        title.setForeground(UiTheme.TEXT);
+        titles.add(title, BorderLayout.NORTH);
+        titles.add(UiKit.muted("Нейросеть читает последний краш-репорт и говорит, что именно чинить"), BorderLayout.SOUTH);
+
+        this.assistantRunButton = UiKit.primaryButton("Проверить последний краш-репорт и выявить причину");
+        this.assistantRunButton.setFont(UiTheme.BUTTON_BOLD);
+        this.assistantRunButton.setPreferredSize(new Dimension(0, 44));
+        this.assistantRunButton.setToolTipText("Лаунчер найдёт crash-report или latest.log, отправит выжимку в модель и покажет причину");
+        this.assistantRunButton.addActionListener(event -> runCrashAssistant());
+
+        this.assistantEvidenceLabel = UiKit.muted("Что проверяем: <gameDir>/crash-reports, затем logs/latest.log");
+
+        JPanel actionRow = new JPanel(new BorderLayout(0, 4));
+        actionRow.setOpaque(false);
+        actionRow.add(this.assistantRunButton, BorderLayout.CENTER);
+        actionRow.add(this.assistantEvidenceLabel, BorderLayout.SOUTH);
+
+        JPanel head = new JPanel(new BorderLayout(0, 6));
+        head.setOpaque(false);
+        head.add(titles, BorderLayout.NORTH);
+        head.add(actionRow, BorderLayout.CENTER);
+        hero.add(head, BorderLayout.CENTER);
+        panel.add(hero, BorderLayout.NORTH);
+
+        // Лента: блок заключения + все вопросы FAQ подряд.
+        JPanel stack = new JPanel();
+        stack.setOpaque(false);
+        stack.setLayout(new BoxLayout(stack, BoxLayout.Y_AXIS));
+        stack.add(assistantResultCard());
+        stack.add(Box.createVerticalStrut(12));
+
+        JLabel faqTitle = new JLabel("Частые вопросы");
+        faqTitle.setFont(UiTheme.HEADING);
+        faqTitle.setForeground(UiTheme.TEXT);
+        faqTitle.setAlignmentX(Component.LEFT_ALIGNMENT);
+        stack.add(faqTitle);
+        stack.add(Box.createVerticalStrut(8));
+
+        for (String[] pair : FAQ) {
+            JPanel card = UiKit.faqCard(pair[0], pair[1]);
+            card.setAlignmentX(Component.LEFT_ALIGNMENT);
+            card.setMaximumSize(new Dimension(Integer.MAX_VALUE, card.getPreferredSize().height));
+            stack.add(card);
+            stack.add(Box.createVerticalStrut(7));
+        }
+
+        panel.add(UiKit.scroll(stack), BorderLayout.CENTER);
+        return panel;
+    }
+
+    /** Стеклянный блок, в который падает заключение нейросети. */
+    private JPanel assistantResultCard() {
+        JPanel body = new JPanel(new BorderLayout(0, 7));
+        body.setOpaque(false);
+
+        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        top.setOpaque(false);
+        this.assistantSourceChip = UiKit.chip("ожидание", UiTheme.TEXT_MUTED);
+        top.add(this.assistantSourceChip);
+        top.add(UiKit.muted("источник заключения: нейросеть или локальный разбор"));
+
+        this.assistantAnswerArea = new JTextArea(
+                "Нажми кнопку выше — лаунчер найдёт самый свежий краш-репорт\n"
+                        + "(или ошибку в latest.log), отправит выжимку в модель\n"
+                        + "и покажет здесь причину сбоя и шаги починки.");
+        this.assistantAnswerArea.setEditable(false);
+        this.assistantAnswerArea.setOpaque(false);
+        this.assistantAnswerArea.setLineWrap(true);
+        this.assistantAnswerArea.setWrapStyleWord(true);
+        this.assistantAnswerArea.setFont(UiTheme.BASE);
+        this.assistantAnswerArea.setForeground(UiTheme.TEXT_MUTED);
+        this.assistantAnswerArea.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
+
+        JScrollPane scroll = UiKit.scroll(this.assistantAnswerArea);
+        scroll.setPreferredSize(new Dimension(0, 96));
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        this.assistantAnswerScroll = scroll;
+
+        body.add(top, BorderLayout.NORTH);
+        body.add(scroll, BorderLayout.CENTER);
+        JPanel card = UiKit.card("Заключение", body, true);
+        card.setAlignmentX(Component.LEFT_ALIGNMENT);
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+        return card;
+    }
+
+    /** Кнопка: ищем отчёт в фоне, чтобы окно не подвисало на время запроса. */
+    private void runCrashAssistant() {
+        if (this.assistantRunButton == null || !this.assistantRunButton.isEnabled()) {
+            return;
+        }
+        this.assistantRunButton.setEnabled(false);
+        this.assistantRunButton.setText("Анализирую отчёт…");
+        if (this.assistantAnswerArea != null) {
+            this.assistantAnswerArea.setForeground(UiTheme.TEXT);
+            this.assistantAnswerArea.setText("Ищу последний краш-репорт и спрашиваю нейросеть…");
+        }
+        if (this.assistantSourceChip != null) {
+            this.assistantSourceChip.setText("анализ…");
+        }
+        status("Помощник: анализирую последний краш-репорт");
+
+        new SwingWorker<CrashAssistant.Answer, Void>() {
+            @Override
+            protected CrashAssistant.Answer doInBackground() {
+                return CrashAssistant.analyze(paths, config);
+            }
+
+            @Override
+            protected void done() {
+                CrashAssistant.Answer answer;
+                try {
+                    answer = get();
+                } catch (Exception error) {
+                    answer = null;
+                }
+                applyAssistantAnswer(answer);
+            }
+        }.execute();
+    }
+
+    /**
+     * Кладёт ответ в блок заключения. Отдельный метод нужен ещё и стенду отрисовки:
+     * он вызывает анализ синхронно, чтобы на скриншоте был настоящий результат.
+     */
+    void applyAssistantAnswer(CrashAssistant.Answer answer) {
+        if (this.assistantRunButton != null) {
+            this.assistantRunButton.setEnabled(true);
+            this.assistantRunButton.setText("Проверить последний краш-репорт и выявить причину");
+        }
+        if (answer == null || this.assistantAnswerArea == null) {
+            return;
+        }
+        this.assistantAnswerArea.setForeground(UiTheme.TEXT);
+        this.assistantAnswerArea.setCaretPosition(0);
+        this.assistantAnswerArea.setText(answer.text());
+        fitAnswerHeight(answer.text());
+        if (this.assistantSourceChip != null) {
+            this.assistantSourceChip.setText(answer.fromAi() ? "нейросеть" : "локальный разбор");
+            this.assistantSourceChip.setForeground(answer.fromAi() ? UiTheme.SUCCESS : UiTheme.WARNING);
+        }
+        if (this.assistantEvidenceLabel != null) {
+            CrashAssistant.Evidence evidence = answer.evidence();
+            this.assistantEvidenceLabel.setText(evidence.found()
+                    ? "Проверено: " + evidence.file().getFileName() + " · " + evidence.kind()
+                        + " · " + java.time.Instant.ofEpochMilli(evidence.modifiedMillis())
+                        .atZone(java.time.ZoneId.systemDefault())
+                        .format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm"))
+                    : "Краш-репортов не найдено — запусти игру и вернись сюда");
+        }
+        status("Помощник: " + (answer.fromAi() ? "ответ нейросети готов" : "готов локальный разбор"));
+    }
+
+    /**
+     * Подгоняет высоту блока под текст: короткий ответ не оставляет пустую
+     * дыру, длинный — прокручивается внутри карточки.
+     */
+    private void fitAnswerHeight(String text) {
+        if (this.assistantAnswerScroll == null) {
+            return;
+        }
+        int charsPerLine = 108;
+        int lines = 0;
+        for (String part : text.split("\n", -1)) {
+            lines += Math.max(1, (int) Math.ceil(part.length() / (double) charsPerLine));
+        }
+        int height = Math.max(58, Math.min(210, lines * 15 + 14));
+        this.assistantAnswerScroll.setPreferredSize(new Dimension(0, height));
+        this.assistantAnswerScroll.revalidate();
+    }
+
+    /** Синхронный прогон для стенда отрисовки (UiPreview): без потоков и ожиданий. */
+    void runAssistantSynchronously() {
+        applyAssistantAnswer(CrashAssistant.analyze(this.paths, this.config));
     }
 
     private JPanel screenshotsTab() {

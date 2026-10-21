@@ -95,7 +95,16 @@ public final class GameLauncher {
         command.add("-Xmx" + config.maxMemoryMb() + "M");
         command.add("-Dfile.encoding=UTF-8");
         if (config.jvmPreset() != null) {
-            command.addAll(config.jvmPreset().flags());
+            for (String flag : config.jvmPreset().flags()) {
+                // AlwaysPreTouch трогает весь -Xmx сразу при старте. На машинах с
+                // небольшим объёмом памяти (или когда рядом крутится ещё JVM) это
+                // приводит к OOM-киллу ещё до главного меню, поэтому включаем его
+                // только если heap действительно большой.
+                if ("-XX:+AlwaysPreTouch".equals(flag) && config.maxMemoryMb() < 1024) {
+                    continue;
+                }
+                command.add(flag);
+            }
         }
         if (installation.logConfigFile() != null && installation.logConfigArgument() != null) {
             command.add(substitute(installation.logConfigArgument(),

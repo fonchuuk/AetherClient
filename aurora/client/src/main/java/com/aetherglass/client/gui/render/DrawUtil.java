@@ -395,6 +395,18 @@ public final class DrawUtil {
         int glossBottom = ColorUtil.withAlpha(0xFFFFFFFF, 0);
         graphics.fillGradient(x + r, y + 1, x + width - r, y + 1 + glossH, glossTop, glossBottom);
 
+        // 4b. Светлая кромка: сверху ярче, слева мягче — панель читается как
+        //     выпуклая стеклянная пластина, а не как заливка.
+        int edgeTop = ColorUtil.withAlpha(0xFFFFFFFF, Math.round((glow > 0.015F ? 92 : 54) * a));
+        int edgeSide = ColorUtil.withAlpha(0xFFFFFFFF, Math.round((glow > 0.015F ? 44 : 26) * a));
+        if (height > 6) {
+            graphics.fill(x + r, y, x + width - r, y + 1, edgeTop);
+            int sideBottom = y + height - r;
+            if (sideBottom > y + 2) {
+                graphics.fill(x, y + r, x + 1, sideBottom, edgeSide);
+            }
+        }
+
         // 5. Скользящий солнечный блик по панели
         drawSurfaceSolarSheen(graphics, x, y, width, height, r, a);
 
@@ -442,31 +454,25 @@ public final class DrawUtil {
         }
         float sx = texW / (float) guiW;
         float sy = texH / (float) guiH;
-        int tint = ColorUtil.withAlpha(0xFF9FB4D8, Math.round(196 * a)); // легкий холодный оттенок стекла
+        int tint = ColorUtil.withAlpha(0xFF9FB4D8, Math.round(168 * a)); // холодный оттенок стекла
         int topRow = y + 1;
         int bottomRow = y + height - 1;
-        for (int row = topRow; row < bottomRow; row++) {
-            int inset = 0;
-            if (r > 1) {
-                int fromEdge = Math.min(row - y, bottomRow - 1 - row);
-                if (fromEdge >= 0 && fromEdge < r) {
-                    inset = CORNER_INSET[r][fromEdge];
-                }
-            }
-            int rowX = x + inset;
-            int rowW = width - inset * 2;
-            if (rowW <= 0) {
-                continue;
-            }
-            float u = rowX * sx;
-            float v = row * sy;
-            float u2 = (rowX + rowW) * sx;
-            float v2 = (row + 1) * sy;
-            int uW = Math.max(1, Math.round(u2 - u));
-            int vH = Math.max(1, Math.round(v2 - v));
-            graphics.blit(RenderPipelines.GUI_TEXTURED, blur, rowX, row, u, v, rowW, 1,
-                    uW, vH, texW, texH, tint);
+        int band = Math.min(Math.max(0, r), Math.max(0, (bottomRow - topRow) / 2));
+        // Верхняя и нижняя полосы скруглений — построчно, по таблице врезок углов.
+        // Середина панели прямоугольная, поэтому рисуется одним блитом: у столбика
+        // высотой 300 px это 2r строк на краях вместо 300 строк.
+        blitBlurRows(graphics, blur, x, y, width, height, texW, texH, sx, sy, tint, topRow, topRow + band, r);
+        int midTop = topRow + band;
+        int midBottom = bottomRow - band;
+        if (midBottom > midTop) {
+            int u0 = Math.max(0, Math.round(x * sx));
+            int v0 = Math.max(0, Math.round(midTop * sy));
+            int uW = Math.max(1, Math.round(width * sx));
+            int vH = Math.max(1, Math.round((midBottom - midTop) * sy));
+            graphics.blit(RenderPipelines.GUI_TEXTURED, blur, x, midTop, x * sx, midTop * sy,
+                    width, midBottom - midTop, uW, vH, texW, texH, tint);
         }
+        blitBlurRows(graphics, blur, x, y, width, height, texW, texH, sx, sy, tint, Math.max(midTop, midBottom), bottomRow, r);
         return true;
     }
 
@@ -574,12 +580,11 @@ public final class DrawUtil {
         if (graphics == null || width <= 0 || height <= 0 || alpha <= 0.01F) {
             return;
         }
-        int r = limit(Math.min(8, radius), width, height);
-        int panelFill = ColorUtil.withAlpha(0xFF08090D, Math.round(236 * alpha));
-        fillRoundedPixelExact(graphics, x, y, width, height, r, panelFill);
-        int pxThickness = Math.max(1, Math.round(AuroraTheme.borderWidth()));
-        int rim = ColorUtil.withAlpha(AuroraTheme.accent(), Math.round(78 * alpha));
-        drawThinRoundedOutline(graphics, x, y, width, height, r, rim, pxThickness);
+        int r = limit(Math.min(9, radius), width, height);
+        // Панель идёт тем же путём, что и карточки: размытие мира под ней, светлая
+        // кромка сверху/слева, диагональный блик. Раньше здесь была глухая
+        // заливка 236/255 — «непрозрачный чёрный ящик» вместо стекла.
+        drawMatteNeonCard(graphics, x, y, width, height, r, alpha, 0.0F, AuroraTheme.accent());
     }
 
     /**
@@ -654,6 +659,32 @@ public final class DrawUtil {
             int edge = ColorUtil.withAlpha(0xFFFFFAEC, accentAlpha);
             graphics.fill(Math.max(x + margin, bandX), y, Math.min(x + width - margin, bandX + Math.max(10, bandW / 3)),
                     y + 1, edge);
+        }
+    }
+
+    /**
+     * Полоса скруглений: каждая строка сжимается по таблице врезок углов —
+     * расстояние берётся до ближайшей горизонтальной кромки панели, поэтому
+     * работает и для верхней, и для нижней полосы.
+     */
+    private static void blitBlurRows(GuiGraphics graphics, Identifier blur, int x, int y, int width, int height,
+                                     int texW, int texH, float sx, float sy, int tint,
+                                     int fromRow, int toRow, int r) {
+        for (int row = fromRow; row < toRow; row++) {
+            int inset = 0;
+            if (r > 1) {
+                int fromEdge = Math.min(row - y, y + height - 1 - row);
+                if (fromEdge >= 0 && fromEdge < r) {
+                    inset = CORNER_INSET[r][fromEdge];
+                }
+            }
+            int rowX = x + inset;
+            int rowW = width - inset * 2;
+            if (rowW <= 0) {
+                continue;
+            }
+            graphics.blit(RenderPipelines.GUI_TEXTURED, blur, rowX, row, rowX * sx, row * sy, rowW, 1,
+                    Math.max(1, Math.round(rowW * sx)), 1, texW, texH, tint);
         }
     }
 

@@ -20,7 +20,7 @@ class Release108AuditTest {
 
     @Test
     void versionIsBumpedTo108() {
-        assertEquals("1.0.8", AetherGlassClient.VERSION);
+        assertEquals("1.1.2", AetherGlassClient.VERSION);
     }
 
     @Test

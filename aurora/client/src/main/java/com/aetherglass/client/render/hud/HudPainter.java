@@ -632,23 +632,39 @@ public final class HudPainter {
                 {"inventory", "🎒 Инв"},
                 {"CLEAN", "📷 Экран"}
         };
-        int gap = 3;
-        int padX = 5;
-        int totalW = 6;
-        for (int i = 0; i < items.length; i++) {
-            totalW += font.width(items[i][1]) + padX * 2;
-            if (i < items.length - 1) {
-                totalW += gap;
+        // Подбираем отступы под ширину экрана: на узком окне вкладки не должны
+        // уезжать за край (раньше «Экран» просто обрезался).
+        int[] pads = {8, 6, 4};
+        int[] gaps = {5, 4, 3};
+        int platePad = 5;
+        int totalW = 0;
+        int padX = pads[0];
+        int gap = gaps[0];
+        for (int i = 0; i < pads.length; i++) {
+            padX = pads[i];
+            gap = gaps[i];
+            totalW = platePad * 2;
+            for (int j = 0; j < items.length; j++) {
+                totalW += font.width(items[j][1]) + padX * 2;
+                if (j < items.length - 1) {
+                    totalW += gap;
+                }
+            }
+            if (totalW <= sw - 8) {
+                break;
             }
         }
-        int height = 18;
+        int height = 20;
         int x = layout.pixelX(HudElementType.QUICK_ACCESS, sw, totalW);
+        // Страховка: даже после сжатия панель остаётся в пределах экрана.
+        x = Math.max(2, Math.min(x, sw - totalW - 2));
         int y = layout.pixelY(HudElementType.QUICK_ACCESS, sh, height);
         float cleanAlpha = KeybindManager.get().hudVisibility();
+        int accent = ColorController.accent();
 
         drawGlassPlate(graphics, x, y, totalW, height, glass);
 
-        int curX = x + 3;
+        int curX = x + platePad;
         for (String[] item : items) {
             String modId = item[0];
             String label = item[1];
@@ -662,13 +678,21 @@ public final class HudPainter {
                 active = m != null && m.isEnabled();
             }
 
+            int btnY = y + 2;
+            int btnH = height - 4;
             if (active) {
-                DrawUtil.drawFrostedPill(graphics, curX, y + 2, btnW, height - 4, 4, cleanAlpha, 0.25F, 0.55F);
+                // Неон — только у активной вкладки: подложка, акцентная полоса снизу
+                // и тонкая светлая кромка сверху. Неактивные вкладки не светятся.
+                DrawUtil.drawFrostedPill(graphics, curX, btnY, btnW, btnH, 5, cleanAlpha, 0.22F, 0.60F);
+                graphics.fill(curX + 4, btnY + btnH - 2, curX + btnW - 4, btnY + btnH - 1,
+                        ColorUtil.withAlpha(accent, Math.round(210 * cleanAlpha)));
+                graphics.fill(curX + 5, btnY + 1, curX + btnW - 5, btnY + 2,
+                        ColorUtil.withAlpha(0xFFFFFFFF, Math.round(70 * cleanAlpha)));
             }
-            graphics.drawString(font, label, curX + padX, y + 5,
+            graphics.drawString(font, label, curX + padX, btnY + (btnH - 8) / 2,
                     ColorUtil.fade(active ? AuroraTheme.textPrimary() : AuroraTheme.textSecondary(), cleanAlpha), false);
 
-            QUICK_BUTTONS.add(new QuickButtonRect(curX, y + 2, btnW, height - 4, modId, isClean));
+            QUICK_BUTTONS.add(new QuickButtonRect(curX, btnY, btnW, btnH, modId, isClean));
             curX += btnW + gap;
         }
         return new Box(x, y, totalW, height);

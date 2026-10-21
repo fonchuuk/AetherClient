@@ -23,8 +23,8 @@ public final class RealGameRunner {
         LauncherPaths paths = new LauncherPaths(base);
         LauncherConfig config = LauncherConfig.defaults()
                 .gameDirectory(base)
-                .minMemoryMb(512)
-                .maxMemoryMb(850)
+                .minMemoryMb(384)
+                .maxMemoryMb(640)
                 .windowWidth(width)
                 .windowHeight(height)
                 .javaExecutable(Path.of(System.getProperty("java.home"), "bin", "java").toString())

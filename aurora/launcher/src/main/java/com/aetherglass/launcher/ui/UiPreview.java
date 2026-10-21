@@ -43,6 +43,7 @@ public final class UiPreview {
             }
         }
         LauncherConfig config = LauncherConfig.defaults().gameDirectory(previewDir);
+        seedAssistantSample(previewDir);
         LauncherUi ui = new LauncherUi(config, null);
         JComponent root = ui.root();
         root.setDoubleBuffered(false);
@@ -69,12 +70,22 @@ public final class UiPreview {
                 case 2 -> "game";
                 case 3 -> "screenshots";
                 case 4 -> "settings";
+                case 5 -> "assistant";
                 default -> "logs";
             } + ".png";
             Path file = directory.resolve(name);
             ImageIO.write(image, "png", file.toFile());
             System.out.println("сохранено: " + file + " (" + nonBlankPixels(image) + " непустых пикселей)");
         }
+
+        // Вкладка «Помощник» с настоящим прогоном: на скриншоте должен быть
+        // реальный ответ, а не заготовка.
+        ui.tabs().setSelectedIndex(5);
+        layoutTree(root);
+        ui.runAssistantSynchronously();
+        layoutTree(root);
+        ImageIO.write(render(root), "png", directory.resolve("launcher-4-assistant.png").toFile());
+        System.out.println("сохранено: assistant");
 
         // 1) Главный экран со сборками (AetherVisuals и 26.2)
         ui.tabs().setSelectedIndex(0);
@@ -101,6 +112,45 @@ public final class UiPreview {
         ImageIO.write(render(root), "png", directory.resolve("launcher-3-create-modpack-modal.png").toFile());
 
         System.exit(0);
+    }
+
+    /**
+     * Готовит для вкладки «Помощник» правдоподобный набор: пару модов и
+     * crash-report, чтобы стенд показывал реальный разбор, а не пустое окно.
+     */
+    private static void seedAssistantSample(Path gameDir) throws IOException {
+        Path mods = gameDir.resolve("mods");
+        Files.createDirectories(mods);
+        for (String mod : new String[]{"fabric-api-0.141.6.jar", "sodium-0.6.9.jar",
+                "iris-1.8.1.jar", "sodium-extra-0.6.0.jar", "lithium-0.15.3.jar"}) {
+            Files.writeString(mods.resolve(mod), "preview");
+        }
+        Path crashes = gameDir.resolve("crash-reports");
+        Files.createDirectories(crashes);
+        Files.writeString(crashes.resolve("crash-2026-10-21_14-52-11-client.txt"), """
+                ---- Minecraft Crash Report ----
+                // Don't be sad, have a hug! <3
+
+                Time: 2026-10-21 14:52:11
+                Description: Rendering overlay
+
+                java.lang.RuntimeException: Mixin transformation of net.minecraft.class_757 failed
+                	at net.fabricmc.loader.impl.launch.knot.KnotClassDelegate.transform(KnotClassDelegate.java:412)
+                	at net.fabricmc.loader.impl.launch.knot.KnotClassLoader.loadClass(KnotClassLoader.java:231)
+                	at net.minecraft.client.renderer.GameRenderer.<init>(GameRenderer.java:142)
+                Caused by: org.spongepowered.asm.mixin.throwables.MixinApplyError: Mixin sodium-extra.mixins.json:GameRendererMixin from mod sodium-extra failed
+                	at org.spongepowered.asm.mixin.transformer.MixinProcessor.applyMixins(MixinProcessor.java:392)
+                	at org.spongepowered.asm.mixin.transformer.MixinTransformer.transformClass(MixinTransformer.java:230)
+                	... 12 more
+                Caused by: java.lang.NoSuchMethodError: 'void net.minecraft.class_757.method_3192(int, int)'
+                	at net.caffeinemc.mods.sodiumextra.mixin.render.GameRendererMixin.method_3192(GameRendererMixin.java:41)
+
+                -- System Details --
+                Minecraft Version: 1.21.11
+                Fabric Loader: 0.19.5
+                Java Version: 21.0.5, Eclipse Adoptium
+                Memory: 1844 MB / 4096 MB
+                """);
     }
 
     private static void layoutTree(java.awt.Component comp) {

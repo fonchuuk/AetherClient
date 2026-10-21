@@ -33,7 +33,7 @@ import net.minecraft.resources.Identifier;
 public final class BackdropBlur {
     private static final Identifier ID =
             Identifier.fromNamespaceAndPath("aetherglass", "hud_backdrop_blur");
-    private static final int DOWNSCALE = 8;
+    private static final int DOWNSCALE = 14;
     private static final int MIN_W = 32;
     private static final int MIN_H = 18;
 

@@ -10,6 +10,7 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
@@ -379,7 +380,9 @@ public final class ParticleSystem {
             }
         }
 
-        // 2. Отрисовка билбордов частиц по формам (пропускаем формы, которых сейчас нет в пуле)
+        // 2. Объёмные частицы: реальные сетки (сфера/куб/кольцо) с освещением по
+        //    нормалям. Билбордов больше нет — у частицы есть глубина и силуэт,
+        //    она не разворачивается к камере плоской наклейкой.
         int presentMask = 0;
         for (int i = 0; i < this.count; i++) {
             ParticleShape sh = this.shape[i];
@@ -387,6 +390,7 @@ public final class ParticleSystem {
                 presentMask |= (1 << sh.ordinal());
             }
         }
+        Matrix4f matrix = matrices.last().pose();
         for (ParticleShape targetShape : SHAPES) {
             if ((presentMask & (1 << targetShape.ordinal())) == 0) {
                 continue;
@@ -402,8 +406,8 @@ public final class ParticleSystem {
                     continue;
                 }
                 int baseColor = ColorUtil.lerp(this.startColor[i], this.endColor[i], Easing.easeInOutQuad(t));
-                int coreColor = ColorUtil.fade(ColorUtil.brighten(baseColor, 0.28F), fade);
-                if (ColorUtil.alpha(coreColor) <= 2) {
+                int bodyColor = ColorUtil.brighten(baseColor, 0.30F);
+                if (ColorUtil.alpha(ColorUtil.fade(bodyColor, fade)) <= 2) {
                     continue;
                 }
                 if (consumer == null) {
@@ -414,56 +418,17 @@ public final class ParticleSystem {
                 float py = (float) (this.y[i] - camPos.y);
                 float pz = (float) (this.z[i] - camPos.z);
 
-                float pulse = 0.90F + 0.16F * (float) Math.sin(this.age[i] * 5.0F + this.phase[i]);
-                float coreRadius = this.size[i] * (0.75F + 0.35F * (1.0F - t)) * pulse;
-                float haloRadius = coreRadius * 1.95F;
+                float pulse = 0.94F + 0.10F * (float) Math.sin(this.age[i] * 4.0F + this.phase[i]);
+                // Крупнее прежнего билборда: у объёмной частицы реальный радиус,
+                // иначе на дистанции она снова читается точкой.
+                float radius = this.size[i] * 0.82F * (0.80F + 0.30F * (1.0F - t)) * pulse;
+                float yaw = this.phase[i] + this.age[i] * 1.7F;
+                float tilt = this.phase[i] * 0.5F;
 
-                int haloColor = ColorUtil.fade(baseColor, fade * 0.38F);
-                if (ColorUtil.alpha(haloColor) > 2) {
-                    drawBillboard(IDENTITY_POSE, consumer, px, py, pz, right, up, haloRadius, haloColor);
-                }
-                drawBillboard(IDENTITY_POSE, consumer, px, py, pz, right, up, coreRadius, coreColor);
-
-                // Второй билборд, повёрнутый в плоскости экрана: капля выглядит
-                // объёмной и не «схлопывается» в плоский диск при взгляде сбоку.
-                // Стоимость — один дополнительный квад на частицу, ни одной
-                // новой аллокации: базисные векторы переиспользуются.
-                int crossColor = ColorUtil.fade(coreColor, fade * 0.34F);
-                if (ColorUtil.alpha(crossColor) > 2) {
-                    float ux = up.x * CROSS_ANGLE_SIN;
-                    float uy = up.y * CROSS_ANGLE_SIN;
-                    float uz = up.z * CROSS_ANGLE_SIN;
-                    float rx = right.x * CROSS_ANGLE_SIN;
-                    float ry = right.y * CROSS_ANGLE_SIN;
-                    float rz = right.z * CROSS_ANGLE_SIN;
-                    crossRight.set(right.x * CROSS_ANGLE_COS + ux, right.y * CROSS_ANGLE_COS + uy,
-                            right.z * CROSS_ANGLE_COS + uz);
-                    crossUp.set(up.x * CROSS_ANGLE_COS - rx, up.y * CROSS_ANGLE_COS - ry,
-                            up.z * CROSS_ANGLE_COS - rz);
-                    drawBillboard(IDENTITY_POSE, consumer, px, py, pz, crossRight, crossUp,
-                            coreRadius * 0.92F, crossColor);
-                }
+                ParticleMesh.draw(IDENTITY_POSE, consumer, matrix, targetShape,
+                        px, py, pz, radius, yaw, tilt, bodyColor, fade);
             }
         }
-    }
-
-    private static void drawBillboard(PoseStack.Pose pose, VertexConsumer consumer,
-                                      float px, float py, float pz,
-                                      Vector3f right, Vector3f up,
-                                      float r, int color) {
-        float rx = right.x * r;
-        float ry = right.y * r;
-        float rz = right.z * r;
-        float ux = up.x * r;
-        float uy = up.y * r;
-        float uz = up.z * r;
-
-        ShapeBuffer.addTexturedQuad(pose, consumer,
-                px - rx - ux, py - ry - uy, pz - rz - uz, 0.0F, 1.0F,
-                px + rx - ux, py + ry - uy, pz + rz - uz, 1.0F, 1.0F,
-                px + rx + ux, py + ry + uy, pz + rz + uz, 1.0F, 0.0F,
-                px - rx + ux, py - ry + uy, pz - rz + uz, 0.0F, 0.0F,
-                color);
     }
 
     private static float computeFade(float t, float fadeFraction) {

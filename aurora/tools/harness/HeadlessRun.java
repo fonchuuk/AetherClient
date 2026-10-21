@@ -38,7 +38,7 @@ public final class HeadlessRun {
     private static final String MC_VERSION = "1.21.11";
     private static final String LOADER_VERSION = "0.19.5";
     private static final String READY_MARKER = "главное меню заменено";
-    private static final int HOLD_SECONDS = 25;
+    private static final int HOLD_SECONDS = 1500;
     private static final int WAIT_SECONDS = 420;
 
     private HeadlessRun() {
@@ -52,8 +52,8 @@ public final class HeadlessRun {
         LauncherPaths paths = new LauncherPaths(base);
         LauncherConfig config = LauncherConfig.defaults()
                 .gameDirectory(base)
-                .minMemoryMb(512)
-                .maxMemoryMb(1024)
+                .minMemoryMb(256)
+                .maxMemoryMb(640)
                 .windowWidth(width)
                 .windowHeight(height)
                 .javaExecutable(Path.of(System.getProperty("java.home"), "bin", "java").toString())

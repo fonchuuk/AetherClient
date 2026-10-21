@@ -176,6 +176,8 @@ public final class UiTheme {
     public static final Font TAB_BOLD = BASE_BOLD.deriveFont(11.5f);
     public static final Font BUTTON_FONT = BASE_BOLD.deriveFont(11.5f);
     public static final Font BUTTON_BOLD = BASE_BOLD.deriveFont(13.0f);
+    /** Вопрос в карточках FAQ: жирный, чуть крупнее обычного текста. */
+    public static final Font FAQ_QUESTION = BASE_BOLD.deriveFont(12.5f);
     public static final Font MONO = new Font(Font.MONOSPACED, Font.PLAIN, 11);
 
     private static Font loadFont(String resourcePath, int fallbackStyle, float size) {

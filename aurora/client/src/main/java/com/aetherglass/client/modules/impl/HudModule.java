@@ -62,6 +62,11 @@ public final class HudModule extends Module {
         if (client.options == null || client.options.hideGui) {
             return;
         }
+        // Пока открыт клик-гуи, HUD не рисуем: его верхняя панель вкладок
+        // накладывалась на панели меню и просвечивала сквозь стекло.
+        if (client.screen instanceof com.aetherglass.client.gui.screen.AuroraInlineMenuScreen) {
+            return;
+        }
         int sw = client.getWindow().getGuiScaledWidth();
         int sh = client.getWindow().getGuiScaledHeight();
 
