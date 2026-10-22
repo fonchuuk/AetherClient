@@ -1,10 +1,10 @@
-# AetherGlass Client 1.1.8 — контрольные суммы SHA-256
+# AetherGlass Client 1.1.9 — контрольные суммы SHA-256
 # Проверка: sha256sum -c CHECKSUMS.txt
-# AetherGlass-Setup.exe — 8313418 байт
-# AetherGlass.jar — 6515792 байт
-# AetherGlassLauncher.exe — 640732 байт
-# AetherGlassLauncher.jar — 584412 байт
-883125a27906566933582aa553b6a4b2eb6b347f7d63bb4f128dd2933517d8d6  AetherGlass-Setup.exe
-52bd2e6ce2a84a0eb44d85c44e26d0899654056d5372a64ce996488062921377  AetherGlass.jar
-1c8f015f7eea1bb07b9967bd7a5b064316cc1b1e3f16d52ddc334334e4c6a3f5  AetherGlassLauncher.exe
-a37a370fee1b5b3110b98c3b4a353a1a8c71aeba0ccca4eb6cbac36ac37fd16d  AetherGlassLauncher.jar
+# AetherGlass-Setup.exe — 8315470 байт
+# AetherGlass.jar — 6515791 байт
+# AetherGlassLauncher.exe — 641398 байт
+# AetherGlassLauncher.jar — 585078 байт
+6175f55efbd1a7dead711e512b349a63d6f5e5e9df25df4e1e8688254a5dfeea  AetherGlass-Setup.exe
+f817a1588b26620051ad355153746e49cf083231142ed96a678a743a4f645900  AetherGlass.jar
+def0da67c8ce9871520dcadb3f1988adec1103b41dcfc1d68cabefa9a9452a1d  AetherGlassLauncher.exe
+c55b13ee60109b067acf08122a12bab597dea5d40a5f27e2297e2aadf24e8e1b  AetherGlassLauncher.jar
